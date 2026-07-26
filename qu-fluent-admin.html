@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>QU Admissions — Admin Panel (Fluent × Doha)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* ---- Brand tokens (from laravel-enterprise-ui design system) ---- */
+    --brand-50:  #fbeef1;
+    --brand-100: #f3d2da;
+    --brand-300: #d3738f;
+    --brand-400: #b8496b;
+    --brand-500: #8d1b3d;
+    --brand-600: #7a1636;
+    --brand-700: #63102b;
+    --brand-800: #4c0c21;
+    --brand-900: #350818;
+
+    --sand-50:  #faf7f0;
+    --sand-100: #f2ead6;
+    --sand-200: #e4d3ac;
+    --sand-300: #d3b57c;
+
+    --gold-400: #e3b04b;
+    --gold-500: #cf9a2f;
+    --gold-600: #a97b22;
+
+    --ink-50:  #f7f7f8;
+    --ink-100: #eeedf0;
+    --ink-200: #d8d6dc;
+    --ink-300: #b4b0ba;
+    --ink-400: #8b8592;
+    --ink-500: #675f6e;
+    --ink-600: #4c4553;
+    --ink-700: #38333e;
+    --ink-800: #241f2a;
+    --ink-900: #16131a;
+
+    --success: #1f8a5f;
+    --warning: #cf9a2f;
+    --danger:  #b3261e;
+    --info:    #2563a8;
+
+    /* ---- Fluent UI system tokens: depth + corner radius scale ---- */
+    --fluent-radius-sm: 4px;
+    --fluent-radius-md: 6px;
+    --fluent-radius-lg: 8px;
+    --fluent-depth-2:  0 1px 2px rgba(22,19,26,.07), 0 0px 1px rgba(22,19,26,.06);
+    --fluent-depth-4:  0 2px 4px rgba(22,19,26,.09), 0 0px 2px rgba(22,19,26,.07);
+    --fluent-depth-8:  0 4px 8px rgba(22,19,26,.12), 0 0px 2px rgba(22,19,26,.08);
+    --fluent-depth-16: 0 8px 16px rgba(22,19,26,.16), 0 0px 2px rgba(22,19,26,.10);
+    --acrylic-light: rgba(255,255,255,.72);
+    --acrylic-brand: rgba(99,16,43,.82);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: "Inter", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    background: var(--sand-50);
+    color: var(--ink-800);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--brand-100); color: var(--brand-800); }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 264px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ---------------- SIDEBAR (acrylic, brand-tinted) ---------------- */
+  .sidebar {
+    position: relative;
+    background:
+      linear-gradient(180deg, var(--brand-700) 0%, var(--brand-800) 60%, var(--brand-900) 100%);
+    color: var(--sand-50);
+    padding: 20px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sidebar::before {
+    /* Fluent "mica" noise texture, very subtle */
+    content: "";
+    position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,.045) 1px, transparent 1px);
+    background-size: 3px 3px;
+    pointer-events: none;
+  }
+  .brand-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px 22px 10px;
+  }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: var(--fluent-radius-md);
+    background: linear-gradient(135deg, var(--gold-400), var(--gold-600));
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Fraunces", serif; font-weight: 600; color: var(--brand-900);
+    font-size: 16px;
+    box-shadow: var(--fluent-depth-4);
+    flex-shrink: 0;
+  }
+  .brand-text { line-height: 1.15; }
+  .brand-text .name { font-size: 13.5px; font-weight: 600; letter-spacing: .01em; }
+  .brand-text .sub { font-size: 11px; color: rgba(250,247,240,.6); }
+
+  .nav-label {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em;
+    color: rgba(250,247,240,.42); font-weight: 600;
+    padding: 14px 12px 6px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 12px; border-radius: var(--fluent-radius-md);
+    font-size: 13.5px; font-weight: 500; color: rgba(250,247,240,.82);
+    cursor: pointer; position: relative;
+    border: 1px solid transparent;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .nav-item svg { width: 17px; height: 17px; opacity: .85; flex-shrink: 0; }
+  .nav-item:hover {
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.08);
+  }
+  .nav-item.active {
+    background: rgba(255,255,255,.1);
+    color: #fff;
+    border-color: rgba(255,255,255,.14);
+  }
+  .nav-item.active::before {
+    content: "";
+    position: absolute; left: -14px; top: 6px; bottom: 6px; width: 3px;
+    background: var(--gold-400); border-radius: 0 3px 3px 0;
+  }
+  .nav-item .count {
+    margin-left: auto; font-size: 11px; font-weight: 600;
+    background: rgba(255,255,255,.12); padding: 1px 7px; border-radius: 999px;
+  }
+
+  .sidebar-footer {
+    margin-top: auto; padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,.09);
+  }
+  .user-chip {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: var(--fluent-radius-md);
+    cursor: pointer;
+  }
+  .user-chip:hover { background: rgba(255,255,255,.06); }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--sand-200), var(--sand-300));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: var(--brand-800);
+    flex-shrink: 0;
+  }
+  .user-chip .who { line-height: 1.2; }
+  .user-chip .who .n { font-size: 12.5px; font-weight: 600; color: #fff; }
+  .user-chip .who .r { font-size: 10.5px; color: rgba(250,247,240,.55); }
+
+  /* ---------------- MAIN ---------------- */
+  .main { display: flex; flex-direction: column; min-width: 0; }
+
+  .command-bar {
+    height: 60px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 24px;
+    background: var(--acrylic-light);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    border-bottom: 1px solid var(--ink-100);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .breadcrumb { font-size: 13px; color: var(--ink-500); display: flex; align-items: center; gap: 6px; }
+  .breadcrumb b { color: var(--ink-800); font-weight: 600; }
+  .search-box {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 8px;
+    width: 280px; padding: 7px 12px;
+    background: #fff; border: 1px solid var(--ink-200);
+    border-radius: var(--fluent-radius-md);
+    font-size: 13px; color: var(--ink-400);
+    transition: border-color .12s, box-shadow .12s;
+  }
+  .search-box:hover { border-color: var(--brand-300); }
+  .search-box svg { width: 15px; height: 15px; opacity: .6; flex-shrink: 0; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: var(--fluent-radius-md);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-500); cursor: pointer; position: relative;
+    border: 1px solid transparent;
+  }
+  .icon-btn:hover { background: var(--sand-50); border-color: var(--ink-100); color: var(--brand-600); }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .icon-btn .dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--gold-500); border: 1.5px solid #fff;
+  }
+  .btn-primary {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--brand-500); color: #fff;
+    font-size: 13px; font-weight: 600;
+    padding: 8px 14px; border-radius: var(--fluent-radius-md);
+    border: 1px solid var(--brand-600);
+    box-shadow: var(--fluent-depth-2);
+    cursor: pointer;
+    transition: background .12s, box-shadow .12s, transform .08s;
+  }
+  .btn-primary:hover { background: var(--brand-600); box-shadow: var(--fluent-depth-4); }
+  .btn-primary:active { transform: translateY(1px); }
+  .btn-primary svg { width: 15px; height: 15px; }
+
+  .content { padding: 26px 28px 40px; max-width: 1280px; }
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 22px; }
+  .page-head h1 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 4px; }
+  .page-head p { font-size: 13px; color: var(--ink-500); margin: 0; }
+
+  /* Stat cards */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+  .stat-card {
+    background: #fff; border: 1px solid var(--ink-100);
+    border-radius: var(--fluent-radius-lg); padding: 16px 18px;
+    box-shadow: var(--fluent-depth-2);
+    transition: box-shadow .15s ease, border-color .15s ease;
+  }
+  .stat-card:hover { box-shadow: var(--fluent-depth-8); border-color: var(--ink-200); }
+  .stat-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .stat-icon {
+    width: 30px; height: 30px; border-radius: var(--fluent-radius-sm);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stat-icon svg { width: 15px; height: 15px; }
+  .stat-icon.maroon { background: var(--brand-50); color: var(--brand-600); }
+  .stat-icon.gold { background: #fbf1dc; color: var(--gold-600); }
+  .stat-icon.info { background: #eaf1f9; color: var(--info); }
+  .stat-icon.success { background: #e8f5ee; color: var(--success); }
+  .stat-trend { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+  .stat-trend.up { background: #e8f5ee; color: var(--success); }
+  .stat-trend.down { background: #fbeaea; color: var(--danger); }
+  .stat-value { font-family: "Fraunces", serif; font-size: 26px; font-weight: 600; letter-spacing: -.01em; color: var(--ink-900); }
+  .stat-label { font-size: 12.5px; color: var(--ink-500); margin-top: 2px; }
+
+  /* Table panel */
+  .panel {
+    background: #fff; border: 1px solid var(--ink-100);
+    border-radius: var(--fluent-radius-lg);
+    box-shadow: var(--fluent-depth-2);
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px; border-bottom: 1px solid var(--ink-100);
+  }
+  .panel-head h2 { font-size: 15px; font-weight: 600; margin: 0; }
+  .tabs { display: flex; gap: 2px; background: var(--sand-50); padding: 3px; border-radius: var(--fluent-radius-md); }
+  .tab { font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: var(--fluent-radius-sm); color: var(--ink-500); cursor: pointer; }
+  .tab.active { background: #fff; color: var(--brand-600); box-shadow: var(--fluent-depth-2); }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--ink-400); font-weight: 600; padding: 10px 18px; background: var(--sand-50);
+    border-bottom: 1px solid var(--ink-100);
+  }
+  tbody td { padding: 13px 18px; font-size: 13px; border-bottom: 1px solid var(--ink-50); color: var(--ink-700); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--sand-50); }
+  .applicant { display: flex; align-items: center; gap: 10px; }
+  .applicant .av {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+  }
+  .applicant .meta .id { font-size: 11px; color: var(--ink-400); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .pill.review { background: #fbf1dc; color: var(--gold-600); }
+  .pill.review::before { background: var(--gold-500); }
+  .pill.accepted { background: #e8f5ee; color: var(--success); }
+  .pill.accepted::before { background: var(--success); }
+  .pill.docs { background: #eaf1f9; color: var(--info); }
+  .pill.docs::before { background: var(--info); }
+  .pill.waitlist { background: var(--ink-100); color: var(--ink-600); }
+  .pill.waitlist::before { background: var(--ink-400); }
+  .row-action {
+    width: 26px; height: 26px; border-radius: var(--fluent-radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink-400); cursor: pointer;
+  }
+  .row-action:hover { background: var(--brand-50); color: var(--brand-600); }
+  .row-action svg { width: 14px; height: 14px; }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .search-box { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand-row">
+      <div class="brand-mark">QU</div>
+      <div class="brand-text">
+        <div class="name">Qatar University</div>
+        <div class="sub">Admissions Console</div>
+      </div>
+    </div>
+
+    <div class="nav-label">Overview</div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M14 3v5h5"/></svg>
+      Applications
+      <span class="count">128</span>
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      Applicants
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 10 12 4 2 10l10 6 10-6Z"/><path d="M6 12v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/></svg>
+      Programs
+    </div>
+
+    <div class="nav-label">Operations</div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      Interview Schedule
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 3v6h6"/></svg>
+      Waitlist
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+      Reports
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="avatar">MA</div>
+        <div class="who">
+          <div class="n">Maryam Al-Sayed</div>
+          <div class="r">Admissions Officer</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <div class="command-bar">
+      <div class="breadcrumb">Admissions <span>›</span> <b>Fall 2026 Intake</b></div>
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        Search applicants, ID, program…
+      </div>
+      <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot"></span></div>
+      <button class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        New Application
+      </button>
+    </div>
+
+    <div class="content">
+      <div class="page-head">
+        <div>
+          <h1>Fall 2026 Intake</h1>
+          <p>128 applications across 14 programs · last synced 2 minutes ago</p>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon maroon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></svg></div>
+            <span class="stat-trend up">+12%</span>
+          </div>
+          <div class="stat-value">128</div>
+          <div class="stat-label">Total applications</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon gold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+            <span class="stat-trend up">+4</span>
+          </div>
+          <div class="stat-value">37</div>
+          <div class="stat-label">Pending review</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m5 13 4 4L19 7"/></svg></div>
+            <span class="stat-trend up">+8%</span>
+          </div>
+          <div class="stat-value">61</div>
+          <div class="stat-label">Accepted</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <div class="stat-icon info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M14 3v5h5"/></svg></div>
+            <span class="stat-trend down">-3</span>
+          </div>
+          <div class="stat-value">14</div>
+          <div class="stat-label">Awaiting documents</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Recent applicants</h2>
+          <div class="tabs">
+            <div class="tab active">All</div>
+            <div class="tab">Needs action</div>
+            <div class="tab">Flagged</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Applicant</th>
+              <th>Program</th>
+              <th>Submitted</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="applicant">
+                  <div class="av" style="background:var(--brand-500)">RH</div>
+                  <div class="meta"><div>Reem Al-Hajri</div><div class="id">APP-20264471</div></div>
+                </div>
+              </td>
+              <td>Computer Science, BSc</td>
+              <td>28 Jun 2026</td>
+              <td><span class="pill review">In review</span></td>
+              <td><div class="row-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></div></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="applicant">
+                  <div class="av" style="background:var(--info)">KM</div>
+                  <div class="meta"><div>Khalid Al-Marri</div><div class="id">APP-20264458</div></div>
+                </div>
+              </td>
+              <td>Mechanical Engineering</td>
+              <td>27 Jun 2026</td>
+              <td><span class="pill docs">Awaiting documents</span></td>
+              <td><div class="row-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></div></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="applicant">
+                  <div class="av" style="background:var(--success)">SN</div>
+                  <div class="meta"><div>Sara Al-Naimi</div><div class="id">APP-20264402</div></div>
+                </div>
+              </td>
+              <td>Mass Communication</td>
+              <td>25 Jun 2026</td>
+              <td><span class="pill accepted">Accepted</span></td>
+              <td><div class="row-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></div></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="applicant">
+                  <div class="av" style="background:var(--gold-500)">YT</div>
+                  <div class="meta"><div>Yousef Al-Thani</div><div class="id">APP-20264389</div></div>
+                </div>
+              </td>
+              <td>Pharmacy, PharmD</td>
+              <td>24 Jun 2026</td>
+              <td><span class="pill waitlist">Waitlisted</span></td>
+              <td><div class="row-action"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
