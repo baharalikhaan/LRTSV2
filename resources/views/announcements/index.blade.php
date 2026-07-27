@@ -8,21 +8,12 @@
         <h1><i class="fas fa-bullhorn"></i> Announcements</h1>
         <p>Latest news and updates from the system administrators.</p>
     </div>
-    @auth
-    @if(auth()->user()->isAdmin())
-    <div class="page-actions">
-        <button type="button" class="btn-primary btn-sm" data-modal-create="announcementModal">
-            <i class="fas fa-plus"></i> New Announcement
-        </button>
-    </div>
-    @endif
-    @endauth
 </div>
 
 <div class="panel">
     <div class="panel-head">
-        <div class="panel-actions">
-            <form method="GET" class="filter-bar" id="filterForm">
+        <div class="panel-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <form method="GET" class="filter-bar" id="filterForm" style="flex:1;">
                 <div class="filter-group">
                     <label>Type:</label>
                     <select name="type" id="typeFilter">
@@ -55,6 +46,13 @@
                     <input type="text" id="tableSearch" placeholder="Search table..." class="search-input">
                 </div>
             </form>
+            @auth
+            @if(auth()->user()->isAdmin())
+            <button type="button" class="btn-primary btn-sm" data-modal-create="announcementModal" style="flex-shrink:0;">
+                <i class="fas fa-plus"></i> New Announcement
+            </button>
+            @endif
+            @endauth
         </div>
     </div>
     <div class="panel-body p-0">
@@ -69,7 +67,7 @@
                     <th>Posted By</th>
                     <th>Expires At</th>
                     <th class="text-center">Status</th>
-                    <th class="text-center" style="min-width: 100px;">Actions</th>
+                    <th class="text-center" style="min-width: 120px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -142,11 +140,11 @@
                         @endif
                     </td>
                     <td class="text-center">
-                        <div class="action-group">
+                        <div class="btn-action-group" style="white-space:nowrap;">
+                            @auth
+                            @if(auth()->user()->isAdmin())
                             <button type="button"
-                                class="row-action"
-                                title="Edit Announcement"
-                                data-bs-toggle="tooltip"
+                                class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;"
                                 data-modal-edit="announcementModal"
                                 data-field-id="{{ $announcement->id }}"
                                 data-field-title="{{ $announcement->title }}"
@@ -154,15 +152,19 @@
                                 data-field-type="{{ $announcement->type ?? 'general' }}"
                                 data-field-audience="{{ $announcement->audience ?? 'All' }}"
                                 data-field-expires_at="{{ $announcement->expires_at ? $announcement->expires_at->format('Y-m-d') : '' }}">
-                                <i class="fas fa-edit"></i>
+                                <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                             </button>
                             <form action="{{ route('announcements.destroy', $announcement->id) }}" method="POST" class="d-inline delete-form">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="row-action" title="Delete Announcement" data-bs-toggle="tooltip" style="color:var(--color-danger);">
-                                    <i class="fas fa-trash"></i>
+                                <button type="submit" class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--color-danger);" title="Delete Announcement">
+                                    <i class="fas fa-trash" style="font-size:11px;"></i> Delete
                                 </button>
                             </form>
+                            @else
+                            <span class="text-muted" style="font-size:11px;">&mdash;</span>
+                            @endif
+                            @endauth
                         </div>
                     </td>
                 </tr>
@@ -399,13 +401,5 @@ $(document).ready(function() {
     });
 });
 
-function showToast(type, message) {
-    var bg = type === 'success' ? '#1f8a5f' : '#b3261e';
-    var toast = $('<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999"><div class="toast align-items-center text-white border-0" style="background:' + bg + '" role="alert"><div class="d-flex"><div class="toast-body"><i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + ' me-2"></i>' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div></div>');
-    $('body').append(toast);
-    var toastEl = new bootstrap.Toast(toast.find('.toast')[0], { delay: 4000 });
-    toastEl.show();
-    setTimeout(function() { toast.remove(); }, 4500);
-}
 </script>
 @endpush

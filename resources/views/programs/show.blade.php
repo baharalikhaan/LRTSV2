@@ -20,11 +20,6 @@
         <a href="{{ route('programs.index') }}" class="btn-secondary">
             <i class="fas fa-arrow-left"></i> Back to Research Calls
         </a>
-        @if(Auth::user() && Auth::user()->isAdmin())
-        <a href="{{ route('projects.assign-review', $program->id) }}" class="btn-primary btn-sm">
-            <i class="fas fa-user-check"></i> Assign Reviewers
-        </a>
-        @endif
     </div>
 </div>
 

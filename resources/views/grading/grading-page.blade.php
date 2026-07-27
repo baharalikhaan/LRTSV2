@@ -723,16 +723,8 @@
 .ws-modal-body li { margin-bottom: 3px; }
 
 /* ─── Toast ─── */
-.ws-toast {
-    position: fixed; top: 20px; right: 20px; z-index: 9999;
-    padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 500;
-    color: #fff; box-shadow: var(--fluent-depth-8);
-    animation: toastSlideIn .3s ease-out;
-}
-@keyframes toastSlideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.ws-toast-success { background: var(--success); }
-.ws-toast-error { background: var(--danger); }
-.ws-toast-info { background: var(--info); }
+/* (moved to centralized showToast in layout) */
+
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
@@ -791,20 +783,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    function showToast(message, type) {
-        var existing = document.querySelector('.ws-toast');
-        if (existing) existing.remove();
-        var toast = document.createElement('div');
-        toast.className = 'ws-toast ws-toast-' + (type || 'info');
-        toast.innerHTML = message;
-        document.body.appendChild(toast);
-        setTimeout(function() {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateY(-10px)';
-            setTimeout(function() { toast.remove(); }, 300);
-        }, 3000);
-    }
-
     // Progress grade AJAX submit
     document.querySelectorAll('form[data-progress-grade]').forEach(function(form) {
         form.addEventListener('submit', function(e) {
@@ -829,15 +807,15 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.success) {
-                    showToast('Progress grade saved.', 'success');
+                    showToast('success', 'Progress grade saved.');
                     setTimeout(function() { location.reload(); }, 1000);
                 } else {
-                    showToast(data.error || 'Failed to save.', 'error');
+                    showToast('error', data.error || 'Failed to save.');
                     btn.disabled = false; btn.innerHTML = original;
                 }
             })
             .catch(function(err) {
-                showToast('Network error: ' + err.message, 'error');
+                showToast('error', 'Network error: ' + err.message);
                 btn.disabled = false; btn.innerHTML = original;
             });
         });
@@ -867,15 +845,15 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.success) {
-                    showToast('Final grade saved.', 'success');
+                    showToast('success', 'Final grade saved.');
                     setTimeout(function() { location.reload(); }, 1000);
                 } else {
-                    showToast(data.error || 'Failed to save.', 'error');
+                    showToast('error', data.error || 'Failed to save.');
                     btn.disabled = false; btn.innerHTML = original;
                 }
             })
             .catch(function(err) {
-                showToast('Network error: ' + err.message, 'error');
+                showToast('error', 'Network error: ' + err.message);
                 btn.disabled = false; btn.innerHTML = original;
             });
         });
@@ -901,16 +879,16 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success) {
-                showToast('Grade submitted successfully! Project marked as Graded.', 'success');
+                showToast('success', 'Grade submitted successfully! Project marked as Graded.');
                 setTimeout(function() { location.reload(); }, 1500);
             } else {
-                showToast(data.error || 'Failed to submit grade.', 'error');
+                showToast('error', data.error || 'Failed to submit grade.');
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-check-circle"></i> Submit Grade';
             }
         })
         .catch(function(err) {
-            showToast('Network error: ' + err.message, 'error');
+            showToast('error', 'Network error: ' + err.message);
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-check-circle"></i> Submit Grade';
         });

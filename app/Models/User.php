@@ -24,7 +24,7 @@ class User extends Authenticatable
         'type',
         'faculty',
         'qu_id',
-        'nationality',
+        'nationality_id',
         'phone',
         'department',
         'college',
@@ -50,6 +50,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'faculty' => 'boolean',
         'is_active' => 'boolean',
+        'nationality_id' => 'integer',
     ];
 
     // ─── Role Checks ────────────────────────────────────────────────────────
@@ -114,6 +115,11 @@ class User extends Authenticatable
     public function stakeholderProjects()
     {
         return $this->belongsToMany(Project::class, 'projects_stakeholders', 'user_id', 'project_id');
+    }
+
+    public function nationality()
+    {
+        return $this->belongsTo(Nationality::class);
     }
 
     /**

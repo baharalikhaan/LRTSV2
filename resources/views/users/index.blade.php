@@ -46,7 +46,7 @@
                     <th>Department</th>
                     <th>College</th>
                     <th>Active</th>
-                    <th class="text-center" style="min-width: 100px;">Actions</th>
+                    <th class="text-center" style="min-width: 120px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -73,30 +73,28 @@
                         @endif
                     </td>
                     <td class="text-center">
-                        <div class="action-group">
+                        <div class="btn-action-group" style="white-space:nowrap;">
                             <button type="button"
-                                class="row-action"
-                                title="Edit User"
-                                data-bs-toggle="tooltip"
+                                class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;"
                                 data-modal-edit="userModal"
                                 data-field-id="{{ $user->id }}"
                                 data-field-name="{{ $user->name }}"
                                 data-field-email="{{ $user->email }}"
                                 data-field-type="{{ $user->type }}"
                                 data-field-qu_id="{{ $user->qu_id }}"
-                                data-field-nationality="{{ $user->nationality }}"
+                                data-field-nationality_id="{{ $user->nationality_id }}"
                                 data-field-phone="{{ $user->phone }}"
                                 data-field-department="{{ $user->department }}"
                                 data-field-college="{{ $user->college }}"
                                 data-field-faculty="{{ $user->faculty ? '1' : '0' }}"
                                 data-field-is_active="{{ $user->is_active ? '1' : '0' }}">
-                                <i class="fas fa-edit"></i>
+                                <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                             </button>
                             <form action="{{ route('users.destroy', $user->id) }}" method="POST" class="d-inline delete-form">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="row-action" title="Delete User" data-bs-toggle="tooltip" style="color:var(--color-danger);">
-                                    <i class="fas fa-trash"></i>
+                                <button type="submit" class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--color-danger);" title="Delete User">
+                                    <i class="fas fa-trash" style="font-size:11px;"></i> Delete
                                 </button>
                             </form>
                         </div>
@@ -197,8 +195,13 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group mb-3">
-                                <label for="userModal_nationality" class="form-label">Nationality</label>
-                                <input type="text" name="nationality" id="userModal_nationality" class="form-control" placeholder="e.g. Qatari">
+                                <label for="userModal_nationality_id" class="form-label">Nationality</label>
+                                <select name="nationality_id" id="userModal_nationality_id" class="form-select">
+                                    <option value="">-- Select Nationality --</option>
+                                    @foreach($nationalities as $nat)
+                                        <option value="{{ $nat->id }}">{{ $nat->name }}</option>
+                                    @endforeach
+                                </select>
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -316,7 +319,7 @@ $(document).ready(function() {
         $('#userModal_email').val(data.fieldEmail || '');
         $('#userModal_type').val(data.fieldType || '');
         $('#userModal_qu_id').val(data.fieldQuId || '');
-        $('#userModal_nationality').val(data.fieldNationality || '');
+        $('#userModal_nationality_id').val(data.fieldNationalityId || '');
         $('#userModal_phone').val(data.fieldPhone || '');
         $('#userModal_department').val(data.fieldDepartment || '');
         $('#userModal_college').val(data.fieldCollege || '');

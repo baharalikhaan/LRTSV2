@@ -250,14 +250,16 @@ class ProgramController extends Controller
     {
         $query = Program::with(['grant', 'cycleConfig']);
 
-        // Server-side Grant filter (by ID)
         if ($request->filled('grant')) {
             $query->where('grant_id', $request->grant);
         }
 
-        // Server-side Cycle filter (by ID)
         if ($request->filled('cycle')) {
             $query->where('cycle_id', $request->cycle);
+        }
+
+        if ($request->filled('visibility')) {
+            $query->where('is_visible', $request->visibility === 'visible');
         }
 
         $programs = $query->orderBy('created_at', 'desc')->get();
@@ -303,6 +305,29 @@ class ProgramController extends Controller
 
         return redirect()->route('programs.show', $program->id)
             ->with('success', 'Program updated successfully.');
+    }
+
+    public function toggle($id)
+    {
+        $program = Program::findOrFail($id);
+
+        $program->update([
+            'is_visible' => !$program->is_visible,
+        ]);
+
+        $status = $program->is_visible ? 'shown' : 'hidden';
+        $message = "Research call '{$program->program_title}' {$status} successfully.";
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'is_visible' => $program->is_visible,
+            ]);
+        }
+
+        return redirect()->route('programs.index')
+            ->with('success', $message);
     }
 
     public function destroy($id)

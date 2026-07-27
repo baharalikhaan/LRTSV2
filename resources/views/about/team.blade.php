@@ -25,25 +25,18 @@
                 $cIdx = ($m->id - 1) % count($colorMap);
                 $colorKey = $colorMap[$cIdx];
                 $bgColors = [
-                    'brand'   => ['bg' => 'var(--color-brand-100)', 'fg' => 'var(--color-brand-600)'],
-                    'info'    => ['bg' => '#dbeafe', 'fg' => '#1d4ed8'],
-                    'gold'    => ['bg' => '#fef3c7', 'fg' => '#b45309'],
-                    'success' => ['bg' => '#d1fae5', 'fg' => '#047857'],
+                    'brand'   => ['bg' => '#fdf2f4', 'fg' => 'var(--color-brand-600)', 'tile' => 'var(--color-brand-100)'],
+                    'info'    => ['bg' => '#eff6ff', 'fg' => '#1d4ed8',              'tile' => '#dbeafe'],
+                    'gold'    => ['bg' => '#fffbeb', 'fg' => '#b45309',              'tile' => '#fef3c7'],
+                    'success' => ['bg' => '#ecfdf5', 'fg' => '#047857',              'tile' => '#d1fae5'],
                 ];
                 $c = $bgColors[$colorKey];
-                $hasImage = $m->path && !str_contains($m->path, 'userImage.jpg');
             @endphp
-            <div class="panel team-card">
-                <div class="panel-body" style="padding:22px 20px; display:flex; flex-direction:column; align-items:center; text-align:center;">
-                    {{-- Avatar / Image --}}
-                    @if($hasImage)
-                        <img src="{{ asset($m->path) }}" alt="{{ $m->name }}"
-                             style="width:56px; height:56px; border-radius:8px; object-fit:cover; margin-bottom:14px; box-shadow:var(--fluent-depth-2); flex-shrink:0;">
-                    @else
-                        <div style="width:56px; height:56px; border-radius:8px; background:{{ $c['bg'] }}; color:{{ $c['fg'] }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:17px; margin-bottom:14px; box-shadow:var(--fluent-depth-2); flex-shrink:0;">
-                            {{ $initials }}
-                        </div>
-                    @endif
+            <div class="panel team-card" style="border:1px solid var(--color-ink-100);">
+                <div class="panel-body" style="padding:22px 20px; display:flex; flex-direction:column; align-items:center; text-align:center; background:{{ $c['bg'] }}; border-radius:6px;">
+                    <div style="width:56px; height:56px; border-radius:8px; background:{{ $c['tile'] }}; color:{{ $c['fg'] }}; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:17px; margin-bottom:14px; box-shadow:var(--fluent-depth-2); flex-shrink:0;">
+                        {{ $initials }}
+                    </div>
 
                     {{-- Name --}}
                     <h3 style="font-size:15px; font-weight:600; color:var(--color-ink-800); margin:0 0 3px;">{{ $m->name }}</h3>

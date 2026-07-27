@@ -41,6 +41,14 @@
                     </select>
                 </div>
                 <div class="filter-group">
+                    <label>Visibility:</label>
+                    <select name="visibility" onchange="this.form.submit();" id="visibilityFilter">
+                        <option value="">All</option>
+                        <option value="visible" {{ request('visibility') == 'visible' ? 'selected' : '' }}>Visible</option>
+                        <option value="hidden" {{ request('visibility') == 'hidden' ? 'selected' : '' }}>Hidden</option>
+                    </select>
+                </div>
+                <div class="filter-group">
                     <label>Search:</label>
                     <input type="text" id="tableSearch" placeholder="Search table..." class="search-input">
                 </div>
@@ -66,13 +74,22 @@
                     <th>Ext. Prog. Report Deadline</th>
                     <th>Final Report Deadline</th>
                     <th>Ext. Final Report Deadline</th>
-                    <th class="text-center">Status</th>
-                    <th class="text-center" style="min-width: 120px;">Actions</th>
+                    <th class="text-center">Status
+                        <i class="fas fa-question-circle" style="color:var(--color-ink-300);font-size:11px;margin-left:4px;cursor:help;"
+                            data-bs-toggle="tooltip" data-bs-html="true"
+                            title="When the deadlines are not passed, the status is <strong>Active</strong>.<br>When all deadlines have passed, the status becomes <strong>Inactive</strong>."></i>
+                    </th>
+                    <th class="text-center" style="min-width:80px;">Visibility
+                        <i class="fas fa-question-circle" style="color:var(--color-ink-300);font-size:11px;margin-left:4px;cursor:help;"
+                            data-bs-toggle="tooltip" data-bs-html="true"
+                            title="When the admin marks it <strong>Visible</strong>, it is visible to reviewers.<br>Otherwise it will be <strong>Hidden</strong> from reviewers."></i>
+                    </th>
+                    <th class="text-center" style="min-width: 160px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($programs as $program)
-                <tr>
+                <tr class="{{ $program->is_visible ? '' : 'hidden-row' }}">
                     <td><code>{{ $program->id }}</code></td>
                     <td><span style="font-weight:500;">{{ $program->program_title }}</span></td>
                     <td>
@@ -125,16 +142,32 @@
                         @endif
                     </td>
                     <td class="text-center">
-                        <div class="action-group">
-                            <a href="{{ route('programs.show', $program->id) }}" class="row-action" title="View Research Call" data-bs-toggle="tooltip">
-                                <i class="fas fa-eye"></i>
+                        @auth
+                        @if(auth()->user()->isAdmin())
+                        <button type="button" class="toggle-visibility-btn btn-sm {{ $program->is_visible ? 'btn-secondary' : 'btn-primary' }}"
+                            style="font-size:11px;padding:4px 10px;white-space:nowrap;"
+                            title="{{ $program->is_visible ? 'Hide this call' : 'Show this call' }}"
+                            data-bs-toggle="tooltip"
+                            data-program-id="{{ $program->id }}">
+                            <i class="fas {{ $program->is_visible ? 'fa-eye-slash' : 'fa-eye' }}" style="font-size:11px;"></i>
+                            {{ $program->is_visible ? 'Hide' : 'Show' }}
+                        </button>
+                        @else
+                        <span class="pill {{ $program->is_visible ? 'success' : 'inactive' }}" style="font-size:10px;">
+                            {{ $program->is_visible ? 'Visible' : 'Hidden' }}
+                        </span>
+                        @endif
+                        @endauth
+                    </td>
+                    <td class="text-center">
+                        <div class="btn-action-group" style="white-space:nowrap;">
+                            <a href="{{ route('programs.show', $program->id) }}" class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;">
+                                <i class="fas fa-eye" style="font-size:11px;"></i> Details
                             </a>
                             @auth
                             @if(auth()->user()->isAdmin())
                             <button type="button"
-                                class="row-action"
-                                title="Edit Research Call"
-                                data-bs-toggle="tooltip"
+                                class="btn-sm btn-primary" style="font-size:11px;padding:4px 10px;"
                                 data-modal-edit="programModal"
                                 data-field-id="{{ $program->id }}"
                                 data-field-program_title="{{ $program->program_title }}"
@@ -147,7 +180,7 @@
                                 data-field-final_rpt_deadline="{{ $program->final_rpt_deadline ? $program->final_rpt_deadline->format('Y-m-d') : '' }}"
                                 data-field-extended_final_rpt_deadline="{{ $program->extended_final_rpt_deadline ? $program->extended_final_rpt_deadline->format('Y-m-d') : '' }}"
                                 data-field-description="{{ $program->description }}">
-                                <i class="fas fa-edit"></i>
+                                <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                             </button>
                             @endif
                             @endauth
@@ -156,7 +189,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="10">
+                    <td colspan="11">
                         <div class="empty-state py-4">
                             <i class="fas fa-sync-alt"></i>
                             <h5>No Research Calls Found</h5>
@@ -305,6 +338,24 @@
 </div>
 @endsection
 
+@push('styles')
+<style>
+.tooltip .tooltip-inner {
+    background: #fff;
+    color: var(--color-ink-700);
+    border: 1px solid var(--color-ink-200);
+    font-size: 11.5px;
+    font-weight: 400;
+    padding: 8px 12px;
+    border-radius: 6px;
+    box-shadow: var(--fluent-depth-8);
+    max-width: 260px;
+}
+.tooltip.bs-tooltip-top .tooltip-arrow::before { border-top-color: var(--color-ink-200); }
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before { border-bottom-color: var(--color-ink-200); }
+</style>
+@endpush
+
 @push('scripts')
 <script>
 $(document).ready(function() {
@@ -313,8 +364,8 @@ $(document).ready(function() {
         dom: 'rt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
-            { orderable: false, targets: [9] },
-            { searchable: false, targets: [9] }
+            { orderable: false, targets: [9, 10] },
+            { searchable: false, targets: [9, 10] }
         ]
     });
 
@@ -341,7 +392,7 @@ $(document).ready(function() {
     });
     @endif
 
-    $('[data-bs-toggle="tooltip"]').tooltip();
+    $('[data-bs-toggle="tooltip"]').tooltip({html: true});
 
     // Auto-generate program_title from Grant code + Cycle title
     function autoGenerateProgramTitle() {
@@ -460,13 +511,39 @@ $(document).ready(function() {
     });
 });
 
-function showToast(type, message) {
-    var bg = type === 'success' ? '#1f8a5f' : '#b3261e';
-    var toast = $('<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999"><div class="toast align-items-center text-white border-0" style="background:' + bg + '" role="alert"><div class="d-flex"><div class="toast-body"><i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + ' me-2"></i>' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div></div>');
-    $('body').append(toast);
-    var toastEl = new bootstrap.Toast(toast.find('.toast')[0], { delay: 4000 });
-    toastEl.show();
-    setTimeout(function() { toast.remove(); }, 4500);
-}
+// Toggle visibility via AJAX — updates button and row style in-place
+$(document).on('click', '.toggle-visibility-btn', function() {
+    var btn = $(this);
+    var programId = btn.data('program-id');
+    var row = btn.closest('tr');
+    btn.prop('disabled', true);
+
+    $.ajax({
+        url: '{{ route('programs.toggle', 'PLACEHOLDER') }}'.replace('PLACEHOLDER', programId),
+        method: 'POST',
+        data: { _token: '{{ csrf_token() }}' },
+        dataType: 'json',
+        success: function(resp) {
+            if (resp.is_visible) {
+                row.removeClass('hidden-row');
+                btn.removeClass('btn-primary').addClass('btn-secondary');
+                btn.attr('title', 'Hide this call');
+                btn.html('<i class="fas fa-eye-slash" style="font-size:11px;"></i> Hide');
+            } else {
+                row.addClass('hidden-row');
+                btn.removeClass('btn-secondary').addClass('btn-primary');
+                btn.attr('title', 'Show this call');
+                btn.html('<i class="fas fa-eye" style="font-size:11px;"></i> Show');
+            }
+            showToast('success', resp.message);
+            btn.prop('disabled', false);
+        },
+        error: function(xhr) {
+            showToast('error', xhr.responseJSON?.message || 'Failed to toggle visibility.');
+            btn.prop('disabled', false);
+        }
+    });
+});
+
 </script>
 @endpush

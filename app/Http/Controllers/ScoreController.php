@@ -50,7 +50,7 @@ class ScoreController extends Controller
     public function update(Request $request, Score $score)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:100',
+            'name' => 'sometimes|string|max:100',
             'label' => 'nullable|string|max:20',
             'value' => 'required|numeric|min:0|max:999.99',
             'description' => 'nullable|string',

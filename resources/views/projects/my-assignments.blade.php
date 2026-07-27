@@ -112,12 +112,22 @@
                         @php
                             $proj = \App\Models\Project::find($a->project_id);
                             $progInactive = $proj && $proj->program && !$proj->programIsActive();
+                            $hasClaimed = $a->proposalstatus == 'accepted';
+                            $hasGraded = $proj && $proj->hasStatus(\App\Models\Project::STATUS_GRADED);
+                            $hasProgressGrade = $proj && \App\Models\ProgressReportGrading::where('project_id', $proj->id)->where('user_id', auth()->id())->exists();
+                            $hasFinalGrade = $proj && \App\Models\FinalReportGrading::where('project_id', $proj->id)->where('user_id', auth()->id())->exists();
                         @endphp
                         @if($progInactive)
                             <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-danger);"></i> Inactive Research Call</span>
+                        @elseif($hasGraded)
+                            <span class="text-muted">Graded</span>
+                        @elseif($hasClaimed)
+                            <a href="{{ route('projects.grading', $a->project_id) }}" class="btn-sm btn-primary" style="font-size:11px;padding:4px 10px;text-decoration:none;">
+                                <i class="fas fa-star" style="font-size:11px;"></i> Grade Project
+                            </a>
                         @elseif(!$a->proposalstatus || $a->proposalstatus == 'pending')
-                            <a href="{{ route('projects.accept-proposal', $a->r_id) }}" class="btn btn-sm btn-primary">
-                                <i class="fas fa-check-circle"></i> Review
+                            <a href="{{ route('projects.accept-proposal', $a->r_id) }}" class="btn-sm btn-primary" style="font-size:11px;padding:4px 10px;text-decoration:none;">
+                                <i class="fas fa-check-circle" style="font-size:11px;"></i> Review
                             </a>
                         @else
                             <span class="text-muted">All Done</span>

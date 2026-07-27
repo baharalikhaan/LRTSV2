@@ -48,6 +48,12 @@ Route::prefix('grant-types')->name('grant-types.')->group(function () {
     Route::delete('/{grant}', [GrantController::class, 'destroy'])->name('destroy');
 });
 
+// ─── Profile ──────────────────────────────────────────────────────────────────
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [App\Http\Controllers\ProfileController::class, 'edit'])->name('profile.edit');
+    Route::put('/profile', [App\Http\Controllers\ProfileController::class, 'update'])->name('profile.update');
+});
+
 // ─── Programs ──────────────────────────────────────────────────────────────────
 Route::prefix('programs')->name('programs.')->group(function () {
     Route::get('/', [ProgramController::class, 'index'])->name('index');
@@ -57,12 +63,7 @@ Route::prefix('programs')->name('programs.')->group(function () {
     Route::get('/{id}/edit', [ProgramController::class, 'edit'])->name('edit');
     Route::put('/{id}', [ProgramController::class, 'update'])->name('update');
     Route::delete('/{id}', [ProgramController::class, 'destroy'])->name('destroy');
-});
-
-// ─── Show/Hide Research Calls ──────────────────────────────────────────────
-Route::prefix('research-calls')->name('research-calls.')->group(function () {
-    Route::get('/', [App\Http\Controllers\ResearchCallController::class, 'index'])->name('index');
-    Route::post('toggle/{id}', [App\Http\Controllers\ResearchCallController::class, 'toggle'])->name('toggle');
+    Route::post('toggle/{id}', [ProgramController::class, 'toggle'])->name('toggle');
 });
 
 // ─── Projects ────────────────────────────────────────────────────────────────

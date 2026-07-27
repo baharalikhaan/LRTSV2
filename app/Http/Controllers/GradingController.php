@@ -35,7 +35,7 @@ class GradingController extends Controller
 
         $query = $user->isAdmin()
             ? Project::with('lpi', 'program', 'program.grant')
-            : $user->reviewedProjects()->with('lpi', 'program', 'program.grant');
+            : $user->reviewedProjects()->visibleProgram()->with('lpi', 'program', 'program.grant');
 
         if ($cycleId) {
             $query->where('cycle_id', $cycleId);

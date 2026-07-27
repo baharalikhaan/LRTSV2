@@ -8,8 +8,8 @@
     {{-- Hero Section --}}
     <div class="panel" style="margin-bottom:24px;">
         <div class="panel-body" style="padding:32px 28px; text-align:center;">
-            <div style="width:80px; height:80px; border-radius:16px; background:linear-gradient(135deg, var(--color-brand-500), var(--color-brand-700)); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; box-shadow:0 6px 20px rgba(141,27,61,.35);">
-                <span style="font-size:32px; font-weight:800; color:#fff; letter-spacing:-1px;">RTS</span>
+            <div style="display:flex; align-items:center; justify-content:center; margin:0 auto 18px; max-width:380px; background:var(--color-brand-500); border-radius:12px; padding:16px 20px;">
+                <img src="{{ asset('images/research_logo.png') }}" alt="QU Research Logo" style="width:100%; height:auto;">
             </div>
             <h1 style="font-size:28px; font-weight:700; color:var(--color-ink-900); margin:0 0 6px;">Research Tracking System</h1>
             <p style="font-size:14px; color:var(--color-ink-500); margin:0 0 4px;">Qatar University — Office of Research & Graduate Studies</p>

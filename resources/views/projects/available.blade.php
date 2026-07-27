@@ -199,6 +199,10 @@
                                 @elseif(count($availActions) > 0)
                                     {{-- Workflow action buttons for LPIs, reviewers, and admins --}}
                                     @include('projects.partials.workflow-actions', ['project' => $cp, 'actions' => $availActions])
+                                @elseif($user->isReviewer() && $flowStatus === 'Claimed' && $isRegistered && DB::table('projects_reviewers')->where('project_id', $cp->id)->where('user_id', $user->id)->where('proposalstatus', 'accepted')->exists())
+                                    <a href="{{ route('projects.grading', $cp->id) }}" class="btn-primary btn-sm" style="font-size:11px;padding:4px 10px;text-decoration:none;">
+                                        <i class="fas fa-star" style="font-size:11px;"></i> Grade Project
+                                    </a>
                                 @elseif(!$isRegistered && !$canRegister)
                                     @if($programInactive)
                                         <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-danger);"></i> Inactive Research Call</span>

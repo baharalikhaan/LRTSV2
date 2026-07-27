@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Pillar;
 use App\Models\College;
+use App\Models\Nationality;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
@@ -25,7 +26,8 @@ class UserController extends Controller
     public function index()
     {
         $users = User::orderBy('name')->get();
-        return view('users.index', compact('users'));
+        $nationalities = Nationality::orderBy('name')->get();
+        return view('users.index', compact('users', 'nationalities'));
     }
 
     public function create()
@@ -43,7 +45,7 @@ class UserController extends Controller
             'password' => 'required|string|min:8|confirmed',
             'type' => 'required|string|max:50',
             'qu_id' => 'nullable|string|max:100',
-            'nationality' => 'nullable|string|max:100',
+            'nationality_id' => 'nullable|exists:nationalities,id',
             'phone' => 'nullable|string|max:50',
             'department' => 'nullable|string|max:255',
             'college' => 'nullable|string|max:255',
@@ -80,7 +82,7 @@ class UserController extends Controller
             'password' => 'nullable|string|min:8|confirmed',
             'type' => 'required|string|max:50',
             'qu_id' => 'nullable|string|max:100',
-            'nationality' => 'nullable|string|max:100',
+            'nationality_id' => 'nullable|exists:nationalities,id',
             'phone' => 'nullable|string|max:50',
             'department' => 'nullable|string|max:255',
             'college' => 'nullable|string|max:255',

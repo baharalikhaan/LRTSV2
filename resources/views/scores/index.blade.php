@@ -28,7 +28,7 @@
                     <th>Name</th>
                     <th>Label</th>
                     <th>Value</th>
-                    <th class="text-center" style="min-width: 60px;">Actions</th>
+                    <th class="text-center" style="min-width: 100px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -50,15 +50,13 @@
                     <td style="font-weight:500;font-size:12.5px;">{{ number_format($score->value, 2) }}</td>
                     <td class="text-center">
                         <button type="button"
-                            class="row-action"
-                            title="Edit Score"
-                            data-bs-toggle="tooltip"
+                            class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;"
                             data-modal-edit="scoreModal"
                             data-field-id="{{ $score->id }}"
                             data-field-name="{{ $score->name }}"
                             data-field-label="{{ $score->label }}"
                             data-field-value="{{ $score->value }}">
-                            <i class="fas fa-edit" style="font-size:13px;"></i>
+                            <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                         </button>
                     </td>
                 </tr>
@@ -95,22 +93,19 @@
                 <div class="modal-body">
                     <input type="hidden" name="record_id" id="scoreModalRecordId" value="">
 
-                    {{-- Name (read-only display) --}}
-                    <div class="form-group mb-3">
-                        <label class="form-label">Name</label>
-                        <p class="form-control-plaintext" id="scoreModal_name_display" style="font-weight:500;padding-top:6px;"></p>
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding:10px 14px;background:var(--sand-50);border-radius:8px;border:1px solid var(--ink-100);">
+                        <div style="width:38px;height:38px;border-radius:6px;background:var(--brand-100);color:var(--brand-600);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <i class="fas fa-star" style="font-size:15px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight:600;font-size:14px;color:var(--ink-800);" id="scoreModal_name_display"></div>
+                            <div style="font-size:12px;color:var(--ink-400);" id="scoreModal_label_display"></div>
+                        </div>
                     </div>
 
-                    {{-- Label --}}
-                    <div class="form-group mb-3">
-                        <label for="scoreModal_label" class="form-label">Label</label>
-                        <input type="text" name="label" id="scoreModal_label" class="form-control" placeholder="e.g. A" maxlength="20">
-                    </div>
-
-                    {{-- Value --}}
-                    <div class="form-group mb-3">
-                        <label for="scoreModal_value" class="form-label">Value <span class="text-danger">*</span></label>
-                        <input type="number" name="value" id="scoreModal_value" class="form-control" step="0.01" min="0" max="999.99" required placeholder="e.g. 5.00">
+                    <div class="form-group mb-0">
+                        <label for="scoreModal_value" class="form-label" style="font-size:13px;">Score Value <span class="text-danger">*</span></label>
+                        <input type="number" name="value" id="scoreModal_value" class="form-control form-control-lg" step="0.01" min="0" max="999.99" required placeholder="e.g. 5.00" style="font-size:24px;font-weight:700;text-align:center;padding:12px;border-radius:8px;">
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -190,14 +185,6 @@ $(document).ready(function() {
     });
 });
 
-function showToast(type, message) {
-    var bg = type === 'success' ? '#1f8a5f' : '#b3261e';
-    var toast = $('<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999"><div class="toast align-items-center text-white border-0" style="background:' + bg + '" role="alert"><div class="d-flex"><div class="toast-body"><i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + ' me-2"></i>' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div></div>');
-    $('body').append(toast);
-    var toastEl = new bootstrap.Toast(toast.find('.toast')[0], { delay: 3000 });
-    toastEl.show();
-    setTimeout(function() { toast.remove(); }, 3500);
-}
 
 // On edit, populate modal
 $(document).on('click', '[data-modal-edit="scoreModal"]', function() {
@@ -210,7 +197,7 @@ $(document).on('click', '[data-modal-edit="scoreModal"]', function() {
     $('#scoreModalForm')[0].reset();
     $('#scoreModalRecordId').val(id);
     $('#scoreModal_name_display').text(name);
-    $('#scoreModal_label').val(label || '');
+    $('#scoreModal_label_display').text(label ? 'Label: ' + label : '');
     $('#scoreModal_value').val(value);
 
     $('.is-invalid').removeClass('is-invalid');

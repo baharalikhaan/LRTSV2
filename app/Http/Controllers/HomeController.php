@@ -366,6 +366,7 @@ class HomeController extends Controller
 
         // Projects assigned to this reviewer (from the projects_reviewers pivot)
         $assignedProjects = $user->reviewedProjects()
+            ->visibleProgram()
             ->with('latestStatus')
             ->withPivot('proposalstatus')
             ->orderBy('title')
@@ -444,6 +445,7 @@ class HomeController extends Controller
 
         if ($role === 'Reviewer') {
             $count = $user->reviewedProjects()
+                ->visibleProgram()
                 ->whereHas('statusHistories', function ($q) {
                     $q->whereIn('status', ['Assigned', 'Claimed']);
                 })

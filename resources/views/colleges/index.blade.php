@@ -31,7 +31,7 @@
                     <th>ID</th>
                     <th>Code</th>
                     <th>College Name</th>
-                    <th class="text-center" style="min-width: 100px;">Actions</th>
+                    <th class="text-center" style="min-width: 120px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -45,22 +45,20 @@
                         </span>
                     </td>
                     <td class="text-center">
-                        <div class="action-group">
+                        <div class="btn-action-group" style="white-space:nowrap;">
                             <button type="button"
-                                class="row-action"
-                                title="Edit College"
-                                data-bs-toggle="tooltip"
+                                class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;"
                                 data-modal-edit="collegeModal"
                                 data-field-id="{{ $college->id }}"
                                 data-field-code="{{ $college->code }}"
                                 data-field-name="{{ $college->name }}">
-                                <i class="fas fa-edit"></i>
+                                <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                             </button>
                             <form action="{{ route('colleges.destroy', $college->id) }}" method="POST" class="d-inline delete-form">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="row-action" title="Delete College" data-bs-toggle="tooltip" style="color:var(--color-danger);">
-                                    <i class="fas fa-trash"></i>
+                                <button type="submit" class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;color:var(--color-danger);" title="Delete College">
+                                    <i class="fas fa-trash" style="font-size:11px;"></i> Delete
                                 </button>
                             </form>
                         </div>
@@ -158,13 +156,5 @@ $(document).ready(function() {
     });
 });
 
-function showToast(type, message) {
-    var bg = type === 'success' ? '#1f8a5f' : '#b3261e';
-    var toast = $('<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999"><div class="toast align-items-center text-white border-0" style="background:' + bg + '" role="alert"><div class="d-flex"><div class="toast-body"><i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + ' me-2"></i>' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div></div>');
-    $('body').append(toast);
-    var toastEl = new bootstrap.Toast(toast.find('.toast')[0], { delay: 3000 });
-    toastEl.show();
-    setTimeout(function() { toast.remove(); }, 3500);
-}
 </script>
 @endpush

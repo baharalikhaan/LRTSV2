@@ -55,7 +55,7 @@ class ProjectController extends Controller
                   ->orWhereNull('lpi_id');
             });
         } elseif ($activeRole === 'Reviewer') {
-            $query->whereHas('reviewers', function ($q) use ($user) {
+            $query->visibleProgram()->whereHas('reviewers', function ($q) use ($user) {
                 $q->where('user_id', $user->id);
             });
         }
@@ -285,6 +285,7 @@ class ProjectController extends Controller
             ->join('programs', 'programs.id', '=', 'projects.program_id')
             ->join('users as lpi', 'lpi.id', '=', 'projects.lpi_id')
             ->where('projects_reviewers.user_id', $user->id)
+            ->where('programs.is_visible', true)
             ->select(
                 'projects_reviewers.id as r_id',
                 'projects_reviewers.proposalstatus',
@@ -305,10 +306,23 @@ class ProjectController extends Controller
         // Pending (proposalstatus is null)
         $pending = $assignments->whereNull('proposalstatus')->count();
 
+        // Claimed / accepted
+        $claimed = $assignments->where('proposalstatus', 'accepted')->count();
+
+        // Graded
+        $projectIds = $assignments->pluck('project_id');
+        $gradedCount = \App\Models\Project::whereIn('id', $projectIds)
+            ->whereHas('statusHistories', function ($q) {
+                $q->where('status', \App\Models\Project::STATUS_GRADED);
+            })
+            ->count();
+
         return view('projects.my-assignments', compact(
             'assignments',
             'totalAssigned',
-            'pending'
+            'pending',
+            'claimed',
+            'gradedCount'
         ));
     }
 
@@ -321,6 +335,7 @@ class ProjectController extends Controller
             ->join('programs', 'programs.id', '=', 'projects.program_id')
             ->join('users', 'users.id', '=', 'projects_reviewers.user_id')
             ->where('projects_reviewers.id', $rId)
+            ->where('programs.is_visible', true)
             ->select(
                 'projects_reviewers.id',
                 'projects_reviewers.project_id',

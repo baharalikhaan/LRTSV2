@@ -52,7 +52,7 @@
                     <th>Funding Agency</th>
                     <th>Max Years</th>
                     <th>Status</th>
-                    <th class="text-center" style="min-width: 100px;">Actions</th>
+                    <th class="text-center" style="min-width: 120px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -80,13 +80,13 @@
                         @endif
                     </td>
                     <td class="text-center">
-                        <div class="action-group">
-                            <a href="{{ route('grant-types.show', $grant->id) }}" class="row-action" title="View Grant Type" data-bs-toggle="tooltip">
-                                <i class="fas fa-eye"></i>
+                        <div class="btn-action-group" style="white-space:nowrap;">
+                            <a href="{{ route('grant-types.show', $grant->id) }}" class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;">
+                                <i class="fas fa-eye" style="font-size:11px;"></i> View
                             </a>
                             @if(Auth::user()->isAdmin())
                             <button type="button"
-                                class="row-action"
+                                class="btn-sm btn-primary" style="font-size:11px;padding:4px 10px;"
                                 title="Edit Grant Type"
                                 data-bs-toggle="tooltip"
                                 data-modal-edit="grantModal"
@@ -98,7 +98,7 @@
                                 data-field-max_duration_years="{{ $grant->max_duration_years }}"
                                 data-field-description="{{ $grant->description }}"
                                 data-field-is_active="{{ $grant->is_active ? '1' : '0' }}">
-                                <i class="fas fa-edit"></i>
+                                <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                             </button>
                             @endif
                         </div>
@@ -230,13 +230,5 @@ $(document).ready(function() {
     });
 });
 
-function showToast(type, message) {
-    var bg = type === 'success' ? '#1f8a5f' : '#b3261e';
-    var toast = $('<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999"><div class="toast align-items-center text-white border-0" style="background:' + bg + '" role="alert"><div class="d-flex"><div class="toast-body"><i class="fas fa-' + (type === 'success' ? 'check-circle' : 'exclamation-circle') + ' me-2"></i>' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div></div>');
-    $('body').append(toast);
-    var toastEl = new bootstrap.Toast(toast.find('.toast')[0], { delay: 4000 });
-    toastEl.show();
-    setTimeout(function() { toast.remove(); }, 4500);
-}
 </script>
 @endpush

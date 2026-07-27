@@ -258,6 +258,16 @@ class Project extends Model
         return $program->isActive();
     }
 
+    /**
+     * Scope to only include projects from visible (non-hidden) programs.
+     */
+    public function scopeVisibleProgram($query)
+    {
+        return $query->whereHas('program', function ($q) {
+            $q->where('is_visible', true);
+        });
+    }
+
     public function currentWorkflowStatus(): ?string
     {
         $status = $this->current_status;
@@ -339,7 +349,7 @@ class Project extends Model
         $hasProgress   = $this->hasStatus(self::STATUS_PROGRESS);
         $hasAssigned   = $this->hasStatus(self::STATUS_ASSIGNED);
         $hasClaimed    = $this->hasStatus(self::STATUS_CLAIMED);
-        $hasGraded     = $this->hasStatus(self::STATUS_GRADED);
+        $hasGraded     = $this->hasStatus(self::STATUS_GRADED) || in_array($this->currentWorkflowStatus(), ['graded', 'report', self::STATUS_GRADED]);
 
         // LPI actions
         if ($role === 'LPI') {

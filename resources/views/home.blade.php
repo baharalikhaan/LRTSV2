@@ -425,12 +425,24 @@
                             @endif
                         </td>
                         <td>
-                            <button type="button" class="btn-secondary btn-sm open-grade-modal"
-                                    data-project-id="{{ $project->id }}"
-                                    data-project-title="{{ $project->project_title }}"
-                                    title="View your grade for this project">
-                                <i class="fas fa-star"></i> View Grades
-                            </button>
+                            @php
+                                $isClaimed = $project->pivot->proposalstatus === 'accepted';
+                                $hasGraded = $project->hasStatus(\App\Models\Project::STATUS_GRADED);
+                            @endphp
+                            @if(!$isClaimed)
+                                <span class="text-muted" style="font-size:12px;">Pending proposal</span>
+                            @elseif($hasGraded)
+                                <button type="button" class="btn-secondary btn-sm open-grade-modal"
+                                        data-project-id="{{ $project->id }}"
+                                        data-project-title="{{ $project->project_title }}"
+                                        title="View your grade for this project">
+                                    <i class="fas fa-star"></i> View Grades
+                                </button>
+                            @else
+                                <a href="{{ route('projects.grading', $project->id) }}" class="btn-primary btn-sm" style="text-decoration:none;font-size:11px;padding:4px 10px;">
+                                    <i class="fas fa-star" style="font-size:11px;"></i> Grade Project
+                                </a>
+                            @endif
                         </td>
                     </tr>
                     @empty

@@ -121,39 +121,38 @@
 @auth
 @php
     $user = Auth::user();
+    $isAdmin = $user->isAdmin();
+    $overviewItems = [
+        ['route' => 'home', 'icon' => 'fa-solid fa-table-cells-large', 'label' => 'Dashboard'],
+    ];
+    if (!$isAdmin) {
+        $overviewItems[] = ['route' => 'announcements.index', 'icon' => 'fa-solid fa-bullhorn', 'label' => 'Announcements', 'can' => true];
+    }
     $routeGroups = [
-        'Overview' => [
-            ['route' => 'home', 'icon' => 'fa-solid fa-table-cells-large', 'label' => 'Dashboard'],
-        ],
-        'Research Calls & Projects' => [
-            'programs'  => ['route' => 'programs.index', 'icon' => 'fa-solid fa-arrows-rotate', 'label' => 'Research Calls', 'can' => $user->isAdmin()],
-            'research-calls' => ['route' => 'research-calls.index', 'icon' => 'fa-solid fa-eye', 'label' => 'Show/Hide Research Calls', 'can' => $user->isAdmin()],
-            'projects' => ['route' => 'projects.available', 'icon' => 'fa-solid fa-diagram-project', 'label' => 'Projects', 'can' => $user->isAdmin() || $user->isLPI() || $user->isReviewer()],
+        'Overview' => $overviewItems,
+        $isAdmin ? 'Research Calls & Projects' : 'Projects' => [
+            'programs'  => ['route' => 'programs.index', 'icon' => 'fa-solid fa-arrows-rotate', 'label' => 'Research Calls', 'can' => $isAdmin],
+            'projects' => ['route' => 'projects.available', 'icon' => 'fa-solid fa-diagram-project', 'label' => 'Projects', 'can' => true],
             'my-assignments' => ['route' => 'projects.my-assignments', 'icon' => 'fa-solid fa-check-double', 'label' => 'My Assignments', 'can' => false],
             'graded-projects' => ['route' => 'gradedProjects', 'icon' => 'fa-solid fa-star', 'label' => 'Graded Projects', 'can' => false],
         ],
         'Administration' => [
-            'users' => ['route' => 'users.index', 'icon' => 'fa-solid fa-users', 'label' => 'Users', 'can' => $user->isAdmin()],
-            'announcements' => ['route' => 'announcements.index', 'icon' => 'fa-solid fa-bullhorn', 'label' => 'Announcements', 'can' => $user->isAdmin()],
-            'reviewer-grading' => ['route' => 'reviewer-grading.index', 'icon' => 'fa-solid fa-star', 'label' => 'Reviewer Grading', 'can' => $user->isAdmin()],
+            'users' => ['route' => 'users.index', 'icon' => 'fa-solid fa-users', 'label' => 'Users', 'can' => $isAdmin],
+            'announcements' => ['route' => 'announcements.index', 'icon' => 'fa-solid fa-bullhorn', 'label' => 'Announcements', 'can' => $isAdmin],
+            'reviewer-grading' => ['route' => 'reviewer-grading.index', 'icon' => 'fa-solid fa-star', 'label' => 'Reviewer Grading', 'can' => $isAdmin],
         ],
         'Reports' => [
-            'program-report' => ['route' => 'reports.program-status', 'icon' => 'fa-solid fa-file-alt', 'label' => 'Research Call Report', 'can' => $user->isAdmin()],
-            'grant-summary' => ['route' => 'reports.grant-summary', 'icon' => 'fa-solid fa-trophy', 'label' => 'Grant Summary', 'can' => $user->isAdmin()],
-            'project-status' => ['route' => 'reports.project-status', 'icon' => 'fa-solid fa-diagram-project', 'label' => 'Project Status', 'can' => $user->isAdmin()],
-            'pillar-summary' => ['route' => 'reports.pillar-summary', 'icon' => 'fa-solid fa-columns', 'label' => 'Pillar Summary', 'can' => $user->isAdmin()],
+            'program-report' => ['route' => 'reports.program-status', 'icon' => 'fa-solid fa-file-alt', 'label' => 'Research Call Report', 'can' => $isAdmin],
+            'grant-summary' => ['route' => 'reports.grant-summary', 'icon' => 'fa-solid fa-trophy', 'label' => 'Grant Summary', 'can' => $isAdmin],
+            'project-status' => ['route' => 'reports.project-status', 'icon' => 'fa-solid fa-diagram-project', 'label' => 'Project Status', 'can' => $isAdmin],
+            'pillar-summary' => ['route' => 'reports.pillar-summary', 'icon' => 'fa-solid fa-columns', 'label' => 'Pillar Summary', 'can' => $isAdmin],
         ],
         'Configuration' => [
-            'scores' => ['route' => 'scores.index', 'icon' => 'fa-solid fa-star', 'label' => 'Scores', 'can' => $user->isAdmin()],
-            'grant-types' => ['route' => 'grant-types.index', 'icon' => 'fa-solid fa-trophy', 'label' => 'Grant Types', 'can' => $user->isAdmin()],
-            'pillars' => ['route' => 'pillars.index', 'icon' => 'fa-solid fa-columns', 'label' => 'Research Pillars', 'can' => $user->isAdmin()],
-            'colleges' => ['route' => 'colleges.index', 'icon' => 'fa-solid fa-university', 'label' => 'Colleges/Institutes', 'can' => $user->isAdmin()],
-            'cycle_configs' => ['route' => 'cycle-configs.index', 'icon' => 'fa-solid fa-calendar-alt', 'label' => 'Cycles', 'can' => $user->isAdmin()],
-        ],
-        'About' => [
-            'about' => ['route' => 'about.index', 'icon' => 'fa-solid fa-circle-info', 'label' => 'About RTS', 'can' => true],
-            'help' => ['route' => 'about.help', 'icon' => 'fa-solid fa-circle-question', 'label' => 'Help Center', 'can' => true],
-            'team' => ['route' => 'about.team', 'icon' => 'fa-solid fa-users', 'label' => 'Our Team', 'can' => true],
+            'scores' => ['route' => 'scores.index', 'icon' => 'fa-solid fa-star', 'label' => 'Scores', 'can' => $isAdmin],
+            'grant-types' => ['route' => 'grant-types.index', 'icon' => 'fa-solid fa-trophy', 'label' => 'Grant Types', 'can' => $isAdmin],
+            'pillars' => ['route' => 'pillars.index', 'icon' => 'fa-solid fa-columns', 'label' => 'Research Pillars', 'can' => $isAdmin],
+            'colleges' => ['route' => 'colleges.index', 'icon' => 'fa-solid fa-university', 'label' => 'Colleges/Institutes', 'can' => $isAdmin],
+            'cycle_configs' => ['route' => 'cycle-configs.index', 'icon' => 'fa-solid fa-calendar-alt', 'label' => 'Cycles', 'can' => $isAdmin],
         ],
     ];
 @endphp
@@ -173,17 +172,32 @@
                 $visibleItems = array_filter($items, function($i) { return $i['can'] ?? true; });
             @endphp
             @if(count($visibleItems))
-                <div class="sidebar-nav-label">{{ $sectionLabel }}</div>
-                @foreach($visibleItems as $key => $item)
-                    @php
-                        $isActive = request()->routeIs($item['route'] . '*') || request()->routeIs($key.'*');
-                    @endphp
-                    <a class="sidebar-nav-item {{ $isActive ? 'active' : '' }}"
-                       href="{{ route($item['route']) }}">
-                        <i class="{{ $item['icon'] }}"></i>
-                        <span>{{ $item['label'] }}</span>
-                    </a>
-                @endforeach
+                @php
+                    $hasActive = false;
+                    foreach ($visibleItems as $key => $item) {
+                        if (request()->routeIs($item['route'] . '*') || request()->routeIs($key.'*')) {
+                            $hasActive = true; break;
+                        }
+                    }
+                @endphp
+                <div class="sidebar-section">
+                    <div class="sidebar-nav-label sidebar-section-toggle" data-section="{{ $sectionLabel }}">
+                        <span>{{ $sectionLabel }}</span>
+                        <i class="fas fa-chevron-down sidebar-section-arrow"></i>
+                    </div>
+                    <div class="sidebar-section-items {{ $hasActive ? '' : 'collapsed' }}">
+                        @foreach($visibleItems as $key => $item)
+                            @php
+                                $isActive = request()->routeIs($item['route'] . '*') || request()->routeIs($key.'*');
+                            @endphp
+                            <a class="sidebar-nav-item {{ $isActive ? 'active' : '' }}"
+                               href="{{ route($item['route']) }}">
+                                <i class="{{ $item['icon'] }}"></i>
+                                <span>{{ $item['label'] }}</span>
+                            </a>
+                        @endforeach
+                    </div>
+                </div>
             @endif
         @endforeach
 
@@ -246,6 +260,11 @@
             <span class="notif-dot" id="notifDot" style="display:none;"></span>
         </div>
 
+        {{-- About --}}
+        <div class="icon-btn" id="aboutToggle">
+            <i class="fa-regular fa-circle-question" style="font-size:19px;"></i>
+        </div>
+
             {{-- User dropdown --}}
             <div class="icon-btn" id="userToggle">
                 <i class="fa-regular fa-circle-user" style="font-size:20px;"></i>
@@ -256,34 +275,23 @@
         {{-- ============ CONTENT BODY ============ --}}
         <div class="fluent-content-body">
 
-            {{-- Flash Messages --}}
-            @if(session('success'))
-                <div class="fluent-alert success">
-                    <i class="fa-solid fa-circle-check alert-icon"></i>
-                    <span>{{ session('success') }}</span>
-                    <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                </div>
-            @endif
-            @if(session('error'))
-                <div class="fluent-alert danger">
-                    <i class="fa-solid fa-circle-exclamation alert-icon"></i>
-                    <span>{{ session('error') }}</span>
-                    <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                </div>
-            @endif
-            @if(session('warning'))
-                <div class="fluent-alert warning">
-                    <i class="fa-solid fa-triangle-exclamation alert-icon"></i>
-                    <span>{{ session('warning') }}</span>
-                    <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                </div>
-            @endif
-            @if(session('info'))
-                <div class="fluent-alert info">
-                    <i class="fa-solid fa-circle-info alert-icon"></i>
-                    <span>{{ session('info') }}</span>
-                    <button class="alert-close" onclick="this.parentElement.remove()">&times;</button>
-                </div>
+            {{-- Flash Messages (queued as toasts) --}}
+            @if(session('success') || session('error') || session('warning') || session('info'))
+            <script>
+                window._flashMessages = window._flashMessages || [];
+                @if(session('success'))
+                window._flashMessages.push({type: 'success', message: @json(session('success'))});
+                @endif
+                @if(session('error'))
+                window._flashMessages.push({type: 'error', message: @json(session('error'))});
+                @endif
+                @if(session('warning'))
+                window._flashMessages.push({type: 'warning', message: @json(session('warning'))});
+                @endif
+                @if(session('info'))
+                window._flashMessages.push({type: 'info', message: @json(session('info'))});
+                @endif
+            </script>
             @endif
 
             {{-- Page Content --}}
@@ -328,10 +336,17 @@
 <div id="userDropdown" class="fluent-dropdown" style="display:none;">
     <div class="dropdown-header"><strong>{{ $user->name }}</strong><br><small>{{ $user->email }}</small></div>
     <a class="dropdown-item" href="{{ route('home') }}"><i class="fa-solid fa-table-cells-large"></i> Dashboard</a>
-    <a class="dropdown-item" href="#"><i class="fa-solid fa-gear"></i> Profile Settings</a>
+    <a class="dropdown-item" href="{{ route('profile.edit') }}"><i class="fa-solid fa-gear"></i> Profile Settings</a>
     <a class="dropdown-item text-danger" href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
         <i class="fa-solid fa-right-from-bracket"></i> Logout
     </a>
+</div>
+
+<div id="aboutDropdown" class="fluent-dropdown" style="display:none;">
+    <div class="dropdown-header"><strong>About RTS</strong></div>
+    <a class="dropdown-item" href="{{ route('about.index') }}"><i class="fa-solid fa-circle-info"></i> About RTS</a>
+    <a class="dropdown-item" href="{{ route('about.help') }}"><i class="fa-solid fa-circle-question"></i> Help Center</a>
+    <a class="dropdown-item" href="{{ route('about.team') }}"><i class="fa-solid fa-users"></i> Our Team</a>
 </div>
 
 @endauth
@@ -376,15 +391,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Auto-dismiss alerts after 6 seconds
-    document.querySelectorAll('.fluent-alert').forEach(function(alert) {
-        setTimeout(function() {
-            alert.style.transition = 'opacity .3s';
-            alert.style.opacity = '0';
-            setTimeout(function() { if (alert.parentNode) alert.parentNode.removeChild(alert); }, 300);
-        }, 6000);
-    });
-
     // Simple dropdown toggles
     function toggleDropdown(id) {
         var dd = document.getElementById(id);
@@ -396,10 +402,39 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Sidebar collapsable sections
+    function toggleSection(header) {
+        var container = header.parentElement;
+        var items = container.querySelector('.sidebar-section-items');
+        var isCollapsed = items.classList.contains('collapsed');
+        if (isCollapsed) {
+            items.classList.remove('collapsed');
+            header.classList.remove('collapsed');
+        } else {
+            items.classList.add('collapsed');
+            header.classList.add('collapsed');
+        }
+        try { sessionStorage.setItem('sidebar_' + header.getAttribute('data-section'), isCollapsed ? 'open' : 'collapsed'); } catch(e) {}
+    }
+    document.querySelectorAll('.sidebar-section-toggle').forEach(function(toggle) {
+        var section = toggle.getAttribute('data-section');
+        var items = toggle.parentElement.querySelector('.sidebar-section-items');
+        try {
+            var saved = sessionStorage.getItem('sidebar_' + section);
+            if (saved === 'collapsed') {
+                items.classList.add('collapsed');
+                toggle.classList.add('collapsed');
+            }
+        } catch(e) {}
+        toggle.addEventListener('click', function() { toggleSection(this); });
+    });
+
     var notifBtn = document.getElementById('notifToggle');
     var userBtn = document.getElementById('userToggle');
+    var aboutBtn = document.getElementById('aboutToggle');
     if (notifBtn) notifBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleDropdown('notifDropdown'); });
     if (userBtn) userBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleDropdown('userDropdown'); });
+    if (aboutBtn) aboutBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleDropdown('aboutDropdown'); });
 
     // ─── Fetch Notifications via AJAX ──────────────────────────────────────
     function fetchNotifications() {
@@ -634,21 +669,16 @@ function submitAssignment() {
     .then(function(data) {
         if (data.success) {
             $('#workflowModal').modal('hide');
-            var toast = $('<div style="position:fixed;bottom:24px;right:24px;z-index:9999;background:#1f8a5f;color:#fff;padding:12px 20px;border-radius:6px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);">'
-                + '<i class="fas fa-check-circle"></i> Reviewer assigned successfully!</div>');
-            $('body').append(toast);
-            setTimeout(function() { toast.fadeOut(300, function() { toast.remove(); }); }, 3000);
+            showToast('success', 'Reviewer assigned successfully!');
             setTimeout(function() { location.reload(); }, 1000);
         } else {
-            errorDiv.textContent = data.error || 'Failed to assign reviewer.';
-            errorDiv.style.display = 'block';
+            showToast('error', data.error || 'Failed to assign reviewer.');
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-check"></i> Assign Reviewer';
         }
     })
     .catch(function() {
-        errorDiv.textContent = 'Network error. Please try again.';
-        errorDiv.style.display = 'block';
+        showToast('error', 'Network error. Please try again.');
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-check"></i> Assign Reviewer';
     });
@@ -711,21 +741,16 @@ function submitProposalDecision() {
     .then(function(response) {
         if (response.success) {
             $('#workflowModal').modal('hide');
-            var toast = $('<div style="position:fixed;bottom:24px;right:24px;z-index:9999;background:#1f8a5f;color:#fff;padding:12px 20px;border-radius:6px;font-size:13px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);">'
-                + '<i class="fas fa-check-circle"></i> ' + response.message + '</div>');
-            $('body').append(toast);
-            setTimeout(function() { toast.fadeOut(300, function() { toast.remove(); }); }, 3000);
+            showToast('success', response.message);
             setTimeout(function() { location.reload(); }, 1000);
         } else {
-            errorText.textContent = response.error || 'Failed to submit decision.';
-            errorDiv.style.display = 'block';
+            showToast('error', response.error || 'Failed to submit decision.');
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Decision';
         }
     })
     .catch(function() {
-        errorText.textContent = 'Network error. Please try again.';
-        errorDiv.style.display = 'block';
+        showToast('error', 'Network error. Please try again.');
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Decision';
     });
@@ -772,6 +797,37 @@ function recordStatus(projectId, action) {
         }
     });
 }
+
+/**
+ * Centralized toast notification — top-right corner via Toastify.
+ * Usage: showToast('success', 'Message'); showToast('error', 'Message');
+ */
+function showToast(type, message) {
+    var bg;
+    switch (type) {
+        case 'success': bg = '#1f8a5f'; break;
+        case 'error':   bg = '#b3261e'; break;
+        case 'warning': bg = '#e6a135'; break;
+        default:        bg = '#2b6db5'; break;
+    }
+    Toastify({
+        text: message,
+        duration: 4000,
+        gravity: 'top',
+        position: 'right',
+        style: { background: bg }
+    }).showToast();
+}
+
+// Process any queued flash messages from redirect (deferred until page ready)
+document.addEventListener('DOMContentLoaded', function() {
+    if (window._flashMessages && window._flashMessages.length) {
+        window._flashMessages.forEach(function(msg) {
+            showToast(msg.type, msg.message);
+        });
+        window._flashMessages = [];
+    }
+});
 
 /**
  * Open the "View Grade" modal for a project (used on home dashboard).

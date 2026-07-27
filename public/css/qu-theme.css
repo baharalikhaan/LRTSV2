@@ -107,13 +107,29 @@ body {
 
 .sidebar-nav-label {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em;
-  color: rgba(250,247,240,.42); font-weight: 600;
+  color: rgba(255,255,255,.85); font-weight: 600;
   padding: 14px 12px 6px;
+}
+.sidebar-section-toggle {
+  cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+  user-select: none; transition: color .15s;
+}
+.sidebar-section-toggle:hover { color: rgba(255,255,255,.8); }
+.sidebar-section-arrow {
+  font-size: 10px; color: rgba(255,255,255,.4); transition: transform .2s;
+}
+.sidebar-section-toggle.collapsed .sidebar-section-arrow { transform: rotate(-90deg); }
+.sidebar-section-items {
+  overflow: hidden; transition: max-height .25s ease, opacity .2s ease;
+  max-height: 500px; opacity: 1;
+}
+.sidebar-section-items.collapsed {
+  max-height: 0; opacity: 0; pointer-events: none;
 }
 .sidebar-nav-item {
   display: flex; align-items: center; gap: 11px;
   padding: 9px 12px; border-radius: var(--fluent-radius-md);
-  font-size: 13.5px; font-weight: 500; color: rgba(250,247,240,.82);
+  font-size: 12.5px; font-weight: 500; color: rgba(255,255,255,.88);
   cursor: pointer; position: relative;
   border: 1px solid transparent;
   transition: background .12s ease, border-color .12s ease;
@@ -123,7 +139,7 @@ body {
 .sidebar-nav-item:hover {
   background: rgba(255,255,255,.06);
   border-color: rgba(255,255,255,.08);
-  color: rgba(250,247,240,.92);
+  color: rgba(255,255,255,.95);
   text-decoration: none;
 }
 .sidebar-nav-item.active {
@@ -277,6 +293,28 @@ body {
 
 .btn-sm {
   padding: 4px 10px; font-size: 12px;
+}
+
+.btn-action-group {
+  display: inline-flex;
+  gap: 0;
+  align-items: center;
+}
+.btn-action-group .btn-sm {
+  margin: 0;
+  border-radius: 0;
+}
+.btn-action-group form {
+  display: contents;
+}
+.btn-action-group .btn-sm:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.btn-action-group .btn-sm:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.btn-action-group .btn-sm + .btn-sm {
+  margin-left: -1px;
 }
 
 /* ---------------- CONTENT BODY ---------------- */
@@ -472,6 +510,22 @@ body {
 }
 .fluent-table tbody tr:hover td {
   background: var(--brand-50);
+}
+.fluent-table tbody tr.hidden-row td {
+  background: var(--ink-50);
+  color: var(--ink-400);
+}
+.fluent-table tbody tr.hidden-row td code,
+.fluent-table tbody tr.hidden-row td .pill {
+  opacity: 0.6;
+}
+.fluent-table tbody tr.hidden-row:hover td {
+  background: var(--brand-50);
+  color: var(--ink-700);
+}
+.fluent-table tbody tr.hidden-row:hover td code,
+.fluent-table tbody tr.hidden-row:hover td .pill {
+  opacity: 0.85;
 }
 .fluent-table thead th i {
   font-size: 11px;
@@ -853,6 +907,26 @@ div.dataTables_wrapper div.dataTables_info {
   font-size: 12px;
   color: var(--ink-500);
   font-weight: 500;
+}
+
+div.dataTables_wrapper .bottom {
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+div.dataTables_wrapper .bottom .dataTables_length {
+  margin-bottom: 0;
+}
+div.dataTables_wrapper .bottom .dataTables_info {
+  padding-top: 0;
+  float: none !important;
+  margin-right: auto;
+}
+div.dataTables_wrapper .bottom .dataTables_paginate {
+  padding-top: 0;
+  float: none !important;
 }
 
 div.dataTables_wrapper div.dataTables_paginate {
@@ -1458,35 +1532,6 @@ select.wizard-input {
 .review-status.missing {
   background: #fbeaea;
   color: var(--danger);
-}
-
-/* Wizard Toast */
-.wizard-toast {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) scale(.9);
-  padding: 12px 24px;
-  border-radius: var(--fluent-radius-md);
-  font-size: 14px;
-  font-weight: 600;
-  z-index: 10;
-  opacity: 0;
-  transition: all .2s ease;
-  pointer-events: none;
-  box-shadow: var(--fluent-depth-16);
-}
-.wizard-toast.show {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-}
-.wizard-toast.success {
-  background: var(--success);
-  color: #fff;
-}
-.wizard-toast.error {
-  background: var(--danger);
-  color: #fff;
 }
 
 /* Ensure modal max-width for wizard */

@@ -15,7 +15,7 @@ class AnnouncementController extends Controller
                 abort(403);
             }
             return $next($request);
-        });
+        })->only(['store', 'update', 'destroy']);
     }
 
     public function index()

@@ -907,7 +907,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var type = typeSel.value;
         var identifier = idInput.value.trim();
         if (!identifier) {
-            showToast('Please enter a DOI / identifier.', 'error');
+            showToast('error', 'Please enter a DOI / identifier.');
             idInput.focus();
             return;
         }
@@ -940,7 +940,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var stdId = idInput.value.trim();
         var days = daysInput ? (parseInt(daysInput.value) || 0) : 0;
         if (!stdId) {
-            showToast('Please enter a student ID.', 'error');
+            showToast('error', 'Please enter a student ID.');
             idInput.focus();
             return;
         }
@@ -999,7 +999,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var name = nameInput.value.trim();
         var category = catSel ? catSel.value : 'RA';
         if (!name) {
-            showToast('Please enter a researcher name.', 'error');
+            showToast('error', 'Please enter a researcher name.');
             nameInput.focus();
             return;
         }
@@ -1059,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var type = typeSel.value;
         var detail = detailInput.value.trim();
         if (!detail) {
-            showToast('Please enter IP detail.', 'error');
+            showToast('error', 'Please enter IP detail.');
             detailInput.focus();
             return;
         }
@@ -1133,14 +1133,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (delBtn) {
                     delBtn.onclick = function() { deleteOutcomeRecord(delBtn, data.id); };
                 }
-                showToast('Record saved.', 'success');
+                showToast('success', 'Record saved.');
             } else {
-                showToast(data.error || 'Failed to save record.', 'error');
+                showToast('error', data.error || 'Failed to save record.');
                 row.remove();
             }
         })
         .catch(function(err) {
-            showToast('Network error: ' + err.message, 'error');
+            showToast('error', 'Network error: ' + err.message);
             row.remove();
         });
     }
@@ -1163,13 +1163,13 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function(data) {
             if (data.success) {
                 if (row) row.remove();
-                showToast('Record deleted.', 'success');
+                showToast('success', 'Record deleted.');
             } else {
-                showToast(data.error || 'Failed to delete.', 'error');
+                showToast('error', data.error || 'Failed to delete.');
             }
         })
         .catch(function(err) {
-            showToast('Network error: ' + err.message, 'error');
+            showToast('error', 'Network error: ' + err.message);
         });
     };
 
@@ -1194,7 +1194,7 @@ document.addEventListener('DOMContentLoaded', function() {
         collectFromList('#ipRecords .ip-record-row');
 
         if (outcomes.length === 0) {
-            showToast('No records to save.', 'error');
+            showToast('error', 'No records to save.');
             return;
         }
 
@@ -1210,14 +1210,14 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success) {
-                showToast('Outcomes saved successfully.', 'success');
+                showToast('success', 'Outcomes saved successfully.');
                 setTimeout(function() { location.reload(); }, 1200);
             } else {
-                showToast(data.error || 'Failed to save outcomes.', 'error');
+                showToast('error', data.error || 'Failed to save outcomes.');
             }
         })
         .catch(function(err) {
-            showToast('Network error: ' + err.message, 'error');
+            showToast('error', 'Network error: ' + err.message);
         });
     };
 
@@ -1240,14 +1240,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.setAttribute('data-id', data.id);
                 var delBtn = row.querySelector('.ws-btn-icon-danger');
                 if (delBtn) delBtn.onclick = function() { deleteStudentRecord(delBtn, data.id); };
-                showToast('Student saved.', 'success');
+                showToast('success', 'Student saved.');
             } else {
-                showToast(data.error || 'Failed to save student.', 'error');
+                showToast('error', data.error || 'Failed to save student.');
                 row.remove();
             }
         })
         .catch(function(err) {
-            showToast('Network error: ' + err.message, 'error');
+            showToast('error', 'Network error: ' + err.message);
             row.remove();
         });
     }
@@ -1268,14 +1268,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.setAttribute('data-id', data.id);
                 var delBtn = row.querySelector('.ws-btn-icon-danger');
                 if (delBtn) delBtn.onclick = function() { deleteResearcherRecord(delBtn, data.id); };
-                showToast('Researcher saved.', 'success');
+                showToast('success', 'Researcher saved.');
             } else {
-                showToast(data.error || 'Failed to save researcher.', 'error');
+                showToast('error', data.error || 'Failed to save researcher.');
                 row.remove();
             }
         })
         .catch(function(err) {
-            showToast('Network error: ' + err.message, 'error');
+            showToast('error', 'Network error: ' + err.message);
             row.remove();
         });
     }
@@ -1295,10 +1295,10 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data.success) { if (row) row.remove(); showToast('Student deleted.', 'success'); }
-            else showToast(data.error || 'Failed to delete.', 'error');
+            if (data.success) { if (row) row.remove(); showToast('success', 'Student deleted.'); }
+            else showToast('error', data.error || 'Failed to delete.');
         })
-        .catch(function(err) { showToast('Network error: ' + err.message, 'error'); });
+        .catch(function(err) { showToast('error', 'Network error: ' + err.message); });
     };
 
     window.deleteResearcherRecord = function(btn, id) {
@@ -1316,10 +1316,10 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data.success) { if (row) row.remove(); showToast('Researcher deleted.', 'success'); }
-            else showToast(data.error || 'Failed to delete.', 'error');
+            if (data.success) { if (row) row.remove(); showToast('success', 'Researcher deleted.'); }
+            else showToast('error', data.error || 'Failed to delete.');
         })
-        .catch(function(err) { showToast('Network error: ' + err.message, 'error'); });
+        .catch(function(err) { showToast('error', 'Network error: ' + err.message); });
     };
 
     window.saveToggle = function(type, value) {
@@ -1339,30 +1339,16 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data.success) showToast('Saved.', 'success');
-            else showToast(data.error || 'Failed to save.', 'error');
+            if (data.success) showToast('success', 'Saved.');
+            else showToast('error', data.error || 'Failed to save.');
         })
-        .catch(function(err) { showToast('Network error: ' + err.message, 'error'); });
+        .catch(function(err) { showToast('error', 'Network error: ' + err.message); });
     };
 
     // ═══════════════════════════════════════════════════════════════════════
     // TOAST NOTIFICATION
+    // (moved to centralized showToast in layout)
     // ═══════════════════════════════════════════════════════════════════════
-    function showToast(message, type) {
-        var existing = document.querySelector('.ws-toast');
-        if (existing) existing.remove();
-
-        var toast = document.createElement('div');
-        toast.className = 'ws-toast ws-toast-' + (type || 'info');
-        toast.innerHTML = message;
-        document.body.appendChild(toast);
-
-        setTimeout(function() {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateY(-10px)';
-            setTimeout(function() { toast.remove(); }, 300);
-        }, 3000);
-    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // TAB 4: REPORT SUBMISSION — AJAX upload on file selection (single file, replace)
@@ -1430,13 +1416,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         uploadBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Upload';
                     }
                 }
-                showToast(data.message || 'File deleted successfully.', 'success');
+                showToast('success', data.message || 'File deleted successfully.');
             } else {
                 throw new Error(data.error || 'Delete failed');
             }
         })
         .catch(function(err) {
-            showToast(err.message, 'error');
+            showToast('error', err.message);
         });
     }
 
@@ -1462,12 +1448,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (!file) return;
 
                     if (file.type !== 'application/pdf') {
-                        showToast('Only PDF files are allowed.', 'error');
+                        showToast('error', 'Only PDF files are allowed.');
                         this.value = '';
                         return;
                     }
                     if (file.size > 10 * 1024 * 1024) {
-                        showToast('File must be under 10MB.', 'error');
+                        showToast('error', 'File must be under 10MB.');
                         this.value = '';
                         return;
                     }
@@ -1514,13 +1500,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 uploadBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Re-Upload';
                             }
                             attachDeleteHandlers();
-                            showToast(data.message || 'Report uploaded successfully.', 'success');
+                            showToast('success', data.message || 'Report uploaded successfully.');
                         } else {
                             throw new Error(data.error || 'Upload failed');
                         }
                     })
                     .catch(function(err) {
-                        showToast(err.message, 'error');
+                        showToast('error', err.message);
                         if (statusDiv) { statusDiv.textContent = 'Upload failed. Please try again.'; statusDiv.style.color = 'var(--danger)'; }
                         if (uploadBtn) {
                             uploadBtn.disabled = false;
@@ -1550,27 +1536,8 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 <style>
 /* Toast notification */
-.ws-toast {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    padding: 12px 20px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    color: #fff;
-    box-shadow: var(--fluent-depth-8);
-    transition: opacity .3s, transform .3s;
-    animation: toastSlideIn .3s ease-out;
-}
-@keyframes toastSlideIn {
-    from { transform: translateY(-20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
-.ws-toast-success { background: var(--success); }
-.ws-toast-error { background: var(--danger); }
-.ws-toast-info { background: var(--info); }
+/* (moved to centralized showToast in layout) */
+
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
