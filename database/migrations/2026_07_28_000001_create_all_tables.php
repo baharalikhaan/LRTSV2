@@ -28,8 +28,8 @@ class CreateAllTables extends Migration
         );
 
         foreach ($statements as $statement) {
-            // Skip CREATE TABLE for the migrations table (Laravel manages it)
-            if (preg_match('/create\s+table\s+`?migrations`?/i', $statement)) {
+            // Skip anything related to the migrations table (Laravel manages it)
+            if (preg_match('/`?migrations`?/i', $statement)) {
                 continue;
             }
             try {
