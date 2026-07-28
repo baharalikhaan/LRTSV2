@@ -16,34 +16,31 @@ class CreateAllTables extends Migration
 
         $sql = file_get_contents($sqlPath);
 
-        // Remove comments and delimiter statements
-        $sql = preg_replace('/--.*$/m', '', $sql);
+        // Remove INSERT statements (data is not part of schema)
+        $sql = preg_replace('/^INSERT\s+INTO.+?;\s*$/ism', '', $sql);
+
+        // Remove SET/START/COMMIT statements
+        $sql = preg_replace('/^(SET|START|COMMIT|ROLLBACK).*?;?\s*$/im', '', $sql);
+
+        // Remove phpMyAdmin SQL dumping comments
+        $sql = preg_replace('/^--.*$/m', '', $sql);
         $sql = preg_replace('/\/\*!.*?\*\//s', '', $sql);
-        $sql = str_replace(['DELIMITER ;;', 'DELIMITER ;', ';;'], '', $sql);
 
-        // Split by semicolons and execute each statement
-        $statements = array_filter(
-            array_map('trim', explode(';', $sql)),
-            fn($s) => !empty($s) && !str_starts_with($s, '/*')
-        );
+        // Remove blank lines
+        $lines = array_filter(explode("\n", $sql), fn($l) => trim($l) !== '');
+        $sql = implode("\n", $lines);
 
-        foreach ($statements as $statement) {
-            if (preg_match('/`?migrations`?/i', $statement)) continue;
+        if (empty(trim($sql))) {
+            return;
+        }
 
-            // Skip CREATE TABLE if table already exists
-            if (preg_match('/create\s+table\s+`?(\w+)`?/i', $statement, $m)) {
-                if (Schema::hasTable($m[1])) continue;
-            }
-
-            try {
-                DB::statement($statement);
-            } catch (\Exception $e) {
-                // For ALTER TABLE on existing tables, errors are expected
-                if (!preg_match('/create\s+table/i', $statement)) {
-                    // Ignore ALTER errors on existing tables
-                } else {
-                    throw $e;
-                }
+        // On a fresh database, run everything
+        try {
+            DB::unprepared($sql);
+        } catch (\Exception $e) {
+            // If tables already exist, that's expected
+            if (!str_contains($e->getMessage(), 'already exists')) {
+                throw $e;
             }
         }
     }
