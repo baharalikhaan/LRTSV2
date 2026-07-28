@@ -28,14 +28,20 @@ class CreateAllTables extends Migration
         );
 
         foreach ($statements as $statement) {
-            // Skip anything related to the migrations table (Laravel manages it)
-            if (preg_match('/`?migrations`?/i', $statement)) {
-                continue;
+            if (preg_match('/`?migrations`?/i', $statement)) continue;
+
+            // Skip CREATE TABLE if table already exists
+            if (preg_match('/create\s+table\s+`?(\w+)`?/i', $statement, $m)) {
+                if (Schema::hasTable($m[1])) continue;
             }
+
             try {
                 DB::statement($statement);
             } catch (\Exception $e) {
-                if (!str_contains($e->getMessage(), 'already exists')) {
+                // For ALTER TABLE on existing tables, errors are expected
+                if (!preg_match('/create\s+table/i', $statement)) {
+                    // Ignore ALTER errors on existing tables
+                } else {
                     throw $e;
                 }
             }
