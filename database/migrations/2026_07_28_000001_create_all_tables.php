@@ -28,10 +28,13 @@ class CreateAllTables extends Migration
         );
 
         foreach ($statements as $statement) {
+            // Skip CREATE TABLE for the migrations table (Laravel manages it)
+            if (preg_match('/create\s+table\s+`?migrations`?/i', $statement)) {
+                continue;
+            }
             try {
                 DB::statement($statement);
             } catch (\Exception $e) {
-                // Skip if table already exists (idempotent)
                 if (!str_contains($e->getMessage(), 'already exists')) {
                     throw $e;
                 }
