@@ -16,30 +16,41 @@ class CreateAllTables extends Migration
 
         $sql = file_get_contents($sqlPath);
 
-        // Remove INSERT statements (data is not part of schema)
-        $sql = preg_replace('/^INSERT\s+INTO.+?;\s*$/ism', '', $sql);
-
-        // Remove SET/START/COMMIT statements
-        $sql = preg_replace('/^(SET|START|COMMIT|ROLLBACK).*?;?\s*$/im', '', $sql);
-
-        // Remove phpMyAdmin SQL dumping comments
+        // Clean the SQL: remove comments, SET statements, data
         $sql = preg_replace('/^--.*$/m', '', $sql);
         $sql = preg_replace('/\/\*!.*?\*\//s', '', $sql);
+        $sql = preg_replace('/^SET\s+.*?;$/im', '', $sql);
+        $sql = preg_replace('/^START TRANSACTION;$/im', '', $sql);
+        $sql = preg_replace('/^COMMIT;$/im', '', $sql);
 
-        // Remove blank lines
-        $lines = array_filter(explode("\n", $sql), fn($l) => trim($l) !== '');
-        $sql = implode("\n", $lines);
+        // Remove INSERT INTO statements (data, not schema)
+        $sql = preg_replace('/INSERT\s+INTO\s+.*?;\s*\n/is', '', $sql);
 
-        if (empty(trim($sql))) {
-            return;
-        }
+        $statements = $this->splitStatements($sql);
 
-        // On a fresh database, run everything
-        try {
-            DB::unprepared($sql);
-        } catch (\Exception $e) {
-            // If tables already exist, that's expected
-            if (!str_contains($e->getMessage(), 'already exists')) {
+        foreach ($statements as $statement) {
+            $stmt = trim($statement);
+            if (empty($stmt)) continue;
+
+            // Skip migrations table (Laravel manages it)
+            if (preg_match('/`?migrations`?/i', $stmt)) continue;
+
+            try {
+                DB::statement($stmt);
+            } catch (\Exception $e) {
+                // On existing databases, errors like "already exists" or
+                // "Duplicate" are expected — ignore them
+                $msg = $e->getMessage();
+                if (
+                    str_contains($msg, 'already exists') ||
+                    str_contains($msg, 'Duplicate') ||
+                    str_contains($msg, 'Duplicate key') ||
+                    str_contains($msg, 'multiple primary key') ||
+                    str_contains($msg, 'Canonical key') ||
+                    str_contains($msg, 'FOREIGN KEY constraint')
+                ) {
+                    continue;
+                }
                 throw $e;
             }
         }
@@ -52,10 +63,48 @@ class CreateAllTables extends Migration
 
         foreach ($tables as $table) {
             $name = $table->$key;
-            if ($name === 'migrations') {
-                continue;
-            }
+            if ($name === 'migrations') continue;
             Schema::dropIfExists($name);
         }
+    }
+
+    private function splitStatements(string $sql): array
+    {
+        $statements = [];
+        $current = '';
+        $len = strlen($sql);
+        $i = 0;
+        $inString = false;
+        $stringChar = '';
+
+        while ($i < $len) {
+            $char = $sql[$i];
+
+            // Handle string literals
+            if (!$inString && ($char === "'" || $char === '"')) {
+                $inString = true;
+                $stringChar = $char;
+                $current .= $char;
+                $i++;
+            } elseif ($inString && $char === $stringChar && ($i === 0 || $sql[$i - 1] !== '\\')) {
+                $inString = false;
+                $current .= $char;
+                $i++;
+            } else {
+                $current .= $char;
+                if (!$inString && $char === ';' && !preg_match('/^\s*$/', $current)) {
+                    $statements[] = trim($current);
+                    $current = '';
+                }
+                $i++;
+            }
+        }
+
+        $leftover = trim($current);
+        if (!empty($leftover)) {
+            $statements[] = $leftover;
+        }
+
+        return $statements;
     }
 }
