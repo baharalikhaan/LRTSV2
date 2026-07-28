@@ -8,30 +8,35 @@ class CreateAllTables extends Migration
 {
     public function up()
     {
-        $dumpPath = database_path('schema/mysql-schema.dump');
+        $sqlPath = database_path('schema/schema.sql');
 
-        if (file_exists($dumpPath)) {
-            $sql = file_get_contents($dumpPath);
-            if (!empty(trim($sql))) {
-                DB::unprepared($sql);
-                return;
-            }
+        if (!file_exists($sqlPath)) {
+            throw new RuntimeException('Schema file not found at: ' . $sqlPath);
         }
 
-        // Fallback: try schema.sql
-        $fallback = database_path('schema.sql');
-        if (file_exists($fallback)) {
-            $sql = file_get_contents($fallback);
-            if (!empty(trim($sql))) {
-                DB::unprepared($sql);
-                return;
-            }
-        }
+        $sql = file_get_contents($sqlPath);
 
-        throw new RuntimeException(
-            'No schema file found. Run "php artisan schema:dump" first, ' .
-            'or place a schema.sql file in the database directory.'
+        // Remove comments and delimiter statements
+        $sql = preg_replace('/--.*$/m', '', $sql);
+        $sql = preg_replace('/\/\*!.*?\*\//s', '', $sql);
+        $sql = str_replace(['DELIMITER ;;', 'DELIMITER ;', ';;'], '', $sql);
+
+        // Split by semicolons and execute each statement
+        $statements = array_filter(
+            array_map('trim', explode(';', $sql)),
+            fn($s) => !empty($s) && !str_starts_with($s, '/*')
         );
+
+        foreach ($statements as $statement) {
+            try {
+                DB::statement($statement);
+            } catch (\Exception $e) {
+                // Skip if table already exists (idempotent)
+                if (!str_contains($e->getMessage(), 'already exists')) {
+                    throw $e;
+                }
+            }
+        }
     }
 
     public function down()
