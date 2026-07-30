@@ -75,6 +75,16 @@
                 <div id="decisionError" style="display:none;color:var(--color-danger);font-size:12px;margin-top:4px;"></div>
             </div>
 
+            {{-- Reason for rejection (optional) --}}
+            <div id="rejectReasonWrap" style="display:none;margin-bottom:16px;">
+                <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;color:var(--color-ink-700);">
+                    Reason for rejection <span style="color:var(--color-ink-400);font-weight:400;">(optional, shown to the admin)</span>
+                </label>
+                <textarea name="reject_reason" rows="3" maxlength="2000"
+                    style="width:100%;font-size:13px;border:1px solid var(--color-ink-200);border-radius:6px;padding:8px 10px;color:var(--color-ink-700);"
+                    placeholder="Briefly explain why the proposal is being rejected…"></textarea>
+            </div>
+
             <div id="proposalError" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 14px;font-size:13px;color:var(--color-danger);margin-bottom:12px;">
                 <i class="fas fa-exclamation-circle" style="margin-right:4px;"></i>
                 <span id="proposalErrorText"></span>
@@ -105,6 +115,10 @@ function highlightDecision() {
             label.style.background = '#fff';
         }
     });
+    // Reveal the reject-reason textarea only when "Reject" is selected.
+    var rejectChecked = document.getElementById('acceptNo') && document.getElementById('acceptNo').checked;
+    var reasonWrap = document.getElementById('rejectReasonWrap');
+    if (reasonWrap) reasonWrap.style.display = rejectChecked ? 'block' : 'none';
 }
 </script>
 @endpush

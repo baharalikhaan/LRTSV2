@@ -220,6 +220,19 @@
 
 {{-- Progress Report --}}
 <div class="ws-tab-panel" id="tab-progress" style="display:none;">
+    @if(empty($progressSubmitted) || !$progressSubmitted)
+    {{-- LOCK: LPI has not submitted the progress report yet --}}
+    <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+            <i class="fas fa-lock" style="font-size:24px;"></i>
+        </div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Progress Report Not Available Yet</h3>
+        <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+            The LPI has not officially submitted the progress report for this project.
+            Grading will be unlocked once the report is submitted.
+        </p>
+    </div>
+    @else
     <div class="ws-split">
         <div class="ws-pdf-col">
             <div class="ws-card">
@@ -256,10 +269,24 @@
             ])
         </div>
     </div>
+    @endif
 </div>
 
 {{-- Final Report --}}
 <div class="ws-tab-panel" id="tab-final" style="display:none;">
+    @if(empty($finalSubmitted) || !$finalSubmitted)
+    {{-- LOCK: LPI has not submitted the final report yet --}}
+    <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+            <i class="fas fa-lock" style="font-size:24px;"></i>
+        </div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Final Report Not Available Yet</h3>
+        <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+            The LPI has not officially submitted the final report for this project.
+            Grading will be unlocked once the report is submitted.
+        </p>
+    </div>
+    @else
     <div class="ws-split">
         <div class="ws-pdf-col">
             <div class="ws-card">
@@ -293,6 +320,7 @@
             ])
         </div>
     </div>
+    @endif
 </div>
 
 {{-- QU Readiness Map --}}

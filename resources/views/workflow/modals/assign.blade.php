@@ -22,11 +22,25 @@
             $currentReviewer = $assignedReviewers->first();
             $currentReviewerId = $currentReviewer ? $currentReviewer->id : null;
 
+            // Reviewers who previously rejected this proposal — excluded from the
+            // dropdown so the admin doesn't re-assign the same reviewer.
+            $previousRejectors = $project->previousRejectors();
+            $rejectorIds = $previousRejectors->pluck('user_id')->toArray();
+
             $reviewers = \App\Models\User::whereIn('type', ['Reviewer', 'LPI+Reviewer', 'Admin+LPI+Reviewer'])
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get();
         @endphp
+
+        @if($previousRejectors->isNotEmpty())
+            <div style="padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;font-size:12px;color:#b91c1c;margin-bottom:12px;">
+                <i class="fas fa-ban" style="margin-right:4px;"></i>
+                <strong>Previously rejected by:</strong>
+                {{ $previousRejectors->map(fn($r) => ($r->user?->name ?? 'Unknown') . ' (' . $r->created_at->format('M d, Y') . ')')->implode(', ') }}
+                — excluded from the list below.
+            </div>
+        @endif
 
         {{-- Single Reviewer --}}
         <div style="margin-bottom:14px;">
@@ -36,9 +50,15 @@
             <select name="reviewer_ids[]" id="reviewer_1" class="reviewer-select" style="width:100%;padding:8px 10px;border:1px solid var(--color-ink-200);border-radius:6px;font-size:13px;color:var(--color-ink-800);background:#fff;appearance:auto;">
                 <option value="">— Select Reviewer —</option>
                 @foreach($reviewers as $reviewer)
-                    <option value="{{ $reviewer->id }}" {{ $reviewer->id == $currentReviewerId ? 'selected' : '' }}>
-                        {{ $reviewer->name }} ({{ $reviewer->email }})
-                    </option>
+                    @if(in_array($reviewer->id, $rejectorIds))
+                        <option value="{{ $reviewer->id }}" disabled style="color:var(--color-ink-400);">
+                            {{ $reviewer->name }} ({{ $reviewer->email }}) — previously rejected
+                        </option>
+                    @else
+                        <option value="{{ $reviewer->id }}" {{ $reviewer->id == $currentReviewerId ? 'selected' : '' }}>
+                            {{ $reviewer->name }} ({{ $reviewer->email }})
+                        </option>
+                    @endif
                 @endforeach
             </select>
         </div>

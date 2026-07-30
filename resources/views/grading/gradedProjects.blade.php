@@ -73,7 +73,7 @@
                             <span class="pill info" style="font-weight:700;">{{ $project->total_score ?? '—' }}</span>
                         </td>
                         <td class="text-center">
-                            <a href="{{ route('grading.grade', $project->id) }}" class="row-action" title="View Grade" data-bs-toggle="tooltip">
+                            <a href="{{ route('projects.grading', $project->id) }}" class="row-action" title="View Grade" data-bs-toggle="tooltip">
                                 <i class="fas fa-eye"></i>
                             </a>
                         </td>

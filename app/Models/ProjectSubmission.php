@@ -18,10 +18,14 @@ class ProjectSubmission extends Model
         'file_path',
         'version',
         'notes',
+        'submitted',
+        'submitted_at',
     ];
 
     protected $casts = [
-        'version' => 'integer',
+        'version'      => 'integer',
+        'submitted'    => 'boolean',
+        'submitted_at' => 'datetime',
     ];
 
     public function project()

@@ -334,6 +334,119 @@ class ProgressController extends Controller
     }
 
     /**
+     * Resolve the EFFECTIVE deadline for a report type.
+     * Extended deadline wins if set; otherwise original deadline.
+     * Returns null when no deadline is configured (treated as "no constraint").
+     */
+    protected function effectiveDeadline(Project $project, string $type)
+    {
+        $program = $project->program;
+        if (!$program) {
+            return null;
+        }
+
+        if ($type === 'progress') {
+            return $program->extended_prog_rpt_deadline ?? $program->prog_rpt_deadline;
+        }
+        if ($type === 'readiness') {
+            return $program->extended_prog_rpt2_deadline ?? $program->prog_rpt2_deadline;
+        }
+        if ($type === 'final') {
+            return $program->extended_final_rpt_deadline ?? $program->final_rpt_deadline;
+        }
+
+        return null;
+    }
+
+    /**
+     * AJAX: Officially submit a report of a given type (progress|final|readiness).
+     *
+     * Distinguishes a "draft upload" (uploadFile endpoint) from an "official
+     * submission": this endpoint marks the latest draft of that type as
+     * `submitted=true` and records the appropriate status history milestone
+     * (`progress_submitted` or `final_submitted`). It enforces the program
+     * deadline (extended deadline wins). Re-submission is allowed before the
+     * deadline (LPI may re-upload the file then re-submit here).
+     */
+    public function submitReport(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+
+        $user = Auth::user();
+        $role = $user->activeRole();
+        if (!in_array($role, ['LPI', 'Admin'])) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized.'], 403);
+        }
+
+        if (!$project->programIsActive()) {
+            return response()->json(['success' => false, 'error' => 'Program is no longer active. Submission disabled.'], 422);
+        }
+
+        $validated = $request->validate([
+            'type'   => 'required|in:progress,readiness,final',
+            'notes'  => 'nullable|string|max:2000',
+        ]);
+
+        $type = $validated['type'];
+
+        // Hard deadline enforcement.
+        $deadline = $this->effectiveDeadline($project, $type);
+        if ($deadline && now()->gt($deadline)) {
+            $label = ['progress' => 'Progress report', 'readiness' => 'Readiness report', 'final' => 'Final report'][$type];
+            return response()->json([
+                'success' => false,
+                'error'   => ucfirst($label) . ' submission deadline has passed. Contact the research office for an extension.',
+            ], 422);
+        }
+
+        // Find the latest draft of this type. A file must have been uploaded first.
+        $submission = $project->submissions()->where('type', $type)->latest('id')->first();
+        if (!$submission) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Please upload the ' . $type . ' report file before submitting.',
+            ], 422);
+        }
+
+        // Mark as submitted (idempotent — updates submitted_at on re-submit).
+        $submission->update([
+            'submitted'    => true,
+            'submitted_at' => now(),
+            'notes'        => $validated['notes'] ?? $submission->notes,
+        ]);
+
+        // Record the workflow milestone for the report types that gate review.
+        if ($type === 'progress' && !$project->hasStatus(Project::STATUS_PROGRESS_SUBMITTED)) {
+            // Make sure the basic "progress_add" stage was recorded too, so the
+            // lifecycle bar still lights up — record it if not yet present.
+            if (!$project->hasStatus(Project::STATUS_PROGRESS)) {
+                $project->recordStatus(Project::STATUS_PROGRESS, ['triggered_by' => 'progress'], $user->id);
+            }
+            $project->recordStatus(Project::STATUS_PROGRESS_SUBMITTED, [
+                'triggered_by' => 'submit-report',
+                'type'         => 'progress',
+                'submission_id' => $submission->id,
+            ], $user->id);
+        }
+        if ($type === 'final' && !$project->hasStatus(Project::STATUS_FINAL_SUBMITTED)) {
+            $project->recordStatus(Project::STATUS_FINAL_SUBMITTED, [
+                'triggered_by'  => 'submit-report',
+                'type'          => 'final',
+                'submission_id' => $submission->id,
+            ], $user->id);
+        }
+
+        $label = ['progress' => 'Progress report', 'readiness' => 'Readiness report', 'final' => 'Final report'][$type];
+
+        return response()->json([
+            'success'       => true,
+            'type'          => $type,
+            'submitted_at'  => $submission->submitted_at->toDateTimeString(),
+            'message'       => $label . ' submitted successfully. The reviewer has been notified.',
+        ]);
+    }
+
+    /**
      * AJAX: Save all Project Outcomes (Tab 1).
      * Handles both:
      *   - Scholarly types (journal Q1-Q4, conference, book, etc.) as DOI text inputs

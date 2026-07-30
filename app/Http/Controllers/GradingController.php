@@ -48,16 +48,11 @@ class GradingController extends Controller
 
     /**
      * Show the grading form for a specific project.
+     * Deprecated alias — the unified grading page is at /projects/{id}/grading.
      */
     public function gradeProject($id)
     {
-        $project = Project::with('lpi', 'program', 'program.grant')
-            ->findOrFail($id);
-
-        $finalDraft = FinalReportGrading::where('project_id', $id)->first();
-        $progressDraft = ProgressReportGrading::where('project_id', $id)->first();
-
-        return view('grading.grade', compact('project', 'finalDraft', 'progressDraft'));
+        return redirect()->route('projects.grading', $id);
     }
 
     /**
@@ -90,6 +85,11 @@ class GradingController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        // LPI submission gates — reviewers cannot grade a report the LPI has not
+        // officially submitted yet. These flags drive per-tab lock UI on the grading page.
+        $progressSubmitted = $project->hasStatus(Project::STATUS_PROGRESS_SUBMITTED);
+        $finalSubmitted    = $project->hasStatus(Project::STATUS_FINAL_SUBMITTED);
+
         $typeMappings = [
             'prototype'      => 'Prototype',
             'patent'         => 'Patent',
@@ -112,7 +112,9 @@ class GradingController extends Controller
             'outcomes',
             'students',
             'submissions',
-            'typeMappings'
+            'typeMappings',
+            'progressSubmitted',
+            'finalSubmitted'
         ));
     }
 
@@ -163,6 +165,14 @@ class GradingController extends Controller
 
         $project = Project::findOrFail($id);
         $user = Auth::user();
+
+        // Gate: reviewer can only grade the progress report once the LPI has submitted it.
+        if (!$project->hasStatus(Project::STATUS_PROGRESS_SUBMITTED)) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'The LPI has not submitted the progress report yet. Grading is locked until then.',
+            ], 403);
+        }
 
         // Determine publish value based on save_action
         // "draft" = save as pending, "submit" = use the form's publish value
@@ -230,6 +240,14 @@ class GradingController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
+        // Gate: reviewer can only grade the final report once the LPI has submitted it.
+        if (!$project->hasStatus(Project::STATUS_FINAL_SUBMITTED)) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'The LPI has not submitted the final report yet. Grading is locked until then.',
+            ], 403);
+        }
+
         // Determine publish value based on save_action
         $publishValue = $saveAction === 'draft' ? 'pending' : $request->publish;
 
@@ -290,6 +308,14 @@ class GradingController extends Controller
 
         if (!$isAssigned) {
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
+        }
+
+        // Gate: cannot finalize the grade until the LPI has submitted the final report.
+        if (!$project->hasStatus(Project::STATUS_FINAL_SUBMITTED)) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'The LPI has not submitted the final report yet. You cannot finalize the grade until then.',
+            ], 403);
         }
 
         if (!$project->hasStatus(Project::STATUS_GRADED)) {

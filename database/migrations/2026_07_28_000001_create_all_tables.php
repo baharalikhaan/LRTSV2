@@ -8,6 +8,15 @@ class CreateAllTables extends Migration
 {
     public function up()
     {
+        // Idempotency guard: if the schema has already been created (e.g. by a
+        // previous run of this migration or an earlier individual migration),
+        // skip re-creating everything. This makes the migration safe to "run"
+        // on databases that were set up before the migrations table was in
+        // sync, preventing "Base table or view already exists" errors.
+        if (Schema::hasTable('users')) {
+            return;
+        }
+
         // ─── Tables with no foreign key dependencies ───────────────────
 
         Schema::create('nationalities', function (Blueprint $table) {

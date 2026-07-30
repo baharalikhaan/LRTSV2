@@ -58,7 +58,7 @@
 @endif
 
 {{-- ========== TABBED FORM ========== --}}
-<form id="mainProgressForm" action="{{ route('progress.save', $project->id) }}" method="POST" enctype="multipart/form-data">
+<form id="mainProgressForm" action="{{ route('progress.save', $project->id) }}" method="POST" enctype="multipart/form-data" onsubmit="event.preventDefault();return false;">
     @csrf
 
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
@@ -374,6 +374,8 @@
     $dl = $deadlines[$rType] ?? [];
     $effectiveDeadline = isset($dl['extended']) ? $dl['extended'] : ($dl['original'] ?? null);
     $deadlinePassed = $effectiveDeadline ? now()->greaterThan($effectiveDeadline) : false;
+    $isSubmitted = $rLatest && $rLatest->submitted;
+    $canSubmit = !$deadlinePassed && $rLatest;
 @endphp
                     <div class="ws-upload-card {{ $deadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="{{ $rType }}" data-deadline-passed="{{ $deadlinePassed ? '1' : '0' }}">
                         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
@@ -429,6 +431,37 @@
                             </button>
                             <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
                         @endif
+
+                        {{-- Submission state + per-type official Submit button --}}
+                        <div class="ws-submit-row" data-type="{{ $rType }}" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--ink-100);">
+                            @if($isSubmitted)
+                                <div class="ws-submitted-badge" style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--success);margin-bottom:6px;">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                    Submitted
+                                    <span style="color:var(--ink-400);font-weight:400;">· {{ optional($rLatest->submitted_at)->format('M d, Y H:i') }}</span>
+                                </div>
+                                @if(!$deadlinePassed)
+                                    <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}" style="width:100%;" @if(!$canSubmit) disabled @endif>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/></svg>
+                                        Re-Submit {{ $rInfo['label'] }}
+                                    </button>
+                                @endif
+                            @else
+                                <div class="ws-draft-badge" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-400);margin-bottom:6px;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                    Draft — not submitted
+                                </div>
+                                @if(!$deadlinePassed)
+                                    <button type="button" class="ws-btn ws-btn-primary ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}" style="width:100%;" @if(!$canSubmit) disabled @endif>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                                        Submit {{ $rInfo['label'] }}
+                                    </button>
+                                    @if(!$rLatest)
+                                        <p style="font-size:10.5px;color:var(--ink-400);margin:6px 0 0;text-align:center;">Upload the file first to enable submission.</p>
+                                    @endif
+                                @endif
+                            @endif
+                        </div>
                     </div>
                     @endforeach
                 </div>
@@ -441,26 +474,95 @@
     </div>
 
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- TAB 5: REVIEW & SUBMIT --}}
+    {{-- TAB 5: REVIEW & SUBMIT (per-report submission summary) --}}
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
     <div id="tab-review" class="ws-tab-panel" style="display:none;" role="tabpanel">
-        <div style="display:flex;justify-content:center;align-items:center;min-height:50vh;">
-            <div class="ws-card" style="text-align:center;padding:48px 40px;max-width:480px;width:100%;">
-                <div style="width:56px;height:56px;border-radius:12px;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <div class="ws-card" style="max-width:680px;margin:0 auto;padding:28px 32px;">
+            <div style="text-align:center;margin-bottom:20px;">
+                <div style="width:52px;height:52px;border-radius:12px;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                 </div>
-                <h2 style="font-size:20px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Ready to Submit?</h2>
-                <p style="font-size:14px;color:var(--ink-500);margin:0 0 24px;line-height:1.5;">
-                    Please review the previous tabs (Outcomes, Students & Personnel, and Report Submissions) before submitting your final progress report.
+                <h2 style="font-size:18px;font-weight:600;color:var(--ink-800);margin:0 0 6px;">Submission Status</h2>
+                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.5;">
+                    Each report is submitted independently. The reviewer can only access a report after you click <strong>Submit</strong>.
                 </p>
-                <div style="display:flex;flex-direction:column;gap:12px;align-items:center;">
-                    <button type="submit" class="ws-btn ws-btn-primary" id="submitFullForm" style="min-width:240px;padding:12px 24px;font-size:14px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                        Submit Full Progress Report
-                    </button>
-                    <span style="font-size:12px;color:var(--ink-400);">All data will be saved and the report will be finalized.</span>
-                </div>
             </div>
+
+            @php
+                $reviewReportTypes = [
+                    'progress'  => ['label' => 'Progress Report'],
+                    'final'    => ['label' => 'Final Report'],
+                    'readiness' => ['label' => 'Readiness Report'],
+                ];
+            @endphp
+
+            <div style="display:flex;flex-direction:column;gap:14px;">
+                @foreach($reviewReportTypes as $rType => $rInfo)
+@php
+    $rLatest = null;
+    if ($rType === 'progress') $rLatest = $progressSub ?? null;
+    elseif ($rType === 'final') $rLatest = $finalSub ?? null;
+    elseif ($rType === 'readiness') $rLatest = $readinessSub ?? null;
+    $dl = $deadlines[$rType] ?? [];
+    $effectiveDeadline = isset($dl['extended']) ? $dl['extended'] : ($dl['original'] ?? null);
+    $deadlinePassed = $effectiveDeadline ? now()->greaterThan($effectiveDeadline) : false;
+    $isSubmitted = $rLatest && $rLatest->submitted;
+    $canSubmit = !$deadlinePassed && $rLatest;
+@endphp
+                <div style="border:1px solid var(--ink-100);border-radius:8px;padding:14px 16px;background:var(--sand-50);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                        <div>
+                            <strong style="font-size:13.5px;color:var(--ink-800);">{{ $rInfo['label'] }}</strong>
+                            @if($effectiveDeadline)
+                                <div style="font-size:11px;color:{{ $deadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};margin-top:2px;">
+                                    Deadline: {{ $effectiveDeadline->format('M d, Y') }}@if($deadlinePassed) · Passed @endif
+                                </div>
+                            @endif
+                        </div>
+                        <div style="text-align:right;">
+                            @if($isSubmitted)
+                                <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--success);">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                    Submitted
+                                </span>
+                                <div style="font-size:10.5px;color:var(--ink-400);margin-top:2px;">{{ optional($rLatest->submitted_at)->format('M d, Y H:i') }}</div>
+                            @else
+                                <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-400);font-weight:600;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+                                    Not Submitted
+                                </span>
+                            @endif
+                        </div>
+                    </div>
+                    <div style="margin-top:10px;display:flex;gap:8px;">
+                        @if($isSubmitted)
+                            @if(!$deadlinePassed)
+                                <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/></svg>
+                                    Re-Submit
+                                </button>
+                            @endif
+                            <a href="{{ route('serveFile2', ['type' => $rType, 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline ws-btn-sm">
+                                <i class="fas fa-external-link-alt" style="margin-right:4px;"></i> View
+                            </a>
+                        @else
+                            <button type="button" class="ws-btn ws-btn-primary ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}" @if(!$canSubmit) disabled @endif>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+                                Submit
+                            </button>
+                            <a href="#tab-submissions" onclick="switchTab('tab-submissions', document.querySelector('.ws-tab[data-tab=tab-submissions]'));return false;" class="ws-btn ws-btn-outline ws-btn-sm">
+                                Upload File
+                            </a>
+                        @endif
+                    </div>
+                </div>
+                @endforeach
+            </div>
+
+            <p style="font-size:11.5px;color:var(--ink-400);margin-top:18px;text-align:center;font-style:italic;">
+                Once a report is submitted, the assigned reviewer is notified and can begin grading that report.
+                You can re-upload and re-submit before the deadline.
+            </p>
         </div>
     </div>
 
@@ -1522,16 +1624,51 @@ document.addEventListener('DOMContentLoaded', function() {
     attachDeleteHandlers();
 
     // ═══════════════════════════════════════════════════════════════════════
-    // TAB 5: FULL FORM SUBMIT — Prevent double submission
+    // PER-REPORT SUBMIT — official submission of a single report type
+    // (progress / final / readiness). Posts to /progress/{id}/submit-report.
     // ═══════════════════════════════════════════════════════════════════════
-    var mainForm = document.getElementById('mainProgressForm');
-    var submitBtn = document.getElementById('submitFullForm');
-    if (mainForm && submitBtn) {
-        mainForm.addEventListener('submit', function(e) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin" style="margin-right:8px;"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Submitting…';
+    function bindSubmitReportButtons() {
+        document.querySelectorAll('.ws-submit-report-btn').forEach(function(btn) {
+            if (btn.dataset.bound) return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', function() {
+                if (btn.disabled) return;
+                var type = btn.getAttribute('data-type');
+                var csrf = document.querySelector('meta[name="csrf-token"]');
+                var original = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin" style="margin-right:4px;"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Submitting…';
+
+                fetch('{{ route("progress.submit-report", $project->id) }}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': csrf ? csrf.content : '',
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ type: type })
+                })
+                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+                .then(function(res) {
+                    if (res.ok && res.data.success) {
+                        showToast('success', res.data.message || 'Report submitted.');
+                        setTimeout(function() { location.reload(); }, 900);
+                    } else {
+                        showToast('error', res.data.error || 'Submission failed.');
+                        btn.disabled = false;
+                        btn.innerHTML = original;
+                    }
+                })
+                .catch(function(err) {
+                    showToast('error', 'Network error: ' + err.message);
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                });
+            });
         });
     }
+
+    bindSubmitReportButtons();
 });
 </script>
 <style>

@@ -45,15 +45,6 @@
             $totalStages = count($stages);
 
             // Map lifecycle stage keys to available action types (single-reviewer workflow)
-            $actionStageMap = [
-                'submission' => null,
-                'registered' => ['progress'],
-                'progress'   => ['assign'],
-                'assigned'   => ['claim'],
-                'claimed'    => ['grade-proposal'],
-                'graded'     => ['report-card'],
-            ];
-
             $availableActions = $project->availableActions(auth()->user());
 
             // Build a lookup: stage_key => action data for quick matching
@@ -64,7 +55,7 @@
                 elseif (in_array($actionType, ['progress'])) $actionLookup['registered'] = $act;
                 elseif (in_array($actionType, ['assign'])) $actionLookup['progress'] = $act;
                 elseif (in_array($actionType, ['claim'])) $actionLookup['assigned'] = $act;
-                elseif (in_array($actionType, ['grade-proposal'])) $actionLookup['claimed'] = $act;
+                elseif (in_array($actionType, ['progress-grade', 'final-grade'])) $actionLookup['claimed'] = $act;
                 elseif (in_array($actionType, ['report-card'])) $actionLookup['graded'] = $act;
             }
         @endphp

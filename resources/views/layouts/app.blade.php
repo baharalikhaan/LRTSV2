@@ -728,6 +728,11 @@ function submitProposalDecision() {
     data.append('project_id', projectId);
     data.append('r_id', rId);
     data.append('accept', accept.value);
+    // Include the optional rejection reason when present.
+    var reasonEl = form.querySelector('textarea[name="reject_reason"]');
+    if (reasonEl && reasonEl.value.trim()) {
+        data.append('reject_reason', reasonEl.value.trim());
+    }
 
     fetch('/workflow/submit-decision', {
         method: 'POST',

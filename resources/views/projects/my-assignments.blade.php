@@ -126,9 +126,9 @@
                                 <i class="fas fa-star" style="font-size:11px;"></i> Grade Project
                             </a>
                         @elseif(!$a->proposalstatus || $a->proposalstatus == 'pending')
-                            <a href="{{ route('projects.accept-proposal', $a->r_id) }}" class="btn-sm btn-primary" style="font-size:11px;padding:4px 10px;text-decoration:none;">
+                            <button type="button" class="btn-sm btn-primary" style="font-size:11px;padding:4px 10px;text-decoration:none;border:none;cursor:pointer;" onclick="openWorkflowModal({{ $a->project_id }}, 'accept-proposal')">
                                 <i class="fas fa-check-circle" style="font-size:11px;"></i> Review
-                            </a>
+                            </button>
                         @else
                             <span class="text-muted">All Done</span>
                         @endif

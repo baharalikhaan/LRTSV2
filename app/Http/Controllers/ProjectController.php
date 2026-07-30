@@ -326,51 +326,7 @@ class ProjectController extends Controller
         ));
     }
 
-    // ─── REVIEWER: Accept proposal page ─────────────────────────────────────
-
-    public function acceptProposal($rId)
-    {
-        $assignment = DB::table('projects_reviewers')
-            ->join('projects', 'projects.id', '=', 'projects_reviewers.project_id')
-            ->join('programs', 'programs.id', '=', 'projects.program_id')
-            ->join('users', 'users.id', '=', 'projects_reviewers.user_id')
-            ->where('projects_reviewers.id', $rId)
-            ->where('programs.is_visible', true)
-            ->select(
-                'projects_reviewers.id',
-                'projects_reviewers.project_id',
-                'projects_reviewers.proposalstatus',
-                'projects.title as project_title',
-                'projects.old_project_id',
-                'programs.program_title',
-                'users.email'
-            )
-            ->first();
-
-        if (!$assignment) {
-            abort(404, 'Assignment not found.');
-        }
-
-        return view('projects.accept-proposal', compact('assignment'));
-    }
-
-    // ─── REVIEWER: Submit acceptance/rejection ──────────────────────────────
-
-    public function acceptProposalPost(Request $request)
-    {
-        $validated = $request->validate([
-            'r_id' => 'required|exists:projects_reviewers,id',
-            'accept' => 'required|in:accepted,rejected',
-        ]);
-
-        DB::table('projects_reviewers')
-            ->where('id', $validated['r_id'])
-            ->update([
-                'proposalstatus' => $validated['accept'],
-                'statusdate' => now(),
-            ]);
-
-        return redirect()->route('projects.my-assignments')
-            ->with('success', 'Proposal ' . $validated['accept'] . ' successfully.');
-    }
+    // NOTE: The legacy standalone accept-proposal page/methods were removed.
+    // Proposal accept/reject is now handled exclusively through the workflow
+    // modal at /workflow/submit-decision (WorkflowController::submitProposalDecision).
 }

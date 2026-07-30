@@ -63,10 +63,6 @@ class WorkflowController extends Controller
                 $html = view('workflow.modals.accept-proposal', compact('project'))->render();
                 break;
 
-            case 'grade-proposal':
-                $html = view('workflow.modals.grade-proposal', compact('project'))->render();
-                break;
-
             case 'report-card':
                 $html = view('workflow.modals.report-card', compact('project'))->render();
                 break;
@@ -93,12 +89,11 @@ class WorkflowController extends Controller
 
         // Spreadsheet workflow status map
         $statusMap = [
-            'register'        => Project::STATUS_REGISTERED,
-            'progress'        => Project::STATUS_PROGRESS,
-            'assign'          => Project::STATUS_ASSIGNED,
-            'claim'           => 'claim',  // handled specially in submitProposalDecision
-            'grade-proposal'  => 'grade',  // handled specially in GradingController
-            'report-card'     => null,     // view only, no status transition
+            'register'   => Project::STATUS_REGISTERED,
+            'progress'   => Project::STATUS_PROGRESS,
+            'assign'     => Project::STATUS_ASSIGNED,
+            'claim'      => 'claim',  // handled specially in submitProposalDecision
+            'report-card' => null,    // view only, no status transition
         ];
 
         $status = $statusMap[$validated['action']] ?? null;
@@ -224,9 +219,10 @@ class WorkflowController extends Controller
     public function submitProposalDecision(Request $request)
     {
         $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
-            'r_id'       => 'required|integer|exists:projects_reviewers,id',
-            'accept'     => 'required|in:accepted,rejected',
+            'project_id'       => 'required|exists:projects,id',
+            'r_id'             => 'required|integer|exists:projects_reviewers,id',
+            'accept'           => 'required|in:accepted,rejected',
+            'reject_reason'    => 'nullable|string|max:2000',
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
@@ -249,30 +245,56 @@ class WorkflowController extends Controller
             return response()->json(['error' => 'You are not authorized to make a decision on this proposal.'], 403);
         }
 
-        // Update the reviewer record
-        DB::table('projects_reviewers')
-            ->where('id', $validated['r_id'])
-            ->update([
-                'proposalstatus' => $validated['accept'],
-                'statusdate' => now(),
-            ]);
-
-        // ─── Single-reviewer claim transition ────────────────────────────
+        // ─── ACCEPTED: keep the assignment and record Claimed ────────────
         if ($validated['accept'] === 'accepted') {
-            // Record Claimed directly (single-reviewer workflow)
+            DB::table('projects_reviewers')
+                ->where('id', $validated['r_id'])
+                ->update([
+                    'proposalstatus' => 'accepted',
+                    'statusdate'     => now(),
+                ]);
+
             if (!$project->hasStatus(Project::STATUS_CLAIMED)) {
                 $project->recordStatus(Project::STATUS_CLAIMED, [
-                    'triggered_by' => 'claim',
+                    'triggered_by'  => 'claim',
                     'reviewer_role' => $reviewerRecord->role,
                 ], $user->id);
             }
+
+            return response()->json(['success' => true, 'message' => 'Proposal accepted successfully.']);
         }
 
-        $message = $validated['accept'] === 'accepted'
-            ? 'Proposal accepted successfully.'
-            : 'Proposal rejected.';
+        // ─── REJECTED: audit trail + un-assign + record Rejected ─────────
+        // The project goes back to the admin queue so a different reviewer can be
+        // assigned. The rejecting reviewer is recorded in `reviewer_rejections` so
+        // the assign UI can exclude them from the dropdown.
+        DB::transaction(function () use ($validated, $project, $user, $reviewerRecord) {
+            // 1. Audit trail of who rejected (so admin doesn't re-assign the same reviewer)
+            \App\Models\ReviewerRejection::create([
+                'project_id' => $project->id,
+                'user_id'    => $user->id,
+                'reason'     => $validated['reject_reason'] ?? null,
+            ]);
 
-        return response()->json(['success' => true, 'message' => $message]);
+            // 2. Clear the assignment (back to admin queue)
+            DB::table('projects_reviewers')
+                ->where('id', $validated['r_id'])
+                ->delete();
+
+            // 3. Record the rejection status in the workflow history
+            if (!$project->hasStatus(Project::STATUS_REJECTED)) {
+                $project->recordStatus(Project::STATUS_REJECTED, [
+                    'triggered_by' => 'reject-proposal',
+                    'rejected_by'  => $user->id,
+                    'reason'       => $validated['reject_reason'] ?? null,
+                ], $user->id);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Proposal rejected. The project has been returned to the admin queue for reassignment.',
+        ]);
     }
 
     /**

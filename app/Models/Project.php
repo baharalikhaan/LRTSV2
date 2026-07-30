@@ -17,6 +17,10 @@ class Project extends Model
     public const STATUS_ASSIGNED = 'Assigned';
     public const STATUS_CLAIMED = 'Claimed';
     public const STATUS_GRADED = 'Graded';
+    // New submission / rejection milestones (append-only in status_histories).
+    public const STATUS_PROGRESS_SUBMITTED = 'progress_submitted';
+    public const STATUS_FINAL_SUBMITTED    = 'final_submitted';
+    public const STATUS_REJECTED           = 'rejected';
 
     // Deprecated/removed (kept so old status_history records don't break)
     public const STATUS_CLAIM1 = 'Claim-1';
@@ -235,11 +239,14 @@ class Project extends Model
     public static function statusLabels(): array
     {
         return [
-            self::STATUS_REGISTERED => 'Registered',
-            self::STATUS_PROGRESS   => 'Progress Added',
-            self::STATUS_ASSIGNED   => 'Assigned',
-            self::STATUS_CLAIMED    => 'Claimed',
-            self::STATUS_GRADED     => 'Graded',
+            self::STATUS_REGISTERED         => 'Registered',
+            self::STATUS_PROGRESS           => 'Progress Added',
+            self::STATUS_ASSIGNED           => 'Assigned',
+            self::STATUS_CLAIMED            => 'Claimed',
+            self::STATUS_GRADED             => 'Graded',
+            self::STATUS_PROGRESS_SUBMITTED => 'Progress Submitted',
+            self::STATUS_FINAL_SUBMITTED    => 'Final Submitted',
+            self::STATUS_REJECTED           => 'Rejected',
         ];
     }
 
@@ -377,7 +384,7 @@ class Project extends Model
         if ($role === 'Admin') {
             $adminActions = [];
 
-            if ($hasProgress && !$hasAssigned) {
+            if ($hasProgress && !$this->reviewers()->exists() && !$hasGraded) {
                 $adminActions[] = ['action' => 'assign', 'label' => 'Assign Reviewer'];
             }
 
@@ -433,6 +440,10 @@ class Project extends Model
             ->where('user_id', $user->id)
             ->exists();
 
+        // LPI submission gates — reviewer cannot grade a report before the LPI has submitted it.
+        $hasProgressSubmitted = $this->hasStatus(self::STATUS_PROGRESS_SUBMITTED);
+        $hasFinalSubmitted    = $this->hasStatus(self::STATUS_FINAL_SUBMITTED);
+
         // Must be Assigned (or beyond) for any reviewer actions
         if (!$hasAssigned && !$hasClaimed) {
             return [];
@@ -443,13 +454,15 @@ class Project extends Model
             $reviewerActions[] = ['action' => 'claim', 'label' => 'Claim', 'step' => 'Claim'];
         }
 
-        // Step 4: Progress Grade — reviewer can grade progress if they have claimed
-        if ($hasUserClaimed && !$hasProgressGrade && !$hasGraded) {
+        // Step 4: Progress Grade — reviewer can grade progress only after claiming
+        // AND once the LPI has officially submitted the progress report.
+        if ($hasUserClaimed && !$hasProgressGrade && !$hasGraded && $hasProgressSubmitted) {
             $reviewerActions[] = ['action' => 'progress-grade', 'label' => 'Grade Project', 'step' => 'Progress Grade'];
         }
 
-        // Step 5: Final Grade — after progress grade is done, show final grade
-        if ($hasUserClaimed && $hasProgressGrade && !$hasFinalGrade && !$hasGraded) {
+        // Step 5: Final Grade — after progress grade done AND once the LPI has
+        // officially submitted the final report.
+        if ($hasUserClaimed && $hasProgressGrade && !$hasFinalGrade && !$hasGraded && $hasFinalSubmitted) {
             $reviewerActions[] = ['action' => 'final-grade', 'label' => 'Grade Project', 'step' => 'Final Grade'];
         }
 
@@ -534,28 +547,77 @@ class Project extends Model
     }
 
     /**
+     * Get the submitted-at timestamp for a given report type (progress/final/readiness).
+     * Returns null if the report has not been officially submitted (only drafted).
+     */
+    public function submittedReportAt(string $type): ?\Illuminate\Support\Carbon
+    {
+        $row = $this->submissions()
+            ->where('type', $type)
+            ->where('submitted', true)
+            ->orderByDesc('submitted_at')
+            ->first();
+
+        return $row?->submitted_at;
+    }
+
+    /**
+     * Has a report of this type been officially submitted (not just drafted)?
+     */
+    public function reportSubmitted(string $type): bool
+    {
+        return $this->submissions()
+            ->where('type', $type)
+            ->where('submitted', true)
+            ->exists();
+    }
+
+    /**
+     * Returns the latest submission record of a given type (draft or submitted).
+     */
+    public function latestSubmissionOfType(string $type): ?ProjectSubmission
+    {
+        return $this->submissions()->where('type', $type)->latest('id')->first();
+    }
+
+    /**
+     * The list of reviewers who previously rejected this project's proposal.
+     * Used by the admin assignment UI to exclude them from the dropdown.
+     */
+    public function previousRejectors()
+    {
+        return \App\Models\ReviewerRejection::where('project_id', $this->id)
+            ->with('user')
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
+    /**
      * Build the lifecycle stages array based on status history.
      * Returns an ordered array of stages with labels, icons, done status, dates, and user names.
      */
     public function getLifecycleAttribute(): array
     {
         $stages = [
-            'submission' => ['label' => 'Import from conf-tool', 'icon' => 'fa-file-import', 'done' => false, 'date' => null, 'user_name' => null],
-            'registered' => ['label' => 'Project Registration by LPI', 'icon' => 'fa-clipboard-check', 'done' => false, 'date' => null, 'user_name' => null],
-            'progress'   => ['label' => 'Progress Update by LPI', 'icon' => 'fa-chart-line', 'done' => false, 'date' => null, 'user_name' => null],
-            'assigned'   => ['label' => 'Reviewer Assignment by Admin', 'icon' => 'fa-user-tag', 'done' => false, 'date' => null, 'user_name' => null],
-            'claimed'    => ['label' => 'Proposal Acceptance by Reviewer', 'icon' => 'fa-handshake', 'done' => false, 'date' => null, 'user_name' => null],
-            'graded'     => ['label' => 'Grading by Reviewer', 'icon' => 'fa-flag-checkered', 'done' => false, 'date' => null, 'user_name' => null],
+            'submission'          => ['label' => 'Import from conf-tool',            'icon' => 'fa-file-import',     'done' => false, 'date' => null, 'user_name' => null],
+            'registered'          => ['label' => 'Project Registration by LPI',     'icon' => 'fa-clipboard-check', 'done' => false, 'date' => null, 'user_name' => null],
+            'progress'            => ['label' => 'Progress Update by LPI',          'icon' => 'fa-chart-line',      'done' => false, 'date' => null, 'user_name' => null],
+            'progress_submitted'  => ['label' => 'Progress Report Submitted',       'icon' => 'fa-paper-plane',     'done' => false, 'date' => null, 'user_name' => null],
+            'assigned'            => ['label' => 'Reviewer Assignment by Admin',    'icon' => 'fa-user-tag',        'done' => false, 'date' => null, 'user_name' => null],
+            'claimed'             => ['label' => 'Proposal Acceptance by Reviewer', 'icon' => 'fa-handshake',       'done' => false, 'date' => null, 'user_name' => null],
+            'final_submitted'     => ['label' => 'Final Report Submitted',          'icon' => 'fa-paper-plane',     'done' => false, 'date' => null, 'user_name' => null],
+            'graded'              => ['label' => 'Grading by Reviewer',             'icon' => 'fa-flag-checkered',  'done' => false, 'date' => null, 'user_name' => null],
         ];
 
         // Map status_history status values to our lifecycle keys
-        // Includes legacy dual-reviewer statuses for backward compatibility with old records
         $statusStageMap = [
-            'registered'     => 'registered',
-            'progress_add'   => 'progress',
-            'Assigned'       => 'assigned',
-            'Claimed'        => 'claimed',
-            'Graded'         => 'graded',
+            'registered'         => 'registered',
+            'progress_add'       => 'progress',
+            'progress_submitted' => 'progress_submitted',
+            'Assigned'           => 'assigned',
+            'Claimed'            => 'claimed',
+            'final_submitted'    => 'final_submitted',
+            'Graded'             => 'graded',
         ];
 
         // Get all status histories ordered by created_at

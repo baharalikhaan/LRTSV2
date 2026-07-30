@@ -78,8 +78,6 @@ Route::prefix('projects')->name('projects.')->group(function () {
     Route::post('/bulk-assign', [ProjectController::class, 'bulkAssign'])->name('bulk-assign');
     Route::get('/{id}', [ProjectController::class, 'show'])->name('show');
     Route::get('/my-assignments', [ProjectController::class, 'myAssignments'])->name('my-assignments');
-    Route::get('/accept-proposal/{rId}', [ProjectController::class, 'acceptProposal'])->name('accept-proposal');
-    Route::post('/accept-proposal', [ProjectController::class, 'acceptProposalPost'])->name('accept-proposal-post');
 });
 
 // ─── Users ───────────────────────────────────────────────────────────────────
@@ -142,7 +140,6 @@ Route::prefix('cycle-configs')->name('cycle-configs.')->group(function () {
 Route::prefix('grading')->name('grading.')->group(function () {
     Route::get('/', [GradingController::class, 'gradedProjects'])->name('index');
     Route::get('/{id}/grade', [GradingController::class, 'gradeProject'])->name('grade');
-    Route::post('/{id}/save-grade', [GradingController::class, 'saveGrade'])->name('saveGrade');
     Route::post('/{id}/save-progress-grade', [GradingController::class, 'saveProgressGrade'])->name('saveProgressGrade');
     Route::post('/{id}/save-final-grade', [GradingController::class, 'saveFinalGrade'])->name('saveFinalGrade');
     Route::post('/{id}/final-grade', [GradingController::class, 'submitFinalGrade'])->name('submitFinalGrade');
@@ -157,6 +154,52 @@ Route::get('/projects/{id}/grading', [GradingController::class, 'grading'])
 // Uses the hierarchical path: {cycle_year}/{program_title}/{type_folder}/{old_id}_{type}.pdf
 // Accepts optional 'submission_id' to serve a specific version of a submission file.
 Route::get('/serveFile2', function (\Illuminate\Http\Request $request) {
+    // Friendly "file not available" placeholder shown in the PDF iframe
+    // instead of Laravel's default 404 page.
+    $fileNotAvailable = function () {
+        $html = <<<'HTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --brand-500: #6c4cf1; --brand-500-soft: #f1edff;
+    --ink-100: #eceef2; --ink-500: #5d6677; --sand-50: #faf8f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--sand-50); color: var(--ink-500);
+    display: flex; align-items: center; justify-content: center; min-height: 100vh;
+  }
+  .box { text-align: center; }
+  .icon {
+    width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 50%;
+    background: var(--brand-500-soft); color: var(--brand-500);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .msg { font-size: 14px; font-weight: 500; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="icon">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+    </div>
+    <p class="msg">File does not exist</p>
+  </div>
+</body>
+</html>
+HTML;
+
+        return response($html, 404, ['Content-Type' => 'text/html; charset=UTF-8']);
+    };
+
     $submissionId = $request->query('submission_id', '');
     $type = $request->query('type', '');
     $id   = $request->query('id', '');
@@ -170,7 +213,7 @@ Route::get('/serveFile2', function (\Illuminate\Http\Request $request) {
                 return response()->file($path, ['Content-Type' => 'application/pdf']);
             }
         }
-        abort(404, 'Submission file not found.');
+        return $fileNotAvailable();
     }
 
     if (in_array($type, ['proposal', 'progress', 'readiness', 'final']) && $id) {
@@ -192,7 +235,7 @@ Route::get('/serveFile2', function (\Illuminate\Http\Request $request) {
                 }
             }
         }
-        abort(404, ucfirst($type) . ' file not found.');
+        return $fileNotAvailable();
     }
 
     $file = $request->query('file', '');
@@ -202,7 +245,7 @@ Route::get('/serveFile2', function (\Illuminate\Http\Request $request) {
     }
     $path = storage_path('app/' . ltrim($file, '/'));
     if (!file_exists($path)) {
-        abort(404);
+        return $fileNotAvailable();
     }
     return response()->file($path, ['Content-Type' => 'application/pdf']);
 })->name('serveFile2');
@@ -250,6 +293,7 @@ Route::prefix('progress')->name('progress.')->group(function () {
     Route::post('/save-contributions/{id}', [\App\Http\Controllers\ProgressController::class, 'saveContributions'])->name('save-contributions');
     Route::post('/upload-submission/{id}', [\App\Http\Controllers\ProgressController::class, 'uploadFile'])->name('upload-submission');
     Route::post('/delete-submission/{id}', [\App\Http\Controllers\ProgressController::class, 'deleteFile'])->name('delete-submission');
+    Route::post('/submit-report/{id}', [\App\Http\Controllers\ProgressController::class, 'submitReport'])->name('submit-report');
     Route::get('/{id}', [\App\Http\Controllers\ProgressController::class, 'show'])->name('show');
 });
 

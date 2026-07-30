@@ -286,42 +286,6 @@
         });
     }
 
-    // ─── Grade Modal (for grade-proposal workflow action) ──────────────
-    function openGradeModal(projectId) {
-        // Remove any leftover modal from previous opens
-        $('#workflowModal').remove();
-        $('.modal-backdrop').remove();
-        $('body').removeClass('modal-open');
-
-        // Show loading state
-        const modal = $('<div class="modal fade" id="workflowModal" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">'
-            + '<div class="modal-dialog modal-dialog-centered" role="document" style="max-width:560px;">'
-            + '<div class="modal-content" style="border:none;border-radius:8px;overflow:hidden;">'
-            + '<div class="text-center py-5">'
-            + '<i class="fas fa-spinner fa-spin" style="font-size:32px;color:var(--color-brand-500);"></i>'
-            + '<p class="mt-3">Loading grade form...</p>'
-            + '</div></div></div></div>');
-
-        $('body').append(modal);
-        modal.modal('show');
-
-        // Load grade-proposal modal via workflow modal endpoint
-        $.get('/workflow/modal/grade-proposal/' + projectId, function(res) {
-            if (res.html) {
-                modal.find('.modal-content').html(res.html);
-                modal.find('.modal-dialog').css('margin', '1.75rem auto');
-            } else if (res.error) {
-                modal.find('.modal-content').html('<div class="p-4 text-center"><div class="alert alert-danger mb-0">' + res.error + '</div></div>');
-            }
-        }).fail(function(xhr) {
-            const err = xhr.responseJSON;
-            modal.find('.modal-content').html(
-                '<div class="p-4 text-center"><div class="alert alert-danger mb-0">'
-                + (err?.error || 'Failed to load grade form.')
-                + '</div></div>'
-            );
-        });
-    }
-</script>
+    </script>
 @endif
 @endpush
