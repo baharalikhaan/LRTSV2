@@ -8,11 +8,13 @@ class ProjectPublication extends Model
 {
     protected $fillable = [
         'project_id',
+        'outcome_id',
         'authors',
         'publication_title',
         'journal',
         'year',
         'doi',
+        'url',
         'status',
     ];
 

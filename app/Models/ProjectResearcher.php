@@ -17,6 +17,7 @@ class ProjectResearcher extends Model
         'category',
         'days',
         'score',
+        'verifcation_by_reviewer',
     ];
 
     public function project(): BelongsTo

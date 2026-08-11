@@ -30,4 +30,27 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // ─── External APIs ─────────────────────────────────────────────────────
+    'student_api' => [
+        'url' => env('STUDENT_API_URL', 'http://quapxweb1.qu.edu.qa/sisapx/qusis/student_info/std'),
+        'sec_key' => env('STUDENT_API_SEC_KEY', 'STD@R'),
+        'use_test_response' => env('STUDENT_API_USE_TEST_RESPONSE', false),
+    ],
+
+    'crossref_api' => [
+        'url' => env('CROSSREF_API_URL', 'https://api.crossref.org/works/'),
+        'verify_ssl' => env('CROSSREF_API_VERIFY_SSL', false),
+    ],
+
+    'elsevier_api' => [
+        'url' => env('ELSEVIER_API_URL', 'https://api.elsevier.com/content/search/scopus'),
+        'key' => env('ELSEVIER_API_KEY', ''),
+        'inst_token' => env('ELSEVIER_API_INST_TOKEN', ''),
+    ],
+
+    'budget_api' => [
+        'url' => env('BUDGET_API_URL', 'https://residence.qu.edu.qa/ords/qucust/quapi/getProjectBudget'),
+        'key' => env('BUDGET_API_KEY', '123$$321'),
+    ],
+
 ];

@@ -22,17 +22,40 @@
 
     // Pre-group outcomes by type for pre-filling the form
     $outcomeGroups = $outcomes->groupBy('type');
+
+    // Mode: 'progress' (Add/Update Progress) or 'final' (Add Final Report)
+    $mode = $mode ?? 'progress';
+    $isFinalMode = $mode === 'final';
+
+    // Readonly once the progress report has been submitted (added) and not rejected.
+    // A rejection reopens the form so the LPI can resubmit (version 2).
+    $progressSubmitted = $project
+        && $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_ADDED)
+        && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED);
+
+    // Final report submitted?
+    $finalSubmitted = $project && $project->hasStatus(\App\Models\Project::STATUS_FINAL_ADDED);
+
+    // Which sections are locked:
+    //  - In final mode: progress sections are readonly (progress already reviewed).
+    //  - In progress mode: the Final Report section is readonly (not yet at that stage).
+    $progressLocked = $isFinalMode || $progressSubmitted;
+    $finalLocked = !$isFinalMode || $finalSubmitted;
 @endphp
 
 @extends('layouts.app')
 
-@section('title', 'Add Progress — ' . ($project->title ?? 'Project'))
+@section('title', 'Progress Update — ' . ($project->title ?? 'Project'))
 
 @section('content')
 <div class="page-head">
     <div>
-        <h1><i class="fas fa-chart-line"></i> Add Progress Report</h1>
-        <p>Submit a progress report for <strong>{{ $project->title ?? '' }}</strong>.</p>
+        <h1><i class="fas {{ $isFinalMode ? 'fa-file-signature' : 'fa-chart-line' }}"></i> Progress Update</h1>
+        <p>
+            <span style="color:#8d1b3d; font-weight:600;">{{ $project->old_project_id }}</span>
+            <span style="color:var(--ink-400); margin:0 6px;">·</span>
+            {{ $project->title ?? '' }}
+        </p>
     </div>
     <div class="page-actions">
         <a href="{{ route('projects.show', $project->id) }}" class="btn-secondary">
@@ -40,6 +63,22 @@
         </a>
     </div>
 </div>
+
+{{-- Resubmission after rejection --}}
+@if($project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED))
+<div style="background:linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); border:1px solid var(--danger); border-radius:8px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:flex-start; gap:12px;">
+    <div style="width:36px; height:36px; border-radius:50%; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; margin-top:2px;">
+        <i class="fas fa-exclamation-triangle"></i>
+    </div>
+    <div>
+        <strong style="color:#991b1b; font-size:14px;">Progress Report Rejected — Resubmission Required</strong>
+        <p style="margin:4px 0 0 0; color:#7f1d1d; font-size:13px;">
+            The reviewer has requested changes to your progress report. Please review the comments,
+            make the necessary updates, and resubmit. This will be saved as version 2.
+        </p>
+    </div>
+</div>
+@endif
 
 {{-- Research Call Inactive Banner --}}
 @if($project && $project->program && !$project->programIsActive())
@@ -58,61 +97,229 @@
 @endif
 
 {{-- ========== TABBED FORM ========== --}}
-<form id="mainProgressForm" action="{{ route('progress.save', $project->id) }}" method="POST" enctype="multipart/form-data" onsubmit="event.preventDefault();return false;">
+<form id="mainProgressForm" action="{{ $isFinalMode ? route('progress.save-final', $project->id) : route('progress.save', $project->id) }}" method="POST" enctype="multipart/form-data">
     @csrf
+
+    @if($progressLocked)
+    <div style="background:#eef6fd; border:1px solid #a8cbe8; border-radius:8px; padding:14px 18px; margin-bottom:16px;">
+        <p style="margin:0; color:#1d6fb8; font-size:13px; font-style:italic;">
+            <strong>Final Report Submission</strong> — Upload the Readiness Report and Final Report. The progress report data below is readonly — it was already submitted and reviewed.
+        </p>
+    </div>
+    @endif
 
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
     {{-- TAB HEADER (Fluent-style) --}}
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
     <div class="ws-tabs" role="tablist">
-        <button type="button" class="ws-tab active" role="tab" data-tab="tab-outcomes" onclick="switchTab('tab-outcomes', this)">
+        <button type="button" class="ws-tab active" role="tab" data-tab="tab-progress-update" onclick="switchTab('tab-progress-update', this)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
-            Project Outcomes
+            Progress Update
         </button>
-        <button type="button" class="ws-tab" role="tab" data-tab="tab-students" onclick="switchTab('tab-students', this)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Students & Personnel
+        @if($isFinalMode)
+        <button type="button" class="ws-tab" role="tab" data-tab="tab-final" onclick="switchTab('tab-final', this)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+            Final Report
         </button>
-        <button type="button" class="ws-tab" role="tab" data-tab="tab-submissions" onclick="switchTab('tab-submissions', this)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            Report Submissions
-        </button>
-        <button type="button" class="ws-tab" role="tab" data-tab="tab-review" onclick="switchTab('tab-review', this)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-            Review & Submit
-        </button>
+        @endif
     </div>
 
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- TAB: PROJECT OUTCOMES (merged Scholarly Articles + IP & Contributions) --}}
+    {{-- TAB: PROGRESS UPDATE (merged: Outcomes + Personnel + Report Submission) --}}
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    <div id="tab-outcomes" class="ws-tab-panel" role="tabpanel">
+    <div id="tab-progress-update" class="ws-tab-panel" role="tabpanel">
+    <div class="ws-stepper">
+        <button type="button" class="ws-stepper-step is-active" data-step="0">
+            <span class="ws-stepper-dot"><span class="ws-stepper-num">1</span></span>
+            <span class="ws-stepper-text">Project Outcomes</span>
+        </button>
+        <span class="ws-stepper-connector"></span>
+        <button type="button" class="ws-stepper-step" data-step="1">
+            <span class="ws-stepper-dot"><span class="ws-stepper-num">2</span></span>
+            <span class="ws-stepper-text">Students &amp; Personnel</span>
+        </button>
+        <span class="ws-stepper-connector"></span>
+        <button type="button" class="ws-stepper-step" data-step="2">
+            <span class="ws-stepper-dot"><span class="ws-stepper-num">3</span></span>
+            <span class="ws-stepper-text">Report Submission</span>
+        </button>
+        @if(!$progressLocked)
+        <span class="ws-stepper-connector"></span>
+        <button type="button" class="ws-stepper-step" data-step="3">
+            <span class="ws-stepper-dot"><span class="ws-stepper-num">4</span></span>
+            <span class="ws-stepper-text">Save &amp; Submit</span>
+        </button>
+        @endif
+    </div>
 
-        {{-- BOTH SECTIONS IN A SINGLE ROW (two columns) --}}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+        {{-- ══════════ SECTION 1: PROJECT OUTCOMES ══════════ --}}
+<div class="ws-section-block" data-step="0">
 
-            {{-- ── COLUMN 1: SCHOLARLY ARTICLES ── --}}
-            <div>
-                <h2 class="ws-section-title">Scholarly Articles</h2>
+            {{-- BOTH SECTIONS IN A SINGLE ROW (two columns) --}}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
 
-                @php
-                    $scholarlyTypes = [
-                        'journal_q1'    => 'Journal articles (Web of Science — Q1)',
-                        'journal_q2'    => 'Journal articles (Web of Science — Q2)',
-                        'journal_q3'    => 'Journal articles (Web of Science — Q3)',
-                        'journal_q4'    => 'Journal articles (Web of Science — Q4)',
-                        'conference'    => 'Indexed international conferences',
-                        'book'          => 'Published Books',
-                        'edited_book'   => 'Edited Books (collection)',
-                        'book_chapter'  => 'Book Chapters',
-                    ];
-                    $contribTypeKeys = ['ip_disclosure','provisional_patent','patent_granted','open_source_sw','startup','cross_college','research_awards'];
-                    $scholarlyOutcomes = $outcomes->filter(function($o) use ($contribTypeKeys) { return !in_array($o->type, $contribTypeKeys); });
-                @endphp
+                {{-- ── SUBSECTION: SCHOLARLY ARTICLES ── --}}
+                <div>
+                    <h2 class="ws-section-title">Scholarly Articles</h2>
 
+                    @php
+                        $scholarlyTypes = [
+                            'journal_q1'    => 'Journal articles (Web of Science — Q1)',
+                            'journal_q2'    => 'Journal articles (Web of Science — Q2)',
+                            'journal_q3'    => 'Journal articles (Web of Science — Q3)',
+                            'journal_q4'    => 'Journal articles (Web of Science — Q4)',
+                            'conference'    => 'Indexed international conferences',
+                            'book'          => 'Published Books',
+                            'edited_book'   => 'Edited Books (collection)',
+                            'book_chapter'  => 'Book Chapters',
+                        ];
+                        $contribTypeKeys = ['ip_disclosure','provisional_patent','patent_granted','open_source_sw','startup','cross_college','research_awards'];
+                        $scholarlyOutcomes = $outcomes->filter(function($o) use ($contribTypeKeys) { return !in_array($o->type, $contribTypeKeys); });
+                    @endphp
+
+                @if($progressLocked)
+                {{-- READONLY TABLE VIEW --}}
+                <div class="ws-card" style="padding:16px 18px;">
+                    @if($scholarlyOutcomes->count() > 0)
+                    <table class="ws-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px;"></th>
+                                <th>Type</th>
+                                <th>Publication Details</th>
+                                <th>Verified</th>
+                                <th style="width:80px;">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($scholarlyOutcomes as $so)
+                            @php
+                                $journal = strtolower($so->publication->journal ?? '');
+                                $publisherBadge = '';
+                                $publisherName = '';
+                                $publisherColor = '555555';
+                                
+                                if (str_contains($journal, 'springer')) {
+                                    $publisherBadge = 'Springer';
+                                    $publisherColor = '0d6b3b';
+                                    $publisherName = 'Springer';
+                                } elseif (str_contains($journal, 'elsevier') || str_contains($journal, 'sciencedirect')) {
+                                    $publisherBadge = 'Elsevier';
+                                    $publisherColor = 'ff6c0f';
+                                    $publisherName = 'Elsevier';
+                                } elseif (str_contains($journal, 'ieee')) {
+                                    $publisherBadge = 'IEEE';
+                                    $publisherColor = '00629b';
+                                    $publisherName = 'IEEE';
+                                } elseif (str_contains($journal, 'wiley')) {
+                                    $publisherBadge = 'Wiley';
+                                    $publisherColor = '005a9c';
+                                    $publisherName = 'Wiley';
+                                } elseif (str_contains($journal, 'taylor') || str_contains($journal, 'francis')) {
+                                    $publisherBadge = 'T%26F';
+                                    $publisherColor = 'b7282e';
+                                    $publisherName = 'Taylor & Francis';
+                                } elseif (str_contains($journal, 'mdpi')) {
+                                    $publisherBadge = 'MDPI';
+                                    $publisherColor = '0067a5';
+                                    $publisherName = 'MDPI';
+                                } elseif (str_contains($journal, 'acm')) {
+                                    $publisherBadge = 'ACM';
+                                    $publisherColor = '0076a8';
+                                    $publisherName = 'ACM';
+                                } elseif (str_contains($journal, 'oxford')) {
+                                    $publisherBadge = 'OUP';
+                                    $publisherColor = '002147';
+                                    $publisherName = 'Oxford University Press';
+                                } elseif (str_contains($journal, 'cambridge')) {
+                                    $publisherBadge = 'CUP';
+                                    $publisherColor = 'c8e6c9';
+                                    $publisherName = 'Cambridge University Press';
+                                } elseif (str_contains($journal, 'sage')) {
+                                    $publisherBadge = 'SAGE';
+                                    $publisherColor = 'ff8f1c';
+                                    $publisherName = 'SAGE';
+                                } elseif (str_contains($journal, 'nature')) {
+                                    $publisherBadge = 'Nature';
+                                    $publisherColor = '0070c0';
+                                    $publisherName = 'Nature';
+                                } elseif (str_contains($journal, 'science')) {
+                                    $publisherBadge = 'Science';
+                                    $publisherColor = 'cc0000';
+                                    $publisherName = 'Science';
+                                }
+                            @endphp
+                            <tr>
+                                <td style="text-align:center;">
+                                    @if($publisherBadge)
+                                        <img src="https://img.shields.io/badge/{{ $publisherBadge }}-{{ $publisherColor }}?style=flat&logo=&logoColor=white" alt="{{ $publisherName }}" style="height:20px;" title="{{ $publisherName }}">
+                                    @else
+                                        <div style="width:24px;height:24px;border-radius:4px;background:var(--ink-200);display:flex;align-items:center;justify-content:center;">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                                        </div>
+                                    @endif
+                                </td>
+                                <td style="font-size:11px;">
+                                    <span style="padding:2px 6px;border-radius:4px;background:var(--ink-200);color:var(--ink-600);font-weight:500;">{{ $scholarlyTypes[$so->type] ?? $so->type }}</span>
+                                </td>
+                                <td style="font-size:12px;">
+                                    @if($so->publication)
+                                        @if($so->publication->publication_title)
+                                            <div style="font-weight:500;color:var(--ink-700);">{{ Str::limit($so->publication->publication_title, 70) }}</div>
+                                        @endif
+                                        <div style="color:var(--ink-500);margin-top:2px;">
+                                            @if($so->publication->journal)
+                                                <span>{{ $so->publication->journal }}</span>
+                                            @endif
+                                            @if($so->publication->year)
+                                                <span> ({{ $so->publication->year }})</span>
+                                            @endif
+                                        </div>
+                                        @if($so->publication->authors)
+                                            <div style="color:var(--ink-400);font-size:11px;margin-top:2px;">{{ Str::limit($so->publication->authors, 80) }}</div>
+                                        @endif
+                                    @else
+                                        <span style="color:var(--ink-400);">{{ $so->identifier }}</span>
+                                    @endif
+                                </td>
+                                <td style="text-align:center;">
+                                    @if($so->publication)
+                                        <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#d1fae5;color:#065f46;font-weight:500;display:inline-flex;align-items:center;gap:3px;">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                            Verified
+                                        </span>
+                                    @else
+                                        <span style="color:var(--ink-400);font-size:11px;">—</span>
+                                    @endif
+                                </td>
+                                <td style="font-size:12px;white-space:nowrap;">
+                                    @if($so->publication && $so->publication->url)
+                                        <a href="{{ $so->publication->url }}" target="_blank" style="color:var(--brand-500);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                            View
+                                        </a>
+                                    @elseif($so->identifier)
+                                        <a href="https://doi.org/{{ $so->identifier }}" target="_blank" style="color:var(--brand-500);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                            View
+                                        </a>
+                                    @else
+                                        <span style="color:var(--ink-400);">—</span>
+                                    @endif
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    @else
+                    <p style="font-size:12px;color:var(--ink-400);text-align:center;padding:10px 0;">No scholarly articles recorded.</p>
+                    @endif
+                </div>
+                @else
+                {{-- EDITABLE FORM --}}
                 <div class="ws-card" style="padding:16px 18px;">
                     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-                        <div style="flex:0 0 200px;max-width:100%;">
+                        <div style="flex:1;min-width:180px;">
                             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400);margin-bottom:5px;">Article Type</label>
                             <select id="scholarlyType" class="ws-input" style="width:100%;">
                                 @foreach($scholarlyTypes as $tKey => $tLabel)
@@ -120,11 +327,11 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div style="flex:1;min-width:160px;">
+                        <div style="flex:1;min-width:180px;">
                             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400);margin-bottom:5px;">DOI / Identifier</label>
                             <input type="text" id="scholarlyIdentifier" class="ws-input" placeholder="Enter DOI / ISBN…" style="width:100%;">
                         </div>
-                        <button type="button" class="ws-btn ws-btn-primary" onclick="addScholarlyRecord()">
+                        <button type="button" class="ws-btn ws-btn-primary ws-btn-sm" onclick="addScholarlyRecord()">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Add Article
                         </button>
@@ -132,14 +339,110 @@
 
                     <div id="scholarlyRecords" style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
                         @foreach($scholarlyOutcomes as $so)
-                        <div class="scholarly-record-row" data-id="{{ $so->id }}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;">
-                            <input type="hidden" name="outcomes[{{ $so->type }}][existing][]" value="{{ $so->id }}">
-                            <input type="hidden" name="outcomes[{{ $so->type }}][detail][]" value="{{ $so->identifier }}">
-                            <span class="ws-pill ws-pill-brand" style="flex-shrink:0;">{{ $scholarlyTypes[$so->type] ?? ucfirst(str_replace('_',' ',$so->type)) }}</span>
-                            <span style="flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);word-break:break-all;">{{ $so->identifier }}</span>
-                            <button type="button" class="ws-btn-icon ws-btn-icon-danger" onclick="deleteOutcomeRecord(this, '{{ $so->id }}')" title="Delete" style="flex-shrink:0;width:26px;height:26px;">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
+                        @php
+                            $journal = strtolower($so->publication->journal ?? '');
+                            $publisherBadge = '';
+                            $publisherName = '';
+                            $publisherColor = '555555';
+                            
+                            if (str_contains($journal, 'springer')) {
+                                $publisherBadge = 'Springer';
+                                $publisherColor = '0d6b3b';
+                                $publisherName = 'Springer';
+                            } elseif (str_contains($journal, 'elsevier') || str_contains($journal, 'sciencedirect')) {
+                                $publisherBadge = 'Elsevier';
+                                $publisherColor = 'ff6c0f';
+                                $publisherName = 'Elsevier';
+                            } elseif (str_contains($journal, 'ieee')) {
+                                $publisherBadge = 'IEEE';
+                                $publisherColor = '00629b';
+                                $publisherName = 'IEEE';
+                            } elseif (str_contains($journal, 'wiley')) {
+                                $publisherBadge = 'Wiley';
+                                $publisherColor = '005a9c';
+                                $publisherName = 'Wiley';
+                            } elseif (str_contains($journal, 'taylor') || str_contains($journal, 'francis')) {
+                                $publisherBadge = 'T%26F';
+                                $publisherColor = 'b7282e';
+                                $publisherName = 'Taylor & Francis';
+                            } elseif (str_contains($journal, 'mdpi')) {
+                                $publisherBadge = 'MDPI';
+                                $publisherColor = '0067a5';
+                                $publisherName = 'MDPI';
+                            } elseif (str_contains($journal, 'acm')) {
+                                $publisherBadge = 'ACM';
+                                $publisherColor = '0076a8';
+                                $publisherName = 'ACM';
+                            } elseif (str_contains($journal, 'oxford')) {
+                                $publisherBadge = 'OUP';
+                                $publisherColor = '002147';
+                                $publisherName = 'Oxford University Press';
+                            } elseif (str_contains($journal, 'cambridge')) {
+                                $publisherBadge = 'CUP';
+                                $publisherColor = 'c8e6c9';
+                                $publisherName = 'Cambridge University Press';
+                            } elseif (str_contains($journal, 'sage')) {
+                                $publisherBadge = 'SAGE';
+                                $publisherColor = 'ff8f1c';
+                                $publisherName = 'SAGE';
+                            } elseif (str_contains($journal, 'nature')) {
+                                $publisherBadge = 'Nature';
+                                $publisherColor = '0070c0';
+                                $publisherName = 'Nature';
+                            } elseif (str_contains($journal, 'science')) {
+                                $publisherBadge = 'Science';
+                                $publisherColor = 'cc0000';
+                                $publisherName = 'Science';
+                            }
+                        @endphp
+                        <div class="scholarly-record-row" data-id="{{ $so->id }}" style="padding:10px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;">
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <input type="hidden" name="outcomes[{{ $so->type }}][existing][]" value="{{ $so->id }}">
+                                <input type="hidden" name="outcomes[{{ $so->type }}][detail][]" value="{{ $so->identifier }}">
+                                @if($publisherBadge)
+                                    <img src="https://img.shields.io/badge/{{ $publisherBadge }}-{{ $publisherColor }}?style=flat&logo=&logoColor=white" alt="{{ $publisherName }}" style="height:18px;flex-shrink:0;" title="{{ $publisherName }}">
+                                @else
+                                    <div style="width:22px;height:22px;border-radius:4px;background:var(--ink-200);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                                    </div>
+                                @endif
+                                <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--ink-200);color:var(--ink-600);font-weight:500;flex-shrink:0;">{{ $scholarlyTypes[$so->type] ?? $so->type }}</span>
+                                <span style="flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);">{{ $so->identifier }}</span>
+                                @if($so->publication)
+                                    <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#d1fae5;color:#065f46;font-weight:500;flex-shrink:0;display:inline-flex;align-items:center;gap:3px;">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Verified
+                                    </span>
+                                @else
+                                    <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:500;flex-shrink:0;">Not Verified</span>
+                                    <button type="button" class="ws-btn ws-btn-outline" onclick="verifyOutcome(this, '{{ $so->id }}', '{{ $so->identifier }}')" style="font-size:10px;padding:2px 8px;height:auto;flex-shrink:0;">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                        Verify
+                                    </button>
+                                @endif
+                                @if($so->publication && $so->publication->url)
+                                <a href="{{ $so->publication->url }}" target="_blank" style="color:var(--brand-500);text-decoration:none;font-size:11px;display:inline-flex;align-items:center;gap:3px;flex-shrink:0;">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                    View
+                                </a>
+                                @endif
+                                <button type="button" class="ws-btn-icon ws-btn-icon-danger" onclick="deleteOutcomeRecord(this, '{{ $so->id }}')" title="Delete" style="flex-shrink:0;width:26px;height:26px;">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
+                            </div>
+                            @if($so->publication)
+                            <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--ink-100);font-size:11px;color:var(--ink-500);">
+                                @if($so->publication->publication_title)
+                                    <span style="font-weight:500;color:var(--ink-700);">{{ Str::limit($so->publication->publication_title, 60) }}</span>
+                                @endif
+                                @if($so->publication->journal)
+                                    <span> — {{ $so->publication->journal }}</span>
+                                @endif
+                                @if($so->publication->year)
+                                    <span>({{ $so->publication->year }})</span>
+                                @endif
+                            </div>
+                            @endif
                         </div>
                         @endforeach
                         @if($scholarlyOutcomes->count() === 0)
@@ -147,9 +450,10 @@
                         @endif
                     </div>
                 </div>
+                @endif
             </div>
 
-            {{-- ── COLUMN 2: INTELLECTUAL PROPERTY ── --}}
+            {{-- ── SUBSECTION: INTELLECTUAL PROPERTY ── --}}
             <div>
                 <h2 class="ws-section-title">Intellectual Property</h2>
 
@@ -164,9 +468,35 @@
                     $ipOutcomes = $outcomes->whereIn('type', array_keys($ipTypes));
                 @endphp
 
+                @if($progressLocked)
+                {{-- READONLY TABLE VIEW --}}
+                <div class="ws-card" style="padding:16px 18px;">
+                    @if($ipOutcomes->count() > 0)
+                    <table class="ws-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($ipOutcomes as $io)
+                            <tr>
+                                <td><span class="ws-pill ws-pill-brand">{{ $ipTypes[$io->type] ?? ucfirst(str_replace('_',' ',$io->type)) }}</span></td>
+                                <td style="font-family:monospace;font-size:12px;">{{ $io->identifier }}</td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                    @else
+                    <p style="font-size:12px;color:var(--ink-400);text-align:center;padding:10px 0;">No IP records recorded.</p>
+                    @endif
+                </div>
+                @else
+                {{-- EDITABLE FORM --}}
                 <div class="ws-card" style="padding:16px 18px;">
                     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-                        <div style="flex:0 0 200px;max-width:100%;">
+                        <div style="flex:1;min-width:180px;">
                             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400);margin-bottom:5px;">IP Type</label>
                             <select id="ipType" class="ws-input" style="width:100%;">
                                 @foreach($ipTypes as $tKey => $tLabel)
@@ -174,11 +504,11 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div style="flex:1;min-width:160px;">
+                        <div style="flex:1;min-width:180px;">
                             <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400);margin-bottom:5px;">Detail</label>
                             <input type="text" id="ipDetail" class="ws-input" placeholder="Enter detail…" style="width:100%;">
                         </div>
-                        <button type="button" class="ws-btn ws-btn-primary" onclick="addIpRecord()">
+                        <button type="button" class="ws-btn ws-btn-primary ws-btn-sm" onclick="addIpRecord()">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Add IP
                         </button>
@@ -201,21 +531,98 @@
                         @endif
                     </div>
                 </div>
+                @endif
             </div>
         </div>
     </div>
 
-    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- TAB 3: STUDENTS & PERSONNEL INVOLVEMENT --}}
-    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    <div id="tab-students" class="ws-tab-panel" style="display:none;" role="tabpanel">
+        {{-- ══════════ SECTION 2: STUDENTS & PERSONNEL ══════════ --}}
+        <div class="ws-section-block">
 
-        {{-- ── STUDENTS FORM (50% width) + HIRED RESEARCHERS (50% width) ── --}}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+            {{-- ── STUDENTS FORM (50% width) + HIRED RESEARCHERS (50% width) ── --}}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
 
-            {{-- ── STUDENTS FORM ── --}}
+            {{-- ── SUBSECTION: STUDENTS ── --}}
             <div class="ws-card" style="padding:16px 18px;">
                 <h2 class="ws-section-title">Students</h2>
+                @if($progressLocked)
+                {{-- READONLY TABLE VIEW --}}
+                @if($projectStudents->count() > 0)
+                <table class="ws-table">
+                    <thead>
+                        <tr>
+                            <th>Level</th>
+                            <th>Student ID</th>
+                            <th>Name</th>
+                            <th>College</th>
+                            <th>Major / Program</th>
+                            <th>Status</th>
+                            <th>Days</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($projectStudents as $s)
+                        @php
+                            $details = $s->details;
+                        @endphp
+                        <tr>
+                            <td><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--brand-100);color:var(--brand-700);font-weight:500;">{{ $s->type == 'UG' ? 'Undergraduate' : ($s->type == 'masters' ? 'Masters' : 'PhD') }}</span></td>
+                            <td style="font-family:monospace;font-size:12px;font-weight:500;">{{ $s->std_id }}</td>
+                            <td style="font-size:12px;">
+                                @if($details)
+                                    <div style="font-weight:500;color:var(--ink-700);">{{ $details->full_name }}</div>
+                                    @if($details->admission_term)
+                                        <div style="font-size:10px;color:var(--ink-400);">Admit: {{ $details->admission_term }}</div>
+                                    @endif
+                                @else
+                                    <span style="color:var(--ink-400);">—</span>
+                                @endif
+                            </td>
+                            <td style="font-size:12px;">
+                                @if($details && $details->college)
+                                    <div style="color:var(--ink-600);">{{ $details->college }}</div>
+                                    @if($details->std_level)
+                                        <div style="font-size:10px;color:var(--ink-400);">{{ $details->std_level }}</div>
+                                    @endif
+                                @else
+                                    <span style="color:var(--ink-400);">—</span>
+                                @endif
+                            </td>
+                            <td style="font-size:12px;">
+                                @if($details)
+                                    @if($details->major)
+                                        <div style="color:var(--ink-600);">{{ $details->major }}</div>
+                                    @endif
+                                    @if($details->std_program)
+                                        <div style="font-size:10px;color:var(--ink-400);">{{ $details->std_program }}</div>
+                                    @endif
+                                    @if($details->minor && $details->minor !== 'Undeclared')
+                                        <div style="font-size:10px;color:var(--ink-400);">Minor: {{ $details->minor }}</div>
+                                    @endif
+                                @else
+                                    <span style="color:var(--ink-400);">—</span>
+                                @endif
+                            </td>
+                            <td style="font-size:12px;">
+                                @if($details && $details->student_status)
+                                    <span class="ws-pill {{ $details->student_status === 'Active' ? 'ws-pill-success' : 'ws-pill-ink' }}">{{ $details->student_status }}</span>
+                                    @if($details->reg_in_course)
+                                        <div style="font-size:10px;color:var(--ink-400);margin-top:2px;">{{ $details->reg_in_course }}</div>
+                                    @endif
+                                @else
+                                    <span style="color:var(--ink-400);">—</span>
+                                @endif
+                            </td>
+                            <td style="font-size:12px;text-align:right;">{{ $s->days }}</td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                @else
+                <p style="font-size:12px;color:var(--ink-400);text-align:center;padding:10px 0;">No students recorded.</p>
+                @endif
+                @else
+                {{-- EDITABLE FORM --}}
                 <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
                     <div style="flex:0 0 130px;max-width:100%;">
                         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400);margin-bottom:5px;">Level</label>
@@ -233,7 +640,7 @@
                         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400);margin-bottom:5px;">Days</label>
                         <input type="number" id="studentDays" class="ws-input" placeholder="0" min="0" max="365" style="width:100%;">
                     </div>
-                    <button type="button" class="ws-btn ws-btn-primary" onclick="addStudentRecord()">
+                    <button type="button" class="ws-btn ws-btn-primary ws-btn-sm" onclick="addStudentRecord()">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         Add Student
                     </button>
@@ -241,26 +648,81 @@
 
                 <div id="studentRecords" style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
                     @foreach($projectStudents as $s)
-                    <div class="student-item-row" data-id="{{ $s->id }}" data-type="{{ $s->type }}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;">
+                    @php
+                        $details = $s->details;
+                    @endphp
+                    <div class="student-item-row" data-id="{{ $s->id }}" data-type="{{ $s->type }}" style="padding:10px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;">
                         <input type="hidden" name="students[{{ $s->id }}][existing]" value="{{ $s->id }}">
                         <input type="hidden" name="students[{{ $s->id }}][type]" value="{{ $s->type }}">
-                        <span class="ws-pill ws-pill-brand" style="flex-shrink:0;">{{ $s->type == 'UG' ? 'UG' : ($s->type == 'masters' ? 'Masters' : 'PhD') }}</span>
-                        <span style="flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);word-break:break-all;">{{ $s->std_id }}</span>
-                        <span style="font-size:11px;color:var(--ink-500);white-space:nowrap;">{{ $s->days }} days</span>
-                        <button type="button" class="ws-btn-icon ws-btn-icon-danger" onclick="deleteStudentRecord(this, '{{ $s->id }}')" title="Delete" style="flex-shrink:0;width:26px;height:26px;">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        </button>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            @if($details && $details->std_level)
+                                <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--brand-100);color:var(--brand-700);font-weight:600;flex-shrink:0;">{{ $details->std_level }}</span>
+                            @else
+                                <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--ink-200);color:var(--ink-600);font-weight:500;flex-shrink:0;">{{ $s->type == 'UG' ? 'UG' : ($s->type == 'masters' ? 'MSc' : 'PhD') }}</span>
+                            @endif
+                            <span style="flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $s->std_id }}</span>
+                            @if($details)
+                                <span style="font-size:9px;padding:2px 5px;border-radius:3px;background:#d1fae5;color:#065f46;font-weight:500;flex-shrink:0;">✓</span>
+                            @else
+                                <span style="font-size:9px;padding:2px 5px;border-radius:3px;background:#fef3c7;color:#92400e;font-weight:500;flex-shrink:0;">!</span>
+                            @endif
+                            <span style="font-size:10px;color:var(--ink-500);flex-shrink:0;white-space:nowrap;">{{ $s->days }}d</span>
+                            <button type="button" class="ws-btn-icon ws-btn-icon-danger" onclick="deleteStudentRecord(this, '{{ $s->id }}')" title="Delete" style="flex-shrink:0;width:22px;height:22px;">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </div>
+                        @if($details && ($details->full_name || $details->college || $details->std_program || $details->major))
+                        <div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--ink-100);font-size:11px;color:var(--ink-500);">
+                            @if($details->full_name)
+                                <span style="font-weight:500;color:var(--ink-700);">{{ $details->full_name }}</span>
+                            @endif
+                            @if($details->college)
+                                <span> — {{ $details->college }}</span>
+                            @endif
+                            @if($details->std_program)
+                                <span>({{ $details->std_program }})</span>
+                            @endif
+                            @if($details->major)
+                                <span> | {{ $details->major }}</span>
+                            @endif
+                        </div>
+                        @endif
                     </div>
                     @endforeach
                     @if($projectStudents->count() === 0)
                     <div id="studentEmpty" style="font-size:12px;color:var(--ink-400);text-align:center;padding:10px 0;">No students added yet.</div>
                     @endif
                 </div>
+                @endif
             </div>
 
-            {{-- ── HIRED RESEARCHERS ── --}}
+            {{-- ── SUBSECTION: HIRED RESEARCHERS ── --}}
             <div class="ws-card" data-student-type="hired_researcher" style="padding:16px 18px;">
                 <h2 class="ws-section-title">Hired Researchers</h2>
+                @if($progressLocked)
+                {{-- READONLY TABLE VIEW --}}
+                @if($projectResearchers->count() > 0)
+                <table class="ws-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Category</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($projectResearchers as $r)
+                        <tr>
+                            <td style="font-size:12px;">{{ $r->name }}</td>
+                            <td><span class="ws-pill ws-pill-brand">{{ $r->category }}</span></td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                @else
+                <p style="font-size:12px;color:var(--ink-400);text-align:center;padding:10px 0;">No researchers recorded.</p>
+                @endif
+                @else
+                {{-- EDITABLE FORM --}}
                 <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
                     <div style="flex:1;min-width:120px;">
                         <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-400);margin-bottom:5px;">Name</label>
@@ -274,7 +736,7 @@
                             <option value="Student">Student</option>
                         </select>
                     </div>
-                    <button type="button" class="ws-btn ws-btn-primary" onclick="addResearcherRecord()">
+                    <button type="button" class="ws-btn ws-btn-primary ws-btn-sm" onclick="addResearcherRecord()">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         Add Researcher
                     </button>
@@ -297,6 +759,7 @@
                     <div id="researcherEmpty" style="font-size:12px;color:var(--ink-400);text-align:center;padding:10px 0;">No researchers added yet.</div>
                     @endif
                 </div>
+                @endif
             </div>
         </div>
 
@@ -305,6 +768,9 @@
             <div class="ws-card" style="padding:14px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid var(--ink-100);padding-bottom:8px;">
                     <span style="font-size:12px;font-weight:600;color:var(--brand-600);line-height:1.3;">Cross-College Participation</span>
+                    @if($progressLocked)
+                    <span class="ws-pill {{ $crossCollegeValue === 'Yes' ? 'ws-pill-success' : 'ws-pill-ink' }}">{{ $crossCollegeValue }}</span>
+                    @else
                     <label class="ws-toggle" style="flex-shrink:0;">
                         <input type="hidden" name="cross_college" value="No">
                         <input type="checkbox" name="cross_college" value="Yes" class="ws-toggle-checkbox" data-details-id="details-cross-college" onchange="saveToggle('cross_college', this.checked ? 'Yes' : 'No')" {{ $crossCollegeValue === 'Yes' ? 'checked' : '' }}>
@@ -313,15 +779,27 @@
                             <span class="ws-toggle-label ws-toggle-yes" style="font-size:10px;">Yes</span>
                         </span>
                     </label>
+                    @endif
                 </div>
+                @if($progressLocked)
+                @if($crossCollegeValue === 'Yes' && $crossCollegeDetails)
+                <p style="font-size:12px;color:var(--ink-700);margin:0;line-height:1.5;">{{ $crossCollegeDetails }}</p>
+                @else
+                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No cross-college participation.</p>
+                @endif
+                @else
                 <div id="details-cross-college" class="ws-card-details" style="margin-top:0;padding-top:0;border-top:none;{{ $crossCollegeValue === 'Yes' ? '' : 'display:none;' }}">
                     <textarea name="cross_college_detail" class="ws-input ws-textarea" rows="2" placeholder="Describe cross-college participation…" style="font-size:12px;" onblur="saveToggle('cross_college', document.querySelector('input[name=\'cross_college\'][value=\'Yes\']').checked ? 'Yes' : 'No')">{{ $crossCollegeDetails }}</textarea>
                 </div>
+                @endif
             </div>
 
             <div class="ws-card" style="padding:14px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid var(--ink-100);padding-bottom:8px;">
                     <span style="font-size:12px;font-weight:600;color:var(--brand-600);line-height:1.3;">Research Awards</span>
+                    @if($progressLocked)
+                    <span class="ws-pill {{ $researchAwardsValue === 'Yes' ? 'ws-pill-success' : 'ws-pill-ink' }}">{{ $researchAwardsValue }}</span>
+                    @else
                     <label class="ws-toggle" style="flex-shrink:0;">
                         <input type="hidden" name="research_awards" value="No">
                         <input type="checkbox" name="research_awards" value="Yes" class="ws-toggle-checkbox" data-details-id="details-research-awards" onchange="saveToggle('research_awards', this.checked ? 'Yes' : 'No')" {{ $researchAwardsValue === 'Yes' ? 'checked' : '' }}>
@@ -330,52 +808,41 @@
                             <span class="ws-toggle-label ws-toggle-yes" style="font-size:10px;">Yes</span>
                         </span>
                     </label>
+                    @endif
                 </div>
+                @if($progressLocked)
+                @if($researchAwardsValue === 'Yes' && $researchAwardsDetails)
+                <p style="font-size:12px;color:var(--ink-700);margin:0;line-height:1.5;">{{ $researchAwardsDetails }}</p>
+                @else
+                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No research awards.</p>
+                @endif
+                @else
                 <div id="details-research-awards" class="ws-card-details" style="margin-top:0;padding-top:0;border-top:none;{{ $researchAwardsValue === 'Yes' ? '' : 'display:none;' }}">
                     <textarea name="research_awards_detail" class="ws-input ws-textarea" rows="2" placeholder="Describe research awards…" style="font-size:12px;" onblur="saveToggle('research_awards', document.querySelector('input[name=\'research_awards\'][value=\'Yes\']').checked ? 'Yes' : 'No')">{{ $researchAwardsDetails }}</textarea>
                 </div>
+                @endif
             </div>
         </div>
-
         </div>
 
-    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- TAB 4: REPORT SUBMISSIONS --}}
-    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    <div id="tab-submissions" class="ws-tab-panel" style="display:none;" role="tabpanel">
-        <div class="ws-card">
-            <div class="ws-card-header">
-                <span class="ws-card-title">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    Report Submissions
-                </span>
-            </div>
-            <div class="ws-card-body">
-                <p style="font-size:13px;color:var(--ink-500);margin:0 0 16px;">
-                    Upload progress reports as PDF files. Deadlines shown are from your program cycle.
-                </p>
+        {{-- ══════════ SECTION 3: REPORT SUBMISSION ══════════ --}}
+        <div class="ws-section-block">
 
                 @php
                     $reportTypes = [
                         'progress' => ['label' => 'Progress Report', 'color' => 'var(--brand-50)', 'icon' => 'var(--brand-600)'],
-                        'final' => ['label' => 'Final Report', 'color' => 'var(--success)', 'icon' => '#fff'],
-                        'readiness' => ['label' => 'Readiness Report', 'color' => 'var(--gold-400)', 'icon' => '#fff'],
                     ];
                 @endphp
 
-                <div id="ws-upload-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+                <div id="ws-upload-grid" style="display:grid;grid-template-columns:repeat(1,1fr);gap:16px;max-width:420px;">
                     @foreach($reportTypes as $rType => $rInfo)
 @php
     $isEdit = false;
     $rLatest = null;
     if ($rType === 'progress') $rLatest = $progressSub ?? null;
-    elseif ($rType === 'final') $rLatest = $finalSub ?? null;
-    elseif ($rType === 'readiness') $rLatest = $readinessSub ?? null;
     $dl = $deadlines[$rType] ?? [];
     $effectiveDeadline = isset($dl['extended']) ? $dl['extended'] : ($dl['original'] ?? null);
     $deadlinePassed = $effectiveDeadline ? now()->greaterThan($effectiveDeadline) : false;
-    $isSubmitted = $rLatest && $rLatest->submitted;
-    $canSubmit = !$deadlinePassed && $rLatest;
 @endphp
                     <div class="ws-upload-card {{ $deadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="{{ $rType }}" data-deadline-passed="{{ $deadlinePassed ? '1' : '0' }}">
                         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
@@ -407,20 +874,22 @@
                                         {{ $rLatest->stored_filename }}
                                     </a>
                                     <span style="font-size:10px;color:var(--ink-400);">{{ $rLatest->created_at->format('M d, Y H:i') }}</span>
+                                    @if(!$progressLocked)
                                     <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $rLatest->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete file">
                                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                     </button>
+                                    @endif
                                 </div>
                             @else
                                 <p style="font-size:12px;color:var(--ink-400);margin:8px 0;text-align:center;">No file uploaded yet.</p>
                             @endif
                         </div>
 
-                        @if($deadlinePassed)
+                        @if($deadlinePassed || $progressLocked)
                             <div style="text-align:center;padding:10px 0;border-top:1px solid var(--ink-100);margin-top:4px;">
-                                <span style="font-size:11px;color:var(--danger);font-weight:500;">
-                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                    Deadline passed — upload closed
+                                <span style="font-size:11px;color:var(--ink-400);font-weight:500;">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    {{ $progressLocked ? 'Readonly — already submitted' : 'Deadline passed — upload closed' }}
                                 </span>
                             </div>
                         @else
@@ -430,141 +899,352 @@
                                 {{ $rLatest ? 'Re-Upload' : 'Upload' }}
                             </button>
                             <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
+                            <a href="{{ route('download.template', 'progress') }}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--brand-500);margin-top:6px;text-decoration:none;font-weight:500;">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download Template (DOCX)
+                            </a>
                         @endif
 
-                        {{-- Submission state + per-type official Submit button --}}
+                        {{-- No separate submit — saving the form submits the progress report --}}
                         <div class="ws-submit-row" data-type="{{ $rType }}" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--ink-100);">
-                            @if($isSubmitted)
-                                <div class="ws-submitted-badge" style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--success);margin-bottom:6px;">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                                    Submitted
-                                    <span style="color:var(--ink-400);font-weight:400;">· {{ optional($rLatest->submitted_at)->format('M d, Y H:i') }}</span>
-                                </div>
-                                @if(!$deadlinePassed)
-                                    <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}" style="width:100%;" @if(!$canSubmit) disabled @endif>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/></svg>
-                                        Re-Submit {{ $rInfo['label'] }}
-                                    </button>
-                                @endif
-                            @else
-                                <div class="ws-draft-badge" style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-400);margin-bottom:6px;">
+                            @if($rLatest)
+                                <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-400);margin-bottom:6px;">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                                    Draft — not submitted
+                                    {{ $isFinalMode ? 'Progress report already submitted.' : 'File uploaded — will be submitted when you click Save.' }}
                                 </div>
-                                @if(!$deadlinePassed)
-                                    <button type="button" class="ws-btn ws-btn-primary ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}" style="width:100%;" @if(!$canSubmit) disabled @endif>
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
-                                        Submit {{ $rInfo['label'] }}
-                                    </button>
-                                    @if(!$rLatest)
-                                        <p style="font-size:10.5px;color:var(--ink-400);margin:6px 0 0;text-align:center;">Upload the file first to enable submission.</p>
-                                    @endif
-                                @endif
+                            @else
+                                <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-400);margin-bottom:6px;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                    {{ $isFinalMode ? 'No progress report file uploaded.' : 'Upload the progress report PDF above, then save to submit.' }}
+                                </div>
                             @endif
                         </div>
                     </div>
                     @endforeach
                 </div>
-            </div>
-        </div>
 
-        {{-- Submission notes -- REMOVED --}}
-
-        {{-- Tab 4 Save Button -- REMOVED (moved to Review & Submit tab) --}}
-    </div>
-
-    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- TAB 5: REVIEW & SUBMIT (per-report submission summary) --}}
-    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    <div id="tab-review" class="ws-tab-panel" style="display:none;" role="tabpanel">
-        <div class="ws-card" style="max-width:680px;margin:0 auto;padding:28px 32px;">
-            <div style="text-align:center;margin-bottom:20px;">
-                <div style="width:52px;height:52px;border-radius:12px;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                </div>
-                <h2 style="font-size:18px;font-weight:600;color:var(--ink-800);margin:0 0 6px;">Submission Status</h2>
-                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.5;">
-                    Each report is submitted independently. The reviewer can only access a report after you click <strong>Submit</strong>.
-                </p>
-            </div>
-
-            @php
-                $reviewReportTypes = [
-                    'progress'  => ['label' => 'Progress Report'],
-                    'final'    => ['label' => 'Final Report'],
-                    'readiness' => ['label' => 'Readiness Report'],
-                ];
-            @endphp
-
-            <div style="display:flex;flex-direction:column;gap:14px;">
-                @foreach($reviewReportTypes as $rType => $rInfo)
-@php
-    $rLatest = null;
-    if ($rType === 'progress') $rLatest = $progressSub ?? null;
-    elseif ($rType === 'final') $rLatest = $finalSub ?? null;
-    elseif ($rType === 'readiness') $rLatest = $readinessSub ?? null;
-    $dl = $deadlines[$rType] ?? [];
-    $effectiveDeadline = isset($dl['extended']) ? $dl['extended'] : ($dl['original'] ?? null);
-    $deadlinePassed = $effectiveDeadline ? now()->greaterThan($effectiveDeadline) : false;
-    $isSubmitted = $rLatest && $rLatest->submitted;
-    $canSubmit = !$deadlinePassed && $rLatest;
-@endphp
-                <div style="border:1px solid var(--ink-100);border-radius:8px;padding:14px 16px;background:var(--sand-50);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                        <div>
-                            <strong style="font-size:13.5px;color:var(--ink-800);">{{ $rInfo['label'] }}</strong>
-                            @if($effectiveDeadline)
-                                <div style="font-size:11px;color:{{ $deadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};margin-top:2px;">
-                                    Deadline: {{ $effectiveDeadline->format('M d, Y') }}@if($deadlinePassed) · Passed @endif
-                                </div>
-                            @endif
-                        </div>
-                        <div style="text-align:right;">
-                            @if($isSubmitted)
-                                <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--success);">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                                    Submitted
-                                </span>
-                                <div style="font-size:10.5px;color:var(--ink-400);margin-top:2px;">{{ optional($rLatest->submitted_at)->format('M d, Y H:i') }}</div>
-                            @else
-                                <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-400);font-weight:600;">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-                                    Not Submitted
-                                </span>
-                            @endif
-                        </div>
+                {{-- Extended Progress Report Upload --}}
+                @if($project->is_extended && !$progressLocked)
+                @php
+                    $progressExtSub = $submissions->where('type', 'progress')->where('version', '>=', 2)->last();
+                    $progressExtDl = $deadlines['readiness'] ?? [];
+                    $progressExtEffectiveDeadline = isset($progressExtDl['extended']) ? $progressExtDl['extended'] : ($progressExtDl['original'] ?? null);
+                    $progressExtDeadlinePassed = $progressExtEffectiveDeadline ? now()->greaterThan($progressExtEffectiveDeadline) : false;
+                @endphp
+                <div style="margin-top:16px;border-top:1px solid var(--ink-100);padding-top:16px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                        <span style="font-size:11px;font-weight:700;color:var(--brand-600);text-transform:uppercase;letter-spacing:.04em;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M12 8v4"/><path d="M12 16h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                            Extended Progress Report
+                        </span>
                     </div>
-                    <div style="margin-top:10px;display:flex;gap:8px;">
-                        @if($isSubmitted)
-                            @if(!$deadlinePassed)
-                                <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/></svg>
-                                    Re-Submit
-                                </button>
+
+                    <div class="ws-upload-card {{ $progressExtDeadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress_extended">
+                        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
+                            <div class="ws-upload-card-icon" style="background:var(--brand-100);color:var(--brand-600);">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            </div>
+                            <div style="flex:1;">
+                                <strong style="font-size:13px;">Extended Progress Report (V2)</strong>
+                                @if($progressExtEffectiveDeadline)
+                                    <div style="font-size:11px;color:{{ $progressExtDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};display:flex;align-items:center;gap:6px;">
+                                        @if($progressExtDeadlinePassed)
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        @endif
+                                        Deadline: {{ $progressExtEffectiveDeadline->format('M d, Y') }}
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+
+                        <div class="ws-current-file" data-type="progress_extended" style="border:1px solid var(--ink-100);border-radius:6px;padding:8px;margin-bottom:8px;min-height:30px;background:var(--sand-50);">
+                            @if($progressExtSub)
+                                <div class="ws-file-row" data-id="{{ $progressExtSub->id }}" style="display:flex;align-items:center;gap:8px;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                                    <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">{{ $progressExtSub->stored_filename }}</a>
+                                    <span style="font-size:10px;color:var(--ink-400);">v{{ $progressExtSub->version }}</span>
+                                    <span style="font-size:10px;color:var(--ink-400);">{{ $progressExtSub->created_at->format('M d, Y H:i') }}</span>
+                                    @if(!$finalLocked)
+                                    <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $progressExtSub->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                    @endif
+                                </div>
+                            @else
+                                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No file uploaded yet.</p>
                             @endif
-                            <a href="{{ route('serveFile2', ['type' => $rType, 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline ws-btn-sm">
-                                <i class="fas fa-external-link-alt" style="margin-right:4px;"></i> View
-                            </a>
-                        @else
-                            <button type="button" class="ws-btn ws-btn-primary ws-btn-sm ws-submit-report-btn" data-type="{{ $rType }}" @if(!$canSubmit) disabled @endif>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
-                                Submit
+                        </div>
+
+                        @if(!$progressExtDeadlinePassed && !$finalLocked)
+                            <input type="file" class="ws-file-input" accept=".pdf">
+                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-upload-btn" style="width:100%;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                {{ $progressExtSub ? 'Re-Upload' : 'Upload Extended Report' }}
                             </button>
-                            <a href="#tab-submissions" onclick="switchTab('tab-submissions', document.querySelector('.ws-tab[data-tab=tab-submissions]'));return false;" class="ws-btn ws-btn-outline ws-btn-sm">
-                                Upload File
-                            </a>
+                            <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
                         @endif
                     </div>
                 </div>
-                @endforeach
-            </div>
+                @endif
+        </div>
 
-            <p style="font-size:11.5px;color:var(--ink-400);margin-top:18px;text-align:center;font-style:italic;">
-                Once a report is submitted, the assigned reviewer is notified and can begin grading that report.
-                You can re-upload and re-submit before the deadline.
-            </p>
+        @if(!$progressLocked)
+        <div class="ws-section-block" data-step="3" style="display:none;">
+            <div class="ws-card" style="max-width:680px;margin:0 auto;padding:28px 32px;">
+                <div style="text-align:center;margin-bottom:20px;">
+                    <div style="width:52px;height:52px;border-radius:12px;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    </div>
+                    <h3 style="font-size:18px;font-weight:600;color:var(--ink-800);margin:0 0 6px;">Ready to Submit?</h3>
+                </div>
+
+                <div style="border:1px solid var(--ink-100);border-radius:8px;padding:16px 18px;background:var(--sand-50);margin-bottom:20px;">
+                    <div style="display:flex;align-items:flex-start;gap:12px;">
+                        <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 16h-1v-4h-1m1-4h.01"/><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        </div>
+                        <div>
+                            <strong style="font-size:13.5px;color:var(--ink-800);">Before you submit, please note:</strong>
+                            <ul style="font-size:12.5px;color:var(--ink-500);margin:6px 0 0;padding-left:18px;line-height:1.8;">
+                                <li>Please review all your information before submitting. Once submitted, you will not be able to make changes.</li>
+                                <li>After the progress report deadline, the data and report will be <strong>submitted automatically to the reviewer</strong>.</li>
+                                @php
+                                    $progressDl = $deadlines['progress'] ?? [];
+                                    $effectiveProgressDl = isset($progressDl['extended']) ? $progressDl['extended'] : ($progressDl['original'] ?? null);
+                                @endphp
+                                @if($effectiveProgressDl)
+                                    <li>Current deadline: <strong>{{ $effectiveProgressDl->format('M d, Y') }}</strong></li>
+                                @endif
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align:center;">
+                    <button type="submit" class="ws-btn ws-btn-primary ws-btn-lg" style="padding:12px 32px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:var(--brand-500, #6c4cf1);color:#fff;display:inline-flex;align-items:center;gap:8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        Save & Submit Progress
+                    </button>
+                    <p style="font-size:11.5px;color:var(--ink-400);margin-top:12px;font-style:italic;">
+                        Your progress report will be sent to the assigned reviewer.
+                    </p>
+                </div>
+            </div>
+        </div>
+        @endif
+
+    </div>
+
+    @if($isFinalMode)
+    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
+    {{-- FINAL REPORT TAB (final mode only) — stepper with 3 steps --}}
+    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
+    <div id="tab-final" class="ws-tab-panel" style="display:none;" role="tabpanel">
+
+        {{-- Final Report Stepper --}}
+        <div class="ws-stepper" style="margin-bottom:20px;">
+            <button type="button" class="ws-stepper-step is-active" data-step="0" onclick="finalGoStep(0)">
+                <span class="ws-stepper-dot"><span class="ws-stepper-num">1</span></span>
+                <span class="ws-stepper-text">Final Report</span>
+            </button>
+            <span class="ws-stepper-connector"></span>
+            <button type="button" class="ws-stepper-step" data-step="1" onclick="finalGoStep(1)">
+                <span class="ws-stepper-dot"><span class="ws-stepper-num">2</span></span>
+                <span class="ws-stepper-text">Readiness Report</span>
+            </button>
+            <span class="ws-stepper-connector"></span>
+            <button type="button" class="ws-stepper-step" data-step="2" onclick="finalGoStep(2)">
+                <span class="ws-stepper-dot"><span class="ws-stepper-num">3</span></span>
+                <span class="ws-stepper-text">Confirm &amp; Submit</span>
+            </button>
+        </div>
+
+        @php
+            $finalDl = $deadlines['final'] ?? [];
+            $finalEffectiveDeadline = isset($finalDl['extended']) ? $finalDl['extended'] : ($finalDl['original'] ?? null);
+            $finalDeadlinePassed = $finalEffectiveDeadline ? now()->greaterThan($finalEffectiveDeadline) : false;
+
+            $readinessDl = $deadlines['readiness'] ?? [];
+            $readinessEffectiveDeadline = isset($readinessDl['extended']) ? $readinessDl['extended'] : ($readinessDl['original'] ?? null);
+            $readinessDeadlinePassed = $readinessEffectiveDeadline ? now()->greaterThan($readinessEffectiveDeadline) : false;
+
+            $finalLatest = $submissions->where('type', 'final')->last();
+            $readinessLatest = $submissions->where('type', 'readiness')->last();
+        @endphp
+
+        {{-- ── STEP 1: Final Report Upload ── --}}
+        <div class="final-step" data-step="0">
+            <div class="ws-card" style="max-width:680px;margin:0 auto;">
+                <div class="ws-card-header">
+                    <span class="ws-card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Final Report
+                    </span>
+                </div>
+                <div class="ws-card-body">
+                    @if($finalEffectiveDeadline)
+                        <div style="font-size:11px;color:{{ $finalDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+                            @if($finalDeadlinePassed)
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                Deadline Passed
+                            @else
+                                Deadline: {{ $finalEffectiveDeadline->format('M d, Y') }}
+                            @endif
+                        </div>
+                    @endif
+
+                    <div class="ws-upload-card {{ $finalDeadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="final">
+                        <div class="ws-current-file" data-type="final" style="border:1px solid var(--ink-100);border-radius:6px;padding:8px;margin-bottom:8px;min-height:30px;background:var(--sand-50);">
+                            @if($finalLatest)
+                                <div class="ws-file-row" data-id="{{ $finalLatest->id }}" style="display:flex;align-items:center;gap:8px;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                                    <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">{{ $finalLatest->stored_filename }}</a>
+                                    <span style="font-size:10px;color:var(--ink-400);">{{ $finalLatest->created_at->format('M d, Y H:i') }}</span>
+                                    @if(!$finalLocked)
+                                    <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $finalLatest->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                    @endif
+                                </div>
+                            @else
+                                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No file uploaded yet.</p>
+                            @endif
+                        </div>
+                        @if(!$finalLocked && !$finalDeadlinePassed)
+                            <input type="file" class="ws-file-input" accept=".pdf">
+                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-upload-btn" style="width:100%;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                {{ $finalLatest ? 'Re-Upload' : 'Upload Final Report' }}
+                            </button>
+                            <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
+                            <a href="{{ route('download.template', 'final') }}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--brand-500);margin-top:6px;text-decoration:none;font-weight:500;">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download Template (DOCX)
+                            </a>
+                        @elseif($finalLocked)
+                            <div style="text-align:center;padding:8px 0;color:var(--ink-400);font-size:11px;">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                Readonly — already submitted
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- ── STEP 2: Readiness Report Upload ── --}}
+        <div class="final-step" data-step="1" style="display:none;">
+            <div class="ws-card" style="max-width:680px;margin:0 auto;">
+                <div class="ws-card-header">
+                    <span class="ws-card-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Readiness Report
+                    </span>
+                </div>
+                <div class="ws-card-body">
+                    @if($readinessEffectiveDeadline)
+                        <div style="font-size:11px;color:{{ $readinessDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+                            @if($readinessDeadlinePassed)
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                Deadline Passed
+                            @else
+                                Deadline: {{ $readinessEffectiveDeadline->format('M d, Y') }}
+                            @endif
+                        </div>
+                    @endif
+
+                    <div class="ws-upload-card {{ $readinessDeadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="readiness">
+                        <div class="ws-current-file" data-type="readiness" style="border:1px solid var(--ink-100);border-radius:6px;padding:8px;margin-bottom:8px;min-height:30px;background:var(--sand-50);">
+                            @if($readinessLatest)
+                                <div class="ws-file-row" data-id="{{ $readinessLatest->id }}" style="display:flex;align-items:center;gap:8px;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                                    <a href="{{ route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">{{ $readinessLatest->stored_filename }}</a>
+                                    <span style="font-size:10px;color:var(--ink-400);">{{ $readinessLatest->created_at->format('M d, Y H:i') }}</span>
+                                    @if(!$finalLocked)
+                                    <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $readinessLatest->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                    @endif
+                                </div>
+                            @else
+                                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No file uploaded yet.</p>
+                            @endif
+                        </div>
+                        @if(!$finalLocked && !$readinessDeadlinePassed)
+                            <input type="file" class="ws-file-input" accept=".pdf">
+                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-upload-btn" style="width:100%;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                {{ $readinessLatest ? 'Re-Upload' : 'Upload Readiness Report' }}
+                            </button>
+                            <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
+                            <a href="{{ route('download.template', 'readiness') }}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--brand-500);margin-top:6px;text-decoration:none;font-weight:500;">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Download Template (DOCX)
+                            </a>
+                        @elseif($finalLocked)
+                            <div style="text-align:center;padding:8px 0;color:var(--ink-400);font-size:11px;">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                Readonly — already submitted
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- ── STEP 3: Confirm & Submit ── --}}
+        <div class="final-step" data-step="2" style="display:none;">
+            <div class="ws-card" style="max-width:680px;margin:0 auto;padding:28px 32px;">
+                <div style="text-align:center;margin-bottom:20px;">
+                    <div style="width:52px;height:52px;border-radius:12px;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    </div>
+                    <h2 style="font-size:18px;font-weight:600;color:var(--ink-800);margin:0 0 6px;">Confirm & Submit</h2>
+                </div>
+
+                @if(!$finalLocked)
+                <div style="border:1px solid var(--ink-100);border-radius:8px;padding:16px 18px;background:var(--sand-50);margin-bottom:20px;">
+                    <div style="display:flex;align-items:flex-start;gap:12px;">
+                        <div style="width:34px;height:34px;border-radius:50%;background:#fef3c7;color:#92400e;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                        </div>
+                        <div>
+                            <strong style="font-size:13.5px;color:var(--ink-800);">Before you confirm, please note:</strong>
+                            <ul style="font-size:12.5px;color:var(--ink-500);margin:6px 0 0;padding-left:18px;line-height:1.8;">
+                                <li>Upload both the <strong>Readiness Report</strong> and <strong>Final Report</strong> before submitting.</li>
+                                <li>By confirming, you will <strong>not be able to upload or replace</strong> the Final and Readiness Report files.</li>
+                                <li>Once confirmed, the reviewer will be notified to grade the final report.</li>
+                                <li>If the final report deadline passes without confirmation, the report will be <strong>submitted automatically</strong>.</li>
+                                @php
+                                    $effectiveDl = $finalEffectiveDeadline ?? $readinessEffectiveDeadline;
+                                @endphp
+                                @if($effectiveDl)
+                                    <li>Current deadline: <strong>{{ $effectiveDl->format('M d, Y') }}</strong></li>
+                                @endif
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align:center;">
+                    <button type="button" onclick="confirmFinalSubmit()" style="padding:12px 32px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:var(--brand-500, #6c4cf1);color:#fff;display:inline-flex;align-items:center;gap:8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        Confirm & Submit Final Report
+                    </button>
+                    <p style="font-size:11.5px;color:var(--ink-400);margin-top:12px;font-style:italic;">
+                        The reviewer will be notified to grade the final report.
+                    </p>
+                </div>
+                @else
+                <div style="text-align:center;padding:20px;color:var(--ink-400);">
+                    <p style="font-size:13px;"><i class="fas fa-check-circle" style="color:var(--success);margin-right:6px;"></i> Final report has already been submitted.</p>
+                </div>
+                @endif
+            </div>
         </div>
     </div>
+    @endif
+
 
 </form>
 @endsection
@@ -633,11 +1313,84 @@
     transition: box-shadow .15s, border-color .15s;
 }
 .ws-card:hover { box-shadow: var(--fluent-depth-4); border-color: var(--ink-200); }
-.ws-section-title {
-    font-size: 16px;
+.ws-section-block {
+    margin-bottom: 28px;
+    padding: 0 2px;
+}
+.ws-section-block:last-child { margin-bottom: 0; }
+
+.ws-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid var(--ink-100);
+    border-radius: 8px;
+}
+.ws-stepper-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    transition: all .15s ease;
+    font-family: inherit;
+}
+.ws-stepper-step:hover { background: var(--ink-50); }
+.ws-stepper-step.is-active { background: var(--brand-50); }
+.ws-stepper-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--ink-200);
+    color: var(--ink-600);
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    transition: all .15s ease;
+}
+.ws-stepper-step.is-active .ws-stepper-dot {
+    background: var(--brand-500);
+    color: #fff;
+}
+.ws-stepper-num { line-height: 1; }
+.ws-stepper-check { display: none; }
+.ws-stepper-step.is-completed .ws-stepper-dot {
+    background: var(--success, #22c55e);
+    color: #fff;
+}
+.ws-stepper-step.is-completed .ws-stepper-num { display: none; }
+.ws-stepper-step.is-completed .ws-stepper-check { display: block; }
+.ws-stepper-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-600);
+    white-space: nowrap;
+}
+.ws-stepper-step.is-active .ws-stepper-text {
     font-weight: 600;
     color: var(--brand-700);
-    margin: 0 0 14px;
+}
+.ws-stepper-connector {
+    flex: 1;
+    height: 2px;
+    background: var(--ink-200);
+    margin: 0 4px;
+    min-width: 20px;
+}
+.ws-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--brand-700);
+    margin: 0 0 12px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -954,6 +1707,34 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
+    @if($progressLocked)
+    // ═══════════════════════════════════════════════════════════════════════
+    // READONLY MODE — progress report submitted or final mode: lock progress inputs
+    // ═══════════════════════════════════════════════════════════════════════
+    var progressPanel = document.getElementById('tab-progress-update');
+    if (progressPanel) {
+        progressPanel.querySelectorAll('input, textarea, select, button').forEach(function(el) {
+            if (!el.closest('.ws-stepper')) {
+                el.disabled = true;
+                el.readOnly = true;
+            }
+        });
+    }
+    @endif
+
+    @if($finalLocked)
+    // ═══════════════════════════════════════════════════════════════════════
+    // READONLY MODE — final report already submitted: lock final inputs
+    // ═══════════════════════════════════════════════════════════════════════
+    var finalPanel = document.getElementById('tab-final');
+    if (finalPanel) {
+        finalPanel.querySelectorAll('input, textarea, select, button').forEach(function(el) {
+            el.disabled = true;
+            el.readOnly = true;
+        });
+    }
+    @endif
+
     // ═══════════════════════════════════════════════════════════════════════
     // TAB SWITCHING
     // ═══════════════════════════════════════════════════════════════════════
@@ -969,9 +1750,73 @@ document.addEventListener('DOMContentLoaded', function() {
         if (panel) panel.style.display = 'block';
     };
 
-    // Ensure first tab is active on load
+    // Confirm Final Submit with confirmation dialog
+    window.confirmFinalSubmit = function() {
+        var hasReadiness = document.querySelector('.ws-upload-card[data-type="readiness"] .ws-file-row') !== null;
+        var hasFinal = document.querySelector('.ws-upload-card[data-type="final"] .ws-file-row') !== null;
+
+        if (!hasReadiness && !hasFinal) {
+            alert('Please upload at least the Readiness Report or Final Report before confirming.');
+            return;
+        }
+
+        var msg = 'Are you sure you want to submit the final report?\n\n';
+        msg += 'By confirming:\n';
+        msg += '• You will NOT be able to replace the Final or Readiness Report files.\n';
+        msg += '• The reviewer will be notified to grade the final report.\n\n';
+        msg += 'Continue with submission?';
+
+        if (confirm(msg)) {
+            document.getElementById('mainProgressForm').submit();
+        }
+    };
+
+    // Ensure the right tab is active on load (Final Report tab by default in final mode)
+    @if($isFinalMode)
+    var finalTabBtn = document.querySelector('.ws-tab[data-tab=tab-final]');
+    if (finalTabBtn) {
+        finalTabBtn.classList.add('active');
+        switchTab('tab-final', finalTabBtn);
+    }
+    // Initialize final report stepper - show step 0
+    if (typeof finalGoStep === 'function') finalGoStep(0);
+    @endif
     var firstTab = document.querySelector('.ws-tab.active');
-    if (firstTab) firstTab.click();
+    if (firstTab && firstTab.getAttribute('data-tab') !== 'tab-final') firstTab.click();
+
+    // Final Report stepper
+    window.finalGoStep = function(n) {
+        document.querySelectorAll('.final-step').forEach(function(s, i) {
+            s.style.display = (i === n) ? 'block' : 'none';
+        });
+        document.querySelectorAll('#tab-final .ws-stepper-step').forEach(function(s, i) {
+            s.classList.toggle('is-active', i === n);
+        });
+    };
+
+    // Wizard steps inside Progress Update tab
+    (function() {
+        var blocks = document.querySelectorAll('#tab-progress-update .ws-section-block');
+        blocks.forEach(function(b, i) {
+            b.setAttribute('data-step', i);
+            if (i > 0) b.style.display = 'none';
+        });
+        function wsGoStep(n) {
+            blocks.forEach(function(b, i) {
+                b.style.display = (i === n) ? 'block' : 'none';
+            });
+            document.querySelectorAll('.ws-stepper-step').forEach(function(s, i) {
+                s.classList.remove('is-active');
+                s.classList.remove('is-completed');
+                if (i < n) s.classList.add('is-completed');
+                else if (i === n) s.classList.add('is-active');
+            });
+        }
+        document.querySelectorAll('.ws-stepper-step').forEach(function(step, idx) {
+            step.addEventListener('click', function() { wsGoStep(idx); });
+        });
+        wsGoStep(0);
+    })();
 
     // ═══════════════════════════════════════════════════════════════════════
     // TOGGLE: Show/hide detail textareas on Yes/No toggle
@@ -1056,33 +1901,52 @@ document.addEventListener('DOMContentLoaded', function() {
         var row = document.createElement('div');
         row.className = 'student-item-row';
         row.setAttribute('data-type', type);
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;';
+        row.style.cssText = 'padding:10px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;';
 
-        var pill = document.createElement('span');
-        pill.className = 'ws-pill ws-pill-brand';
-        pill.style.flexShrink = '0';
-        pill.textContent = studentLevelLabels[type] || type;
-        row.appendChild(pill);
+        // Add hidden inputs
+        row.innerHTML = '<input type="hidden" name="students[new][' + type + ']" value="' + stdId + '">';
 
-        var text = document.createElement('span');
-        text.style.cssText = 'flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);word-break:break-all;';
-        text.textContent = stdId;
-        row.appendChild(text);
+        // Main row container
+        var inner = document.createElement('div');
+        inner.style.cssText = 'display:flex;align-items:center;gap:10px;';
 
+        // Level tag
+        var levelTag = document.createElement('span');
+        levelTag.className = 'level-tag';
+        levelTag.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:4px;background:var(--ink-200);color:var(--ink-600);font-weight:500;flex-shrink:0;';
+        levelTag.textContent = type === 'UG' ? 'UG' : (type === 'masters' ? 'MSc' : 'PhD');
+        inner.appendChild(levelTag);
+
+        // Student ID (flex:1 like articles DOI)
+        var idText = document.createElement('span');
+        idText.style.cssText = 'flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        idText.textContent = stdId;
+        inner.appendChild(idText);
+
+        // Loading indicator
+        var loadingBadge = document.createElement('span');
+        loadingBadge.className = 'verified-loading';
+        loadingBadge.style.cssText = 'font-size:9px;padding:2px 5px;border-radius:3px;background:var(--ink-200);color:var(--ink-500);font-weight:500;flex-shrink:0;';
+        loadingBadge.textContent = '...';
+        inner.appendChild(loadingBadge);
+
+        // Days
         var daysSpan = document.createElement('span');
-        daysSpan.style.cssText = 'font-size:11px;color:var(--ink-500);white-space:nowrap;';
-        daysSpan.textContent = days + ' days';
-        row.appendChild(daysSpan);
+        daysSpan.style.cssText = 'font-size:10px;color:var(--ink-500);flex-shrink:0;white-space:nowrap;';
+        daysSpan.textContent = days + 'd';
+        inner.appendChild(daysSpan);
 
+        // Delete button
         var delBtn = document.createElement('button');
         delBtn.type = 'button';
         delBtn.className = 'ws-btn-icon ws-btn-icon-danger';
         delBtn.title = 'Delete';
-        delBtn.style.cssText = 'flex-shrink:0;width:26px;height:26px;';
-        delBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+        delBtn.style.cssText = 'flex-shrink:0;width:22px;height:22px;';
+        delBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
         delBtn.onclick = function() { row.remove(); };
-        row.appendChild(delBtn);
+        inner.appendChild(delBtn);
 
+        row.appendChild(inner);
         list.appendChild(row);
 
         // Reset inputs
@@ -1092,6 +1956,70 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Save to DB
         saveSingleStudent(type, stdId, days, row);
+    };
+
+    // Retry verification for a student
+    window.retryStudentVerification = function(btn, studentId, stdId) {
+        btn.disabled = true;
+        btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
+        fetch('{{ route("progress.retry-student-verification", $project->id) }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('input[name="_token"]')?.value || '',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ student_id: studentId, std_id: stdId })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success && data.student) {
+                showToast('success', 'Student verified successfully.');
+                location.reload();
+            } else {
+                showToast('error', data.error || 'Student not found in API.');
+                btn.disabled = false;
+                btn.innerHTML = 'Verify';
+            }
+        })
+        .catch(function(err) {
+            showToast('error', 'Network error: ' + err.message);
+            btn.disabled = false;
+            btn.innerHTML = 'Verify';
+        });
+    };
+
+    // Verify outcome (article) via API
+    window.verifyOutcome = function(btn, outcomeId, doi) {
+        btn.disabled = true;
+        btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
+        fetch('{{ route("progress.verify-outcome", $project->id) }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('input[name="_token"]')?.value || '',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ outcome_id: outcomeId, doi: doi })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success && data.publication) {
+                showToast('success', 'Article verified successfully.');
+                location.reload();
+            } else {
+                showToast('error', data.error || 'DOI not found in CrossRef API.');
+                btn.disabled = false;
+                btn.innerHTML = 'Verify';
+            }
+        })
+        .catch(function(err) {
+            showToast('error', 'Network error: ' + err.message);
+            btn.disabled = false;
+            btn.innerHTML = 'Verify';
+        });
     };
 
     window.addResearcherRecord = function() {
@@ -1183,25 +2111,39 @@ document.addEventListener('DOMContentLoaded', function() {
     function buildOutcomeRow(rowClass, type, detail, label) {
         var row = document.createElement('div');
         row.className = rowClass;
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;';
+        row.style.cssText = 'padding:10px 12px;background:var(--ink-50);border:1px solid var(--ink-100);border-radius:6px;';
 
+        // Inner flex container
+        var inner = document.createElement('div');
+        inner.style.cssText = 'display:flex;align-items:center;gap:10px;';
+
+        // Hidden input for detail
         var hidden = document.createElement('input');
         hidden.type = 'hidden';
         hidden.name = 'outcomes[' + type + '][detail][]';
         hidden.value = detail;
-        row.appendChild(hidden);
+        inner.appendChild(hidden);
 
-        var pill = document.createElement('span');
-        pill.className = 'ws-pill ws-pill-brand';
-        pill.style.flexShrink = '0';
-        pill.textContent = label;
-        row.appendChild(pill);
+        // Generic book icon (will be replaced by publisher badge after API call)
+        var icon = document.createElement('div');
+        icon.className = 'publisher-icon';
+        icon.style.cssText = 'width:22px;height:22px;border-radius:4px;background:var(--ink-200);display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+        icon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--ink-500)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+        inner.appendChild(icon);
 
+        // Type tag
+        var typeTag = document.createElement('span');
+        typeTag.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:4px;background:var(--ink-200);color:var(--ink-600);font-weight:500;flex-shrink:0;';
+        typeTag.textContent = label;
+        inner.appendChild(typeTag);
+
+        // DOI text
         var text = document.createElement('span');
-        text.style.cssText = 'flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);word-break:break-all;';
+        text.style.cssText = 'flex:1;font-family:monospace;font-size:12px;color:var(--ink-700);';
         text.textContent = detail;
-        row.appendChild(text);
+        inner.appendChild(text);
 
+        // Delete button
         var delBtn = document.createElement('button');
         delBtn.type = 'button';
         delBtn.className = 'ws-btn-icon ws-btn-icon-danger';
@@ -1209,7 +2151,9 @@ document.addEventListener('DOMContentLoaded', function() {
         delBtn.style.cssText = 'flex-shrink:0;width:26px;height:26px;';
         delBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
         delBtn.addEventListener('click', function() { row.remove(); });
-        row.appendChild(delBtn);
+        inner.appendChild(delBtn);
+
+        row.appendChild(inner);
 
         return row;
     }
@@ -1235,7 +2179,88 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (delBtn) {
                     delBtn.onclick = function() { deleteOutcomeRecord(delBtn, data.id); };
                 }
-                showToast('success', 'Record saved.');
+
+                // If publication details were fetched, display them with link
+                if (data.publication) {
+                    var pub = data.publication;
+                    var inner = row.querySelector('div');
+                    
+                    // Replace generic icon with publisher badge
+                    var journal = (pub.journal || '').toLowerCase();
+                    var publisherBadge = '';
+                    var publisherColor = '555555';
+                    var publisherName = pub.journal || 'Publisher';
+                    
+                    if (journal.indexOf('springer') !== -1) { publisherBadge = 'Springer'; publisherColor = '0d6b3b'; }
+                    else if (journal.indexOf('elsevier') !== -1 || journal.indexOf('sciencedirect') !== -1) { publisherBadge = 'Elsevier'; publisherColor = 'ff6c0f'; }
+                    else if (journal.indexOf('ieee') !== -1) { publisherBadge = 'IEEE'; publisherColor = '00629b'; }
+                    else if (journal.indexOf('wiley') !== -1) { publisherBadge = 'Wiley'; publisherColor = '005a9c'; }
+                    else if (journal.indexOf('taylor') !== -1 || journal.indexOf('francis') !== -1) { publisherBadge = 'T%26F'; publisherColor = 'b7282e'; }
+                    else if (journal.indexOf('mdpi') !== -1) { publisherBadge = 'MDPI'; publisherColor = '0067a5'; }
+                    else if (journal.indexOf('acm') !== -1) { publisherBadge = 'ACM'; publisherColor = '0076a8'; }
+                    else if (journal.indexOf('nature') !== -1) { publisherBadge = 'Nature'; publisherColor = '0070c0'; }
+                    else if (journal.indexOf('science') !== -1) { publisherBadge = 'Science'; publisherColor = 'cc0000'; }
+                    
+                    var iconEl = row.querySelector('.publisher-icon');
+                    if (iconEl && publisherBadge) {
+                        var img = document.createElement('img');
+                        img.src = 'https://img.shields.io/badge/' + publisherBadge + '-' + publisherColor + '?style=flat&logo=&logoColor=white';
+                        img.alt = publisherName;
+                        img.style.cssText = 'height:18px;flex-shrink:0;';
+                        img.title = publisherName;
+                        iconEl.parentNode.replaceChild(img, iconEl);
+                    }
+                    
+                    // Add verified badge after type tag
+                    var typeTag = row.querySelector('span[style*="background:var(--ink-200)"]');
+                    if (typeTag) {
+                        var verifiedBadge = document.createElement('span');
+                        verifiedBadge.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:4px;background:#d1fae5;color:#065f46;font-weight:500;flex-shrink:0;display:inline-flex;align-items:center;gap:3px;';
+                        verifiedBadge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Verified';
+                        typeTag.parentNode.insertBefore(verifiedBadge, typeTag.nextSibling);
+                    }
+                    
+                    // Add view link before delete button
+                    if (pub.url) {
+                        var viewLink = document.createElement('a');
+                        viewLink.href = pub.url;
+                        viewLink.target = '_blank';
+                        viewLink.style.cssText = 'color:var(--brand-500);text-decoration:none;font-size:11px;display:inline-flex;align-items:center;gap:3px;flex-shrink:0;';
+                        viewLink.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> View';
+                        var delBtn = row.querySelector('.ws-btn-icon-danger');
+                        if (delBtn) delBtn.parentNode.insertBefore(viewLink, delBtn);
+                    }
+                    
+                    // Add publication info below
+                    var pubInfo = document.createElement('div');
+                    pubInfo.className = 'publication-info';
+                    pubInfo.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid var(--ink-100);font-size:11px;color:var(--ink-500);';
+                    var pubHtml = '';
+                    if (pub.title) pubHtml += '<span style="font-weight:500;color:var(--ink-700);">' + escapeHtml(pub.title.substring(0, 60)) + '</span>';
+                    if (pub.journal) pubHtml += ' — ' + escapeHtml(pub.journal);
+                    if (pub.year) pubHtml += ' (' + pub.year + ')';
+                    pubInfo.innerHTML = pubHtml;
+                    row.appendChild(pubInfo);
+                } else {
+                    // API failed - add Not Verified badge and Verify button
+                    var typeTag = row.querySelector('span[style*="background:var(--ink-200)"]');
+                    if (typeTag) {
+                        var notVerifiedBadge = document.createElement('span');
+                        notVerifiedBadge.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:500;flex-shrink:0;';
+                        notVerifiedBadge.textContent = 'Not Verified';
+                        typeTag.parentNode.insertBefore(notVerifiedBadge, typeTag.nextSibling);
+                        
+                        var verifyBtn = document.createElement('button');
+                        verifyBtn.type = 'button';
+                        verifyBtn.className = 'ws-btn ws-btn-outline';
+                        verifyBtn.style.cssText = 'font-size:10px;padding:2px 8px;height:auto;flex-shrink:0;';
+                        verifyBtn.innerHTML = 'Verify';
+                        verifyBtn.onclick = function() { verifyOutcome(verifyBtn, data.id, detail); };
+                        typeTag.parentNode.insertBefore(verifyBtn, notVerifiedBadge.nextSibling);
+                    }
+                }
+
+                showToast('success', data.message || 'Record saved.');
             } else {
                 showToast('error', data.error || 'Failed to save record.');
                 row.remove();
@@ -1245,6 +2270,12 @@ document.addEventListener('DOMContentLoaded', function() {
             showToast('error', 'Network error: ' + err.message);
             row.remove();
         });
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
     }
 
     // Delete an outcome record (both pre-existing and just-saved) from the DB
@@ -1342,6 +2373,72 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.setAttribute('data-id', data.id);
                 var delBtn = row.querySelector('.ws-btn-icon-danger');
                 if (delBtn) delBtn.onclick = function() { deleteStudentRecord(delBtn, data.id); };
+
+                // Show student details from API if available
+                if (data.student) {
+                    var std = data.student;
+                    var inner = row.querySelector('div');
+                    
+                    // Update level tag with API level
+                    var levelTag = row.querySelector('.level-tag');
+                    if (levelTag && std.std_level) {
+                        levelTag.style.cssText = 'font-size:10px;padding:2px 8px;border-radius:4px;background:var(--brand-100);color:var(--brand-700);font-weight:600;flex-shrink:0;';
+                        levelTag.textContent = std.std_level;
+                    }
+                    
+                    // Replace loading badge with verified badge
+                    var loadingBadge = row.querySelector('.verified-loading');
+                    if (loadingBadge) {
+                        var verifiedBadge = document.createElement('span');
+                        verifiedBadge.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:4px;background:#d1fae5;color:#065f46;font-weight:500;display:inline-flex;align-items:center;gap:3px;flex-shrink:0;';
+                        verifiedBadge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Verified';
+                        loadingBadge.parentNode.replaceChild(verifiedBadge, loadingBadge);
+                    }
+                    
+                    // Add status badge after verified badge
+                    if (std.student_status && inner) {
+                        var statusBadge = document.createElement('span');
+                        statusBadge.className = 'ws-pill ' + (std.student_status === 'Active' ? 'ws-pill-success' : 'ws-pill-ink');
+                        statusBadge.style.cssText = 'font-size:10px;padding:2px 6px;flex-shrink:0;';
+                        statusBadge.textContent = std.student_status;
+                        var delBtn = inner.querySelector('.ws-btn-icon-danger');
+                        if (delBtn) inner.insertBefore(statusBadge, delBtn);
+                    }
+                    
+                    // Add details row below
+                    if (std.full_name || std.college || std.std_program || std.major) {
+                        var detailsDiv = document.createElement('div');
+                        detailsDiv.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid var(--ink-100);font-size:11px;color:var(--ink-500);';
+                        var detailsHtml = '';
+                        if (std.full_name) detailsHtml += '<span style="font-weight:500;color:var(--ink-700);">' + escapeHtml(std.full_name) + '</span>';
+                        if (std.college) detailsHtml += ' — ' + escapeHtml(std.college);
+                        if (std.std_program) detailsHtml += ' (' + escapeHtml(std.std_program) + ')';
+                        if (std.major) detailsHtml += ' | ' + escapeHtml(std.major);
+                        detailsDiv.innerHTML = detailsHtml;
+                        row.appendChild(detailsDiv);
+                    }
+                } else {
+                    // No API response - show Not Verified with retry button
+                    var inner = row.querySelector('div');
+                    var loadingBadge = row.querySelector('.verified-loading');
+                    
+                    if (loadingBadge && inner) {
+                        var notVerifiedBadge = document.createElement('span');
+                        notVerifiedBadge.style.cssText = 'font-size:10px;padding:2px 6px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:500;display:inline-flex;align-items:center;gap:3px;flex-shrink:0;';
+                        notVerifiedBadge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Not Verified';
+                        loadingBadge.parentNode.replaceChild(notVerifiedBadge, loadingBadge);
+                        
+                        var retryBtn = document.createElement('button');
+                        retryBtn.type = 'button';
+                        retryBtn.className = 'ws-btn ws-btn-outline';
+                        retryBtn.style.cssText = 'font-size:10px;padding:2px 8px;height:auto;flex-shrink:0;';
+                        retryBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Retry';
+                        retryBtn.onclick = function() { retryStudentVerification(retryBtn, data.id, stdId); };
+                        var delBtn = inner.querySelector('.ws-btn-icon-danger');
+                        if (delBtn) inner.insertBefore(retryBtn, delBtn);
+                    }
+                }
+
                 showToast('success', 'Student saved.');
             } else {
                 showToast('error', data.error || 'Failed to save student.');
@@ -1529,8 +2626,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Upload handler
-    var uploadGrid = document.getElementById('ws-upload-grid');
-    if (uploadGrid) {
+    ['ws-upload-grid', 'ws-final-upload-grid', 'tab-final'].forEach(function(gridId) {
+        var uploadGrid = document.getElementById(gridId);
+        if (!uploadGrid) return;
         uploadGrid.querySelectorAll('.ws-upload-card').forEach(function(card) {
             var fileInput = card.querySelector('.ws-file-input');
             var uploadBtn = card.querySelector('.ws-upload-btn');
@@ -1618,57 +2716,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
         });
-    }
+    });
 
     // Initialize delete handlers on page load
     attachDeleteHandlers();
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // PER-REPORT SUBMIT — official submission of a single report type
-    // (progress / final / readiness). Posts to /progress/{id}/submit-report.
-    // ═══════════════════════════════════════════════════════════════════════
-    function bindSubmitReportButtons() {
-        document.querySelectorAll('.ws-submit-report-btn').forEach(function(btn) {
-            if (btn.dataset.bound) return;
-            btn.dataset.bound = '1';
-            btn.addEventListener('click', function() {
-                if (btn.disabled) return;
-                var type = btn.getAttribute('data-type');
-                var csrf = document.querySelector('meta[name="csrf-token"]');
-                var original = btn.innerHTML;
-                btn.disabled = true;
-                btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin" style="margin-right:4px;"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Submitting…';
-
-                fetch('{{ route("progress.submit-report", $project->id) }}', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': csrf ? csrf.content : '',
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ type: type })
-                })
-                .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-                .then(function(res) {
-                    if (res.ok && res.data.success) {
-                        showToast('success', res.data.message || 'Report submitted.');
-                        setTimeout(function() { location.reload(); }, 900);
-                    } else {
-                        showToast('error', res.data.error || 'Submission failed.');
-                        btn.disabled = false;
-                        btn.innerHTML = original;
-                    }
-                })
-                .catch(function(err) {
-                    showToast('error', 'Network error: ' + err.message);
-                    btn.disabled = false;
-                    btn.innerHTML = original;
-                });
-            });
-        });
-    }
-
-    bindSubmitReportButtons();
 });
 </script>
 <style>

@@ -9,6 +9,9 @@
         <h1><i class="fas fa-project-diagram"></i> Project Details</h1>
     </div>
     <div class="page-actions">
+        <a href="{{ route('projects.report-card', $project->id) }}" class="btn-secondary" target="_blank">
+            <i class="fas fa-print"></i> Project Report Card
+        </a>
         <a href="{{ route('projects.available') }}" class="btn-secondary">
             <i class="fas fa-arrow-left"></i> Back to Projects
         </a>
@@ -31,6 +34,21 @@
 </div>
 @endif
 
+{{-- Core Project Info --}}
+<div style="display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 18px; background:linear-gradient(135deg, #fafbfc 0%, #f5f6f8 100%); border:1px solid var(--ink-100); border-radius:8px; margin-bottom:16px; font-size:13px;">
+    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+        <span style="font-weight:700; color:#8d1b3d; font-family:monospace;">{{ $project->old_project_id }}</span>
+        <span style="color:var(--ink-300);">·</span>
+        <span style="font-weight:600; color:var(--ink-800); max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ $project->title }}</span>
+        <span style="color:var(--ink-300);">·</span>
+        <span style="color:var(--ink-600);">{{ $project->grant->grant_name ?? $project->program->grant->grant_name ?? '—' }}</span>
+        <span style="color:var(--ink-300);">·</span>
+        <span style="color:var(--ink-600);">{{ $project->program->program_title ?? '—' }}</span>
+        <span style="color:var(--ink-300);">·</span>
+        <span style="color:var(--ink-600);">{{ $project->lpi->email ?? '—' }}</span>
+    </div>
+</div>
+
 @if(!auth()->user()->isReviewer())
 {{-- Lifecycle Progress Bar + Inline Actions --}}
 <div class="panel" style="margin-bottom: 22px;">
@@ -51,11 +69,12 @@
             $actionLookup = [];
             foreach ($availableActions as $act) {
                 $actionType = $act['action'];
-                if ($actionType === 'register') $actionLookup['submission'] = $act;
-                elseif (in_array($actionType, ['progress'])) $actionLookup['registered'] = $act;
-                elseif (in_array($actionType, ['assign'])) $actionLookup['progress'] = $act;
+                if ($actionType === 'register') $actionLookup['registered'] = $act;
+                elseif (in_array($actionType, ['progress'])) $actionLookup['progress_added'] = $act;
+                elseif (in_array($actionType, ['final-report'])) $actionLookup['progress_reviewed'] = $act;
+                elseif (in_array($actionType, ['assign'])) $actionLookup['assigned'] = $act;
                 elseif (in_array($actionType, ['claim'])) $actionLookup['assigned'] = $act;
-                elseif (in_array($actionType, ['progress-grade', 'final-grade'])) $actionLookup['claimed'] = $act;
+                elseif (in_array($actionType, ['progress-grade', 'final-grade'])) $actionLookup['progress_added'] = $act;
                 elseif (in_array($actionType, ['report-card'])) $actionLookup['graded'] = $act;
             }
         @endphp
@@ -139,128 +158,145 @@
         $commitment->ethical || $commitment->master || $commitment->UG || $commitment->Phd || $commitment->crossCollege
     );
     $outcomes = $project->outcomes()->orderBy('created_at', 'desc')->get();
-    $hasOutcomes = $outcomes->count() > 0;
-    $outcomesByType = $outcomes->count() > 0 ? $outcomes->groupBy('type')->map(function($items, $type) {
-        return ['type' => $type, 'count' => $items->count()];
-    })->sortBy('type')->values() : collect();
+
+    // LPI progress report data (shown to LPI / Admin, not reviewers)
+    $isViewer = auth()->user()->isReviewer();
+
+    $scholarlyTypes = [
+        'journal_q1'    => 'Journal articles (Web of Science — Q1)',
+        'journal_q2'    => 'Journal articles (Web of Science — Q2)',
+        'journal_q3'    => 'Journal articles (Web of Science — Q3)',
+        'journal_q4'    => 'Journal articles (Web of Science — Q4)',
+        'conference'    => 'Indexed international conferences',
+        'book'          => 'Published Books',
+        'edited_book'   => 'Edited Books (collection)',
+        'book_chapter'  => 'Book Chapters',
+    ];
+    $ipTypes = [
+        'ip_disclosure'      => 'Intellectual Property Disclosure',
+        'provisional_patent' => 'Provisional Patent',
+        'patent_granted'     => 'Patents Granted',
+        'open_source_sw'     => 'Open Source Software',
+        'startup'            => 'Start-Up Created',
+    ];
+    $contribTypeKeys = array_merge(array_keys($ipTypes), ['cross_college', 'research_awards']);
+    $scholarlyOutcomes = $outcomes->filter(function($o) use ($contribTypeKeys) { return !in_array($o->type, $contribTypeKeys); });
+    $ipOutcomes = $outcomes->whereIn('type', array_keys($ipTypes));
+    $crossCollegeOutcome = $outcomes->where('type', 'cross_college')->first();
+    $researchAwardsOutcome = $outcomes->where('type', 'research_awards')->first();
+
+    $students = $project->students()->orderBy('type')->get();
+    $researchers = $project->researchers()->orderBy('created_at')->get();
+    $contributions = $project->contributions()->orderBy('created_at')->get();
+    $submissions = $project->submissions()->orderBy('created_at', 'desc')->get();
 @endphp
 
-{{-- 3-Column Row: Core Information | Commitments | Outcomes --}}
-<div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap:14px; margin-bottom:22px; align-items:start;">
-
-    {{-- 1: Core Information --}}
-    <div class="panel" style="margin-bottom:0;">
+{{-- Commitments vs Outcomes --}}
+<div style="margin-bottom:22px;">
+    <div class="panel">
         <div class="panel-head">
-            <h2><i class="fas fa-info-circle"></i> Core Information</h2>
-        </div>
-        <div class="panel-body" style="display:grid; gap:8px;">
-            <div class="detail-row">
-                <span class="detail-label">Project ID</span>
-                <span class="detail-value"><code>{{ $project->old_project_id }}</code></span>
-            </div>
-            <div class="detail-row">
-                <span class="detail-label">Title</span>
-                <span class="detail-value" style="font-weight:600;">{{ $project->title }}</span>
-            </div>
-            <div class="detail-row">
-                <span class="detail-label">Research Call</span>
-                <span class="detail-value">{{ $project->program->program_title ?? '—' }}</span>
-            </div>
-            <div class="detail-row">
-                <span class="detail-label">Grant</span>
-                <span class="detail-value">
-                    @if($project->program && $project->program->grant)
-                        <span class="pill info">{{ $project->program->grant->grant_code }}</span>
-                        {{ $project->program->grant->grant_title }}
-                    @else
-                        —
-                    @endif
-                </span>
-            </div>
-            <div class="detail-row">
-                <span class="detail-label">PI Name</span>
-                <span class="detail-value">{{ $project->lpi->name ?? $project->author ?? '—' }}</span>
-            </div>
-            <div class="detail-row">
-                <span class="detail-label">PI Email</span>
-                <span class="detail-value">{{ $project->lpi->email ?? $project->email ?? '—' }}</span>
-            </div>
-        </div>
-    </div>
-
-    {{-- 2: Commitments --}}
-    <div class="panel" style="margin-bottom:0; overflow:hidden;">
-        <div class="panel-head">
-            <h2><i class="fas fa-handshake"></i> Commitments</h2>
+            <h2><i class="fas fa-chart-bar"></i> Commitments vs Outcomes</h2>
         </div>
         <div class="panel-body" style="display:flex; flex-direction:column; gap:16px;">
                 @if($hasCommitments)
-                {{-- Publications --}}
+                @php
+                    $totalCount = $project->outcomes->count();
+                @endphp
+
+                {{-- Summary Stats --}}
+                <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;">
+                    <div style="padding:12px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:8px; text-align:center;">
+                        <div style="font-size:24px; font-weight:700; color:var(--brand-600);">{{ $totalCount }}</div>
+                        <div style="font-size:11px; color:var(--ink-500); text-transform:uppercase;">Total Outcomes</div>
+                    </div>
+                    <div style="padding:12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; text-align:center;">
+                        <div style="font-size:24px; font-weight:700; color:#059669;">{{ $commitmentsData['verifiedCount'] }}</div>
+                        <div style="font-size:11px; color:var(--ink-500); text-transform:uppercase;">Verified</div>
+                    </div>
+                    <div style="padding:12px; background:#fefce8; border:1px solid #fde68a; border-radius:8px; text-align:center;">
+                        <div style="font-size:24px; font-weight:700; color:#d97706;">{{ $commitmentsData['unverifiedCount'] }}</div>
+                        <div style="font-size:11px; color:var(--ink-500); text-transform:uppercase;">Unverified</div>
+                    </div>
+                </div>
+
+                {{-- Publications: Commitments vs Outcomes --}}
                 <div>
                     <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px;">
                         <i class="fas fa-file-alt" style="margin-right:5px; color:var(--brand-500);"></i> Publications
                     </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                        @php
-                            $pubItems = [
-                                ['label' => 'Q1', 'value' => $commitment->q1article],
-                                ['label' => 'Q2', 'value' => $commitment->q2article],
-                                ['label' => 'Q3', 'value' => $commitment->q3article],
-                                ['label' => 'Q4', 'value' => $commitment->q4article],
-                                ['label' => 'Conf', 'value' => $commitment->confArticle],
-                                ['label' => 'Books', 'value' => $commitment->books],
-                                ['label' => 'Ed. Books', 'value' => $commitment->editBooks],
-                                ['label' => 'Chapters', 'value' => $commitment->chapters],
-                            ];
-                        @endphp
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px;">
+                        @php $pubItems = $commitmentsData['pubItems']; @endphp
                         @foreach($pubItems as $item)
-                            @if($item['value'] !== null)
-                            <span class="commitment-chip">{{ $item['label'] }}: <strong>{{ $item['value'] }}</strong></span>
+                            @if($item['commit'] !== null)
+                            @php
+                                $itemColor = '#059669';
+                                if ($item['verified'] < $item['commit'] && $item['total'] >= $item['commit']) $itemColor = '#d97706';
+                                if ($item['verified'] < $item['commit'] && $item['total'] < $item['commit']) $itemColor = 'var(--ink-700)';
+                            @endphp
+                            <div style="padding:8px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                                <div style="font-size:11px; color:var(--ink-500); margin-bottom:4px;">{{ $item['label'] }}</div>
+                                <div style="display:flex; align-items:baseline; gap:6px;">
+                                    <span style="font-size:18px; font-weight:700; color:{{ $itemColor }};">{{ $item['verified'] }}</span>
+                                    <span style="font-size:12px; color:var(--ink-400);">/</span>
+                                    <span style="font-size:14px; font-weight:600; color:var(--ink-600);">{{ $item['commit'] }}</span>
+                                </div>
+                                @if($item['total'] > $item['verified'])
+                                    <div style="font-size:10px; color:#d97706; margin-top:2px;">{{ $item['total'] - $item['verified'] }} pending</div>
+                                @endif
+                            </div>
                             @endif
                         @endforeach
                     </div>
                 </div>
 
-                {{-- Intellectual Property & Innovation --}}
+                {{-- IP & Innovation: Commitments vs Outcomes --}}
                 <div>
                     <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px;">
                         <i class="fas fa-lightbulb" style="margin-right:5px; color:var(--gold-500);"></i> IP & Innovation
                     </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                        @php
-                            $ipItems = [
-                                ['label' => 'IP', 'value' => $commitment->ip],
-                                ['label' => 'Patents', 'value' => $commitment->filedPatent],
-                                ['label' => 'OSS', 'value' => $commitment->openSourceSW],
-                                ['label' => 'Start-up', 'value' => $commitment->startUp === null ? null : ($commitment->startUp ? 'Yes' : 'No')],
-                                ['label' => 'Ethical', 'value' => $commitment->ethical === null ? null : ($commitment->ethical ? 'Yes' : 'No')],
-                            ];
-                        @endphp
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px;">
+                        @php $ipItems = $commitmentsData['ipItems']; @endphp
                         @foreach($ipItems as $item)
-                            @if($item['value'] !== null)
-                            <span class="commitment-chip">{{ $item['label'] }}: <strong>{{ $item['value'] }}</strong></span>
+                            @if($item['commit'] !== null)
+                            @php
+                                $itemColor = '#059669';
+                                if ($item['verified'] < $item['commit'] && $item['total'] >= $item['commit']) $itemColor = '#d97706';
+                                if ($item['verified'] < $item['commit'] && $item['total'] < $item['commit']) $itemColor = 'var(--ink-700)';
+                            @endphp
+                            <div style="padding:8px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                                <div style="font-size:11px; color:var(--ink-500); margin-bottom:4px;">{{ $item['label'] }}</div>
+                                <div style="display:flex; align-items:baseline; gap:6px;">
+                                    <span style="font-size:18px; font-weight:700; color:{{ $itemColor }};">{{ $item['verified'] }}</span>
+                                    <span style="font-size:12px; color:var(--ink-400);">/</span>
+                                    <span style="font-size:14px; font-weight:600; color:var(--ink-600);">{{ $item['commit'] }}</span>
+                                </div>
+                                @if($item['total'] > $item['verified'])
+                                    <div style="font-size:10px; color:#d97706; margin-top:2px;">{{ $item['total'] - $item['verified'] }} pending</div>
+                                @endif
+                            </div>
                             @endif
                         @endforeach
                     </div>
                 </div>
 
-                {{-- Students & Training --}}
+                {{-- Students: Commitments vs Outcomes --}}
                 <div>
                     <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px;">
                         <i class="fas fa-graduation-cap" style="margin-right:5px; color:var(--brand-500);"></i> Students & Training
                     </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                        @php
-                            $studentItems = [
-                                ['label' => 'Master', 'value' => $commitment->master],
-                                ['label' => 'Undergrad', 'value' => $commitment->UG],
-                                ['label' => 'PhD', 'value' => $commitment->Phd],
-                                ['label' => 'Cross-College', 'value' => $commitment->crossCollege === null ? null : ($commitment->crossCollege ? 'Yes' : 'No')],
-                            ];
-                        @endphp
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px;">
+                        @php $studentItems = $commitmentsData['studentItems']; @endphp
                         @foreach($studentItems as $item)
-                            @if($item['value'] !== null)
-                            <span class="commitment-chip">{{ $item['label'] }}: <strong>{{ $item['value'] }}</strong></span>
+                            @if($item['commit'] !== null)
+                            @php $itemColor = $item['count'] >= $item['commit'] ? '#059669' : 'var(--ink-700)'; @endphp
+                            <div style="padding:8px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                                <div style="font-size:11px; color:var(--ink-500); margin-bottom:4px;">{{ $item['label'] }}</div>
+                                <div style="display:flex; align-items:baseline; gap:6px;">
+                                    <span style="font-size:18px; font-weight:700; color:{{ $itemColor }};">{{ $item['count'] }}</span>
+                                    <span style="font-size:12px; color:var(--ink-400);">/</span>
+                                    <span style="font-size:14px; font-weight:600; color:var(--ink-600);">{{ $item['commit'] }}</span>
+                                </div>
+                            </div>
                             @endif
                         @endforeach
                     </div>
@@ -273,51 +309,206 @@
                 @endif
             </div>
         </div>
+</div>
 
-    {{-- 3: Outcomes --}}
-    <div>
-        <div class="panel" style="margin-bottom:0;">
-            <div class="panel-head">
-                <h2><i class="fas fa-clipboard-list"></i> Outcomes</h2>
+@if(!$isViewer)
+{{-- LPI Progress Report Data (shown to LPI / Admin only) --}}
+<div class="panel" style="margin-bottom:22px;">
+    <div class="panel-head">
+        <h2><i class="fas fa-chart-line"></i> Progress Report Details</h2>
+    </div>
+    <div class="panel-body" style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:22px;">
+
+        {{-- Scholarly Articles --}}
+        <div>
+            <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                <i class="fas fa-file-alt" style="margin-right:5px; color:var(--brand-500);"></i> Scholarly Articles
             </div>
-            <div class="panel-body" style="padding:0;">
-                @if($hasOutcomes)
-                <table style="width:100%; border-collapse:collapse; font-size:13px; border:1px solid var(--ink-100); border-radius:6px;">
-                    <thead>
-                        <tr style="background:var(--sand-50);">
-                            <th style="text-align:left; padding:10px 16px; font-size:11px; font-weight:700; color:var(--ink-700); text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--ink-200);">Type</th>
-                            <th style="text-align:center; padding:10px 16px; font-size:11px; font-weight:700; color:var(--ink-700); text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--ink-200); width:70px;">Count</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($outcomesByType as $group)
-                        <tr>
-                            <td style="padding:7px 16px; color:var(--ink-700); border-bottom:1px solid var(--ink-50); font-weight:500;">
-                                <span class="pill {{ $group['type'] === 'publication' ? 'info' : ($group['type'] === 'patent' ? 'review' : 'ink') }}">
-                                    {{ ucfirst($group['type']) }}
-                                </span>
-                            </td>
-                            <td style="padding:7px 16px; border-bottom:1px solid var(--ink-50); text-align:center; font-weight:600; font-size:15px; color:var(--brand-500);">
-                                {{ $group['count'] }}
-                            </td>
-                        </tr>
-                        @endforeach
-                        {{-- Total row --}}
-                        <tr style="background:var(--sand-50);">
-                            <td style="padding:8px 16px; font-weight:700; color:var(--ink-800); border-bottom:1px solid var(--ink-200); font-size:12px; text-transform:uppercase; letter-spacing:.04em;">Total</td>
-                            <td style="padding:8px 16px; text-align:center; font-weight:700; font-size:15px; color:var(--brand-600); border-bottom:1px solid var(--ink-200);">{{ $outcomes->count() }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                @else
-                <div style="padding:24px 16px; text-align:center; color:var(--ink-400); font-size:13px;">
-                    <i class="fas fa-clipboard-list"></i> No outcomes recorded yet for this project.
+            @if($scholarlyOutcomes->count() > 0)
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    @foreach($scholarlyOutcomes as $so)
+                    @php
+                        $journal = strtolower($so->publication->journal ?? '');
+                        $publisherBadge = '';
+                        $publisherColor = '555555';
+                        if (str_contains($journal, 'springer')) { $publisherBadge = 'Springer'; $publisherColor = '0d6b3b'; }
+                        elseif (str_contains($journal, 'elsevier') || str_contains($journal, 'sciencedirect')) { $publisherBadge = 'Elsevier'; $publisherColor = 'ff6c0f'; }
+                        elseif (str_contains($journal, 'ieee')) { $publisherBadge = 'IEEE'; $publisherColor = '00629b'; }
+                        elseif (str_contains($journal, 'wiley')) { $publisherBadge = 'Wiley'; $publisherColor = '005a9c'; }
+                        elseif (str_contains($journal, 'nature')) { $publisherBadge = 'Nature'; $publisherColor = '0070c0'; }
+                        elseif (str_contains($journal, 'science')) { $publisherBadge = 'Science'; $publisherColor = 'cc0000'; }
+                    @endphp
+                    <div style="padding:8px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            @if($publisherBadge)
+                                <img src="https://img.shields.io/badge/{{ $publisherBadge }}-{{ $publisherColor }}?style=flat&logo=&logoColor=white" alt="" style="height:16px;flex-shrink:0;">
+                            @endif
+                            <span class="pill info" style="flex-shrink:0;">{{ $scholarlyTypes[$so->type] ?? ucfirst(str_replace('_',' ',$so->type)) }}</span>
+                            <span style="flex:1; font-family:monospace; font-size:12px; color:var(--ink-700); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ $so->identifier }}</span>
+                            @if($so->publication)
+                                <span style="font-size:9px; padding:2px 5px; border-radius:3px; background:#d1fae5; color:#065f46; font-weight:500;">✓ Verified</span>
+                            @endif
+                            @if($so->publication && $so->publication->url)
+                                <a href="{{ $so->publication->url }}" target="_blank" style="font-size:11px; color:var(--brand-500); text-decoration:none;">View</a>
+                            @endif
+                        </div>
+                        @if($so->publication)
+                        <div style="margin-top:5px; padding-top:5px; border-top:1px solid var(--ink-100); font-size:11px; color:var(--ink-500);">
+                            @if($so->publication->publication_title)
+                                <span style="font-weight:500; color:var(--ink-700);">{{ Str::limit($so->publication->publication_title, 60) }}</span>
+                            @endif
+                            @if($so->publication->journal)
+                                <span> — {{ $so->publication->journal }}</span>
+                            @endif
+                            @if($so->publication->year)
+                                <span>({{ $so->publication->year }})</span>
+                            @endif
+                        </div>
+                        @endif
+                    </div>
+                    @endforeach
                 </div>
-                @endif
+            @else
+                <div style="color:var(--ink-400); font-size:13px;">No scholarly articles added.</div>
+            @endif
+        </div>
+
+        {{-- Intellectual Property & Contributions --}}
+        <div>
+            <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                <i class="fas fa-lightbulb" style="margin-right:5px; color:var(--gold-500);"></i> Intellectual Property
             </div>
+            @if($ipOutcomes->count() > 0)
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    @foreach($ipOutcomes as $io)
+                    <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                        <span class="pill warning" style="flex-shrink:0;">{{ $ipTypes[$io->type] ?? ucfirst(str_replace('_',' ',$io->type)) }}</span>
+                        <span style="font-family:monospace; font-size:12px; color:var(--ink-700); word-break:break-all;">{{ $io->identifier }}</span>
+                    </div>
+                    @endforeach
+                </div>
+            @else
+                <div style="color:var(--ink-400); font-size:13px;">No intellectual property records added.</div>
+            @endif
+        </div>
+
+        {{-- Students --}}
+        <div>
+            <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                <i class="fas fa-graduation-cap" style="margin-right:5px; color:var(--brand-500);"></i> Students
+            </div>
+            @if($students->count() > 0)
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    @foreach($students as $s)
+                    @php $details = $s->details; @endphp
+                    <div style="padding:8px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span class="pill info" style="flex-shrink:0;">{{ $s->type == 'UG' ? 'UG' : ($s->type == 'masters' ? 'MSc' : 'PhD') }}</span>
+                            <span style="flex:1; font-family:monospace; font-size:12px; color:var(--ink-700); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ $s->std_id }}</span>
+                            @if($details)
+                                <span style="font-size:9px; padding:2px 5px; border-radius:3px; background:#d1fae5; color:#065f46; font-weight:500;">✓</span>
+                                @if($details->student_status)
+                                    <span style="font-size:10px; padding:2px 5px; border-radius:3px; background:{{ $details->student_status === 'Active' ? '#d1fae5' : 'var(--ink-100)' }}; color:{{ $details->student_status === 'Active' ? '#065f46' : 'var(--ink-600)' }}; font-weight:500;">{{ $details->student_status }}</span>
+                                @endif
+                            @else
+                                <span style="font-size:9px; padding:2px 5px; border-radius:3px; background:#fef3c7; color:#92400e; font-weight:500;">Not Verified</span>
+                            @endif
+                            <span style="font-size:10px; color:var(--ink-500); white-space:nowrap;">{{ $s->days }}d</span>
+                        </div>
+                        @if($details)
+                        <div style="margin-top:5px; padding-top:5px; border-top:1px solid var(--ink-100); font-size:11px; color:var(--ink-500);">
+                            @if($details->full_name)
+                                <span style="font-weight:500; color:var(--ink-700);">{{ $details->full_name }}</span>
+                            @endif
+                            @if($details->college)
+                                <span> — {{ $details->college }}</span>
+                            @endif
+                            @if($details->std_program)
+                                <span>({{ $details->std_program }})</span>
+                            @endif
+                            @if($details->major)
+                                <span> | {{ $details->major }}</span>
+                            @endif
+                        </div>
+                        @endif
+                    </div>
+                    @endforeach
+                </div>
+            @else
+                <div style="color:var(--ink-400); font-size:13px;">No students added.</div>
+            @endif
+        </div>
+
+        {{-- Hired Researchers --}}
+        <div>
+            <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                <i class="fas fa-user-tie" style="margin-right:5px; color:var(--brand-500);"></i> Hired Researchers
+            </div>
+            @if($researchers->count() > 0)
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    @foreach($researchers as $r)
+                    <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                        <span class="pill inactive" style="flex-shrink:0;">{{ $r->category }}</span>
+                        <span style="font-size:12px; color:var(--ink-700); word-break:break-all;">{{ $r->name }}</span>
+                    </div>
+                    @endforeach
+                </div>
+            @else
+                <div style="color:var(--ink-400); font-size:13px;">No researchers added.</div>
+            @endif
+        </div>
+
+        {{-- Cross-College & Research Awards --}}
+        <div>
+            <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                <i class="fas fa-building-columns" style="margin-right:5px; color:var(--gold-500);"></i> Cross-College & Awards
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <div style="padding:7px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px; font-size:12px; color:var(--ink-700);">
+                    <strong style="color:var(--ink-800);">Cross-College Participation:</strong>
+                    @if($crossCollegeOutcome)
+                        {{ $crossCollegeOutcome->identifier ?: 'Yes' }}
+                    @else
+                        <span style="color:var(--ink-400);">No</span>
+                    @endif
+                </div>
+                <div style="padding:7px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px; font-size:12px; color:var(--ink-700);">
+                    <strong style="color:var(--ink-800);">Research Awards:</strong>
+                    @if($researchAwardsOutcome)
+                        {{ $researchAwardsOutcome->identifier ?: 'Yes' }}
+                    @else
+                        <span style="color:var(--ink-400);">No</span>
+                    @endif
+                </div>
+            </div>
+        </div>
+
+        {{-- Report Submissions --}}
+        <div>
+            <div style="font-size:11px; font-weight:700; color:var(--ink-500); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                <i class="fas fa-file-pdf" style="margin-right:5px; color:var(--danger);"></i> Report Submissions
+            </div>
+            @if($submissions->count() > 0)
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    @foreach($submissions as $sub)
+                    <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:6px;">
+                        <span class="pill {{ $sub->type === 'final' ? 'success' : ($sub->type === 'readiness' ? 'warning' : 'info') }}" style="flex-shrink:0;">
+                            {{ ucfirst($sub->type) }} Report{{ $sub->version > 1 ? ' (v' . $sub->version . ')' : '' }}
+                        </span>
+                        <a href="{{ route('serveFile2', ['type' => $sub->type, 'id' => $project->id, 'submission_id' => $sub->id]) }}" target="_blank" style="font-size:12px; color:var(--brand-500); font-weight:500; word-break:break-all;">
+                            {{ $sub->stored_filename }}
+                        </a>
+                        <span style="margin-left:auto; font-size:10px; color:var(--ink-400); white-space:nowrap;">{{ $sub->created_at->format('M d, Y H:i') }}</span>
+                    </div>
+                    @endforeach
+                </div>
+            @else
+                <div style="color:var(--ink-400); font-size:13px;">No report files uploaded.</div>
+            @endif
         </div>
     </div>
 </div>
+@endif
 
 @push('styles')
 <style>

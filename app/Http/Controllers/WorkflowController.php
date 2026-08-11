@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class WorkflowController extends Controller
 {
@@ -37,9 +38,22 @@ class WorkflowController extends Controller
     public function showReportCardForm($projectId)
     {
         $project = Project::with([
-            'program', 'grant', 'lpi', 'latestStatus',
+            'program.grant', 'lpi', 'pillars', 'colleges',
+            'commitments', 'outcomes.publication',
+            'students.details', 'researchers',
         ])->findOrFail($projectId);
-        return view('workflow.modals.report-card', compact('project'));
+
+        $commitment = $project->commitments()->first();
+        $finalGrading = \App\Models\FinalReportGrading::where('project_id', $projectId)->first();
+        $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $projectId)->first();
+        $outcomes = $project->outcomes()->get();
+        $students = $project->students()->get();
+        $researchers = $project->researchers()->get();
+
+        return view('workflow.modals.report-card', compact(
+            'project', 'commitment', 'finalGrading', 'progressGrading',
+            'outcomes', 'students', 'researchers'
+        ));
     }
 
     public function modal($action, $projectId)
@@ -64,7 +78,23 @@ class WorkflowController extends Controller
                 break;
 
             case 'report-card':
-                $html = view('workflow.modals.report-card', compact('project'))->render();
+                $project = Project::with([
+                    'program.grant', 'lpi', 'pillars', 'colleges',
+                    'commitments', 'outcomes.publication',
+                    'students.details', 'researchers',
+                ])->findOrFail($projectId);
+
+                $commitment = $project->commitments()->first();
+                $finalGrading = \App\Models\FinalReportGrading::where('project_id', $projectId)->first();
+                $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $projectId)->first();
+                $outcomes = $project->outcomes()->get();
+                $students = $project->students()->get();
+                $researchers = $project->researchers()->get();
+
+                $html = view('workflow.modals.report-card', compact(
+                    'project', 'commitment', 'finalGrading', 'progressGrading',
+                    'outcomes', 'students', 'researchers'
+                ))->render();
                 break;
 
             default:
@@ -90,7 +120,7 @@ class WorkflowController extends Controller
         // Spreadsheet workflow status map
         $statusMap = [
             'register'   => Project::STATUS_REGISTERED,
-            'progress'   => Project::STATUS_PROGRESS,
+            'progress'   => Project::STATUS_PROGRESS_ADDED,
             'assign'     => Project::STATUS_ASSIGNED,
             'claim'      => 'claim',  // handled specially in submitProposalDecision
             'report-card' => null,    // view only, no status transition
@@ -152,7 +182,7 @@ class WorkflowController extends Controller
 
         $statusMap = [
             'register'        => Project::STATUS_REGISTERED,
-            'progress'        => Project::STATUS_PROGRESS,
+            'progress'        => Project::STATUS_PROGRESS_ADDED,
             'assign'          => Project::STATUS_ASSIGNED,
         ];
 
@@ -187,6 +217,21 @@ class WorkflowController extends Controller
 
         $reviewerIds = $validated['reviewer_ids'];
 
+        // Server-side check: prevent reassigning a reviewer who previously rejected this project
+        if (Schema::hasTable('reviewer_rejections')) {
+            foreach ($reviewerIds as $reviewerId) {
+                $previouslyRejected = \App\Models\ReviewerRejection::where('project_id', $project->id)
+                    ->where('user_id', $reviewerId)
+                    ->exists();
+                if ($previouslyRejected) {
+                    return response()->json([
+                        'success' => false,
+                        'error'   => 'This reviewer previously rejected this project and cannot be reassigned.',
+                    ], 422);
+                }
+            }
+        }
+
         DB::transaction(function () use ($project, $reviewerIds) {
             // Remove all existing reviewers for this project
             DB::table('projects_reviewers')->where('project_id', $project->id)->delete();
@@ -202,10 +247,11 @@ class WorkflowController extends Controller
                 ]);
             }
 
-            // Record the Assigned status if not already set
-            if (!$project->hasStatus(Project::STATUS_ASSIGNED)) {
-                $project->recordStatus(Project::STATUS_ASSIGNED, ['triggered_by' => 'assign'], auth()->id());
-            }
+            // Always record Assigned status when a reviewer is assigned
+            $project->recordStatus(Project::STATUS_ASSIGNED, [
+                'triggered_by' => 'assign',
+                'reviewer_id'  => $reviewerIds[0] ?? null,
+            ], auth()->id());
         });
 
         return response()->json(['success' => true, 'message' => 'Reviewer assigned successfully.']);
@@ -270,20 +316,22 @@ class WorkflowController extends Controller
         // the assign UI can exclude them from the dropdown.
         DB::transaction(function () use ($validated, $project, $user, $reviewerRecord) {
             // 1. Audit trail of who rejected (so admin doesn't re-assign the same reviewer)
-            \App\Models\ReviewerRejection::create([
-                'project_id' => $project->id,
-                'user_id'    => $user->id,
-                'reason'     => $validated['reject_reason'] ?? null,
-            ]);
+            if (\Illuminate\Support\Facades\Schema::hasTable('reviewer_rejections')) {
+                \App\Models\ReviewerRejection::create([
+                    'project_id' => $project->id,
+                    'user_id'    => $user->id,
+                    'reason'     => $validated['reject_reason'] ?? null,
+                ]);
+            }
 
             // 2. Clear the assignment (back to admin queue)
             DB::table('projects_reviewers')
                 ->where('id', $validated['r_id'])
                 ->delete();
 
-            // 3. Record the rejection status in the workflow history
-            if (!$project->hasStatus(Project::STATUS_REJECTED)) {
-                $project->recordStatus(Project::STATUS_REJECTED, [
+            // 3. Record the proposal rejection status (NOT progress_rejected)
+            if (!$project->hasStatus(Project::STATUS_PROPOSAL_REJECTED)) {
+                $project->recordStatus(Project::STATUS_PROPOSAL_REJECTED, [
                     'triggered_by' => 'reject-proposal',
                     'rejected_by'  => $user->id,
                     'reason'       => $validated['reject_reason'] ?? null,
@@ -294,6 +342,85 @@ class WorkflowController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Proposal rejected. The project has been returned to the admin queue for reassignment.',
+        ]);
+    }
+
+    /**
+     * AJAX: Submit reviewer decision on progress report (accept or reject).
+     *
+     * If accepted → records progress_reviewed.
+     * If rejected → records progress_rejected (LPI resubmits, reviewer re-reviews).
+     * The reviewer stays assigned in both cases.
+     */
+    public function submitProgressReview(Request $request)
+    {
+        $validated = $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'accept'     => 'required|in:accepted,rejected',
+            'comment'    => 'nullable|string|max:2000',
+        ]);
+
+        $project = Project::findOrFail($validated['project_id']);
+
+        if (!$project->programIsActive()) {
+            return response()->json(['error' => 'This program is no longer active.'], 422);
+        }
+
+        $user = auth()->user();
+
+        // Verify this user is assigned as a reviewer
+        $reviewerRecord = DB::table('projects_reviewers')
+            ->where('project_id', $validated['project_id'])
+            ->where('user_id', $user->id)
+            ->where('proposalstatus', 'accepted')
+            ->first();
+
+        if (!$reviewerRecord) {
+            return response()->json(['error' => 'You are not authorized to review this project.'], 403);
+        }
+
+        if ($validated['accept'] === 'accepted') {
+            if (!$project->hasStatus(Project::STATUS_PROGRESS_REVIEWED)) {
+                $project->recordStatus(Project::STATUS_PROGRESS_REVIEWED, [
+                    'triggered_by' => 'progress-review-accept',
+                ], $user->id);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Progress report approved. The LPI can now submit the final report.',
+            ]);
+        }
+
+        // Rejected — remove reviewer and record progress_rejected
+        DB::transaction(function () use ($project, $user, $validated) {
+            // 1. Remove the reviewer from projects_reviewers
+            DB::table('projects_reviewers')
+                ->where('project_id', $project->id)
+                ->where('user_id', $user->id)
+                ->delete();
+
+            // 2. Record rejection in reviewer_rejections table
+            if (\Illuminate\Support\Facades\Schema::hasTable('reviewer_rejections')) {
+                \App\Models\ReviewerRejection::create([
+                    'project_id' => $project->id,
+                    'user_id'    => $user->id,
+                    'reason'     => $validated['comment'] ?? null,
+                ]);
+            }
+
+            // 3. Record progress_rejected status
+            if (!$project->hasStatus(Project::STATUS_PROGRESS_REJECTED)) {
+                $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
+                    'triggered_by' => 'progress-review-reject',
+                    'comment'      => $validated['comment'] ?? null,
+                ], $user->id);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Progress report rejected. The project has been returned to the admin queue for reassignment.',
         ]);
     }
 
@@ -324,5 +451,27 @@ class WorkflowController extends Controller
             'success' => true,
             'html' => $html,
         ]);
+    }
+
+    /**
+     * Toggle extended progress report for a project.
+     * Admin can enable/disable extended progress submission.
+     */
+    public function toggleExtendedProgress(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $user = auth()->user();
+
+        // Only Admin can toggle
+        if (!$user->isAdmin()) {
+            return redirect()->back()->with('error', 'Only administrators can enable extended progress reports.');
+        }
+
+        $enable = $request->input('enable') === '1';
+
+        $project->update(['is_extended' => $enable]);
+
+        $status = $enable ? 'enabled' : 'disabled';
+        return redirect()->back()->with('success', "Extended progress report {$status} for this project.");
     }
 }

@@ -37,7 +37,7 @@
             <div style="padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fecaca;font-size:12px;color:#b91c1c;margin-bottom:12px;">
                 <i class="fas fa-ban" style="margin-right:4px;"></i>
                 <strong>Previously rejected by:</strong>
-                {{ $previousRejectors->map(fn($r) => ($r->user?->name ?? 'Unknown') . ' (' . $r->created_at->format('M d, Y') . ')')->implode(', ') }}
+                {{ $previousRejectors->map(function ($r) { return (optional($r->user)->name ?? 'Unknown') . ' (' . $r->created_at->format('M d, Y') . ')'; })->implode(', ') }}
                 — excluded from the list below.
             </div>
         @endif

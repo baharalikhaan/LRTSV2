@@ -16,6 +16,8 @@ class ProjectStudent extends Model
         'std_id',
         'days',
         'score',
+        'verifcation_by_system',
+        'verifcation_by_reviewer',
     ];
 
     protected $casts = [
@@ -31,5 +33,10 @@ class ProjectStudent extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function details()
+    {
+        return $this->hasOne(ProjectStudentDetail::class, 'project_student_id');
     }
 }

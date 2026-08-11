@@ -37,14 +37,14 @@
                     </select>
                 </div>
             </form>
-            <span style="font-size:12px;color:var(--color-ink-400);white-space:nowrap;">
+            <span style="font-size:12px;color:var(--ink-400,#8b8592);white-space:nowrap;">
                 <span id="resultCount">{{ count($reviewers ?? []) }}</span> reviewers
             </span>
         </div>
     </div>
     <div class="panel-body p-0">
         @if(!($reviewers ?? null) || count($reviewers) === 0)
-            <div class="empty-state py-5 text-center" style="color:var(--color-ink-400);">
+            <div class="empty-state py-5 text-center" style="color:var(--ink-400,#8b8592);">
                 <i class="fas fa-users" style="font-size:32px;opacity:0.4;margin-bottom:8px;"></i>
                 <h5>No Reviewers Found</h5>
                 <p>No reviewers with reviewed projects are available.</p>
@@ -66,12 +66,12 @@
                     <tr>
                         <td>
                             <div style="display:flex;align-items:center;gap:8px;">
-                                <div style="width:30px;height:30px;border-radius:50%;background:var(--color-brand-50);color:var(--color-brand-600);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">
+                                <div style="width:30px;height:30px;border-radius:50%;background:var(--brand-50,#fbeef1);color:var(--brand-600,#7a1636);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">
                                     {{ strtoupper(substr($reviewer->name, 0, 1)) }}
                                 </div>
                                 <div>
                                     <div style="font-weight:500;font-size:13px;">{{ $reviewer->name }}</div>
-                                    <div style="font-size:11px;color:var(--color-ink-400);">{{ $reviewer->email }}</div>
+                                    <div style="font-size:11px;color:var(--ink-400,#8b8592);">{{ $reviewer->email }}</div>
                                 </div>
                             </div>
                         </td>
@@ -80,18 +80,18 @@
                             @forelse($reviewer->college_list as $college)
                                 <span class="pill" style="margin:1px 2px;">{{ $college->name }}</span>
                             @empty
-                                <span style="color:var(--color-ink-300);font-size:11px;">—</span>
+                                <span style="color:var(--ink-300,#b4b0ba);font-size:11px;">—</span>
                             @endforelse
                         </td>
                         <td>
                             @forelse($reviewer->pillar_list as $pillar)
                                 <span class="pill" style="margin:1px 2px;">{{ $pillar->pillar }}</span>
                             @empty
-                                <span style="color:var(--color-ink-300);font-size:11px;">—</span>
+                                <span style="color:var(--ink-300,#b4b0ba);font-size:11px;">—</span>
                             @endforelse
                         </td>
                         <td>
-                            <span style="font-weight:700;color:var(--color-brand-500);font-size:15px;">{{ $reviewer->reviewed_projects_count }}</span>
+                            <span style="font-weight:700;color:var(--brand-500,#8d1b3d);font-size:15px;">{{ $reviewer->reviewed_projects_count }}</span>
                         </td>
                         <td class="text-center">
                             <a href="{{ route('reviewer-grading.show', $reviewer->id) }}" class="btn-primary btn-sm" style="display:inline-flex;align-items:center;gap:6px;">

@@ -30,4 +30,9 @@ class Outcome extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function publication()
+    {
+        return $this->hasOne(ProjectPublication::class, 'outcome_id');
+    }
 }

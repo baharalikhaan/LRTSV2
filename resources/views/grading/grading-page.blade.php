@@ -12,12 +12,28 @@
     $cycleTitle = $project->cycle_title ?? ($project->program->cycle->title ?? '');
     $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
     $hasPR2 = $project->has_progress_report2 ?? false;
+
+    $isProgressStep = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_ADDED) && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REVIEWED);
+    $isFinalStep    = $project->hasStatus(\App\Models\Project::STATUS_FINAL_ADDED) && !$project->hasStatus(\App\Models\Project::STATUS_GRADED);
+
+    $progressVersions = $submissions->where('type', 'progress')->sortByDesc('version');
+    $finalVersions = $submissions->where('type', 'final')->sortByDesc('version');
+    $readinessVersions = $submissions->where('type', 'readiness')->sortByDesc('version');
 @endphp
 
 @section('content')
 <div class="page-head">
     <div>
-        <h1><i class="fas fa-star" style="color:var(--brand-500);"></i> Project Grading</h1>
+        <h1>
+            <i class="fas fa-star" style="color:var(--brand-500);"></i>
+            @if($isProgressStep)
+                Progress Grading
+            @elseif($isFinalStep)
+                Final Grading
+            @else
+                Project Grading
+            @endif
+        </h1>
         <p>Grade the reports submitted by <strong>{{ $project->lpi->name ?? 'LPI' }}</strong>.</p>
     </div>
     <div class="page-actions">
@@ -27,7 +43,6 @@
     </div>
 </div>
 
-{{-- Research Call Inactive Banner --}}
 @if($project && $project->program && !$project->programIsActive())
 <div style="background:linear-gradient(135deg,#fbeef1 0%,#f3d2da 100%);border:1px solid var(--brand-200);border-radius:8px;padding:14px 18px;margin-bottom:22px;display:flex;align-items:center;gap:12px;">
     <div style="width:36px;height:36px;border-radius:50%;background:var(--brand-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
@@ -42,36 +57,40 @@
 </div>
 @endif
 
-{{-- ========== TABBED FORM (Fluent Workspace UI) ========== --}}
-<div class="ws-tabs" role="tablist">
-    <button type="button" class="ws-tab active" role="tab" data-tab="tab-proposal" onclick="switchTab('tab-proposal', this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Project Proposal
-    </button>
-    <button type="button" class="ws-tab" role="tab" data-tab="tab-progress" onclick="switchTab('tab-progress', this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Progress Report
-    </button>
-    <button type="button" class="ws-tab" role="tab" data-tab="tab-final" onclick="switchTab('tab-final', this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Final Report
-    </button>
-    <button type="button" class="ws-tab" role="tab" data-tab="tab-readiness" onclick="switchTab('tab-readiness', this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        QU Readiness Map
-    </button>
-    <button type="button" class="ws-tab" role="tab" data-tab="tab-review" onclick="switchTab('tab-review', this)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Review & Submit
-    </button>
-</div>
+{{-- ═══════════════════════════════════════════════════════════════════
+     UNIFIED SPLIT LAYOUT — Left: PDF/Data tabs | Right: Grading form
+     ═══════════════════════════════════════════════════════════════════ --}}
+<div class="ws-split">
 
-{{-- ========== TAB PANELS ========== --}}
+    {{-- ─── LEFT COLUMN: Document & Data Tabs ─── --}}
+    <div class="ws-pdf-col">
+        <div class="ws-left-tabs" role="tablist">
+            <button type="button" class="ws-tab active" role="tab" data-tab="ltab-proposal" onclick="switchLeftTab('ltab-proposal', this)">
+                <i class="fas fa-file-pdf"></i> Proposal
+            </button>
+            <button type="button" class="ws-tab" role="tab" data-tab="ltab-progress" onclick="switchLeftTab('ltab-progress', this)">
+                <i class="fas fa-chart-line"></i> Progress Report
+            </button>
+            @if(!$isProgressStep)
+            <button type="button" class="ws-tab" role="tab" data-tab="ltab-final" onclick="switchLeftTab('ltab-final', this)">
+                <i class="fas fa-check-circle"></i> Final Report
+            </button>
+            @endif
+            @if(!$isProgressStep)
+            <button type="button" class="ws-tab" role="tab" data-tab="ltab-readiness" onclick="switchLeftTab('ltab-readiness', this)">
+                <i class="fas fa-map"></i> Readiness Report
+            </button>
+            @endif
+            <button type="button" class="ws-tab" role="tab" data-tab="ltab-commitments" onclick="switchLeftTab('ltab-commitments', this)">
+                <i class="fas fa-handshake"></i> Commitments
+            </button>
+            <button type="button" class="ws-tab" role="tab" data-tab="ltab-outcomes" onclick="switchLeftTab('ltab-outcomes', this)">
+                <i class="fas fa-trophy"></i> Outcomes
+            </button>
+        </div>
 
-{{-- Project Proposal --}}
-<div class="ws-tab-panel" id="tab-proposal" style="display:block;">
-    <div class="ws-split">
-        <div class="ws-pdf-col">
+        {{-- Tab: Project Proposal --}}
+        <div class="ws-left-tab-panel" id="ltab-proposal" style="display:block;">
             <div class="ws-card">
                 <div class="ws-section-title">
                     <span><i class="fas fa-file-pdf"></i> Project Proposal</span>
@@ -82,11 +101,120 @@
                 <iframe class="ws-iframe" src="{{ route('serveFile2', ['type' => 'proposal', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
             </div>
         </div>
-        <div class="ws-form-col">
+
+        {{-- Tab: Progress Report --}}
+        <div class="ws-left-tab-panel" id="ltab-progress" style="display:none;">
+            @if(empty($progressSubmitted) || !$progressSubmitted)
+            <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                    <i class="fas fa-lock" style="font-size:24px;"></i>
+                </div>
+                <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Progress Report Not Available Yet</h3>
+                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+                    The LPI has not officially submitted the progress report for this project.
+                    Grading will be unlocked once the report is submitted.
+                </p>
+            </div>
+            @else
             <div class="ws-card">
-                <div class="ws-section-title"><span><i class="fas fa-list-check"></i> Commitments vs Outcomes</span></div>
+                <div class="ws-section-title">
+                    <span><i class="fas fa-file-pdf"></i> Progress Report</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($progressVersions->count() > 1)
+                        <select class="ws-version-select" data-iframe="progress-iframe" onchange="switchVersion(this, 'progress-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($progressVersions as $pv)
+                            <option value="{{ $pv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $pv->version }} — {{ $pv->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @elseif($progressVersions->count() === 1)
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $progressVersions->first()->stored_filename }}</span>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
+                </div>
+                <iframe id="progress-iframe" class="ws-iframe" src="{{ $progressVersions->count() > 0 ? route('serveFile2', ['submission_id' => $progressVersions->first()->id]) : route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+            </div>
+            @endif
+        </div>
+
+        {{-- Tab: Final Report --}}
+        @if(!$isProgressStep)
+        <div class="ws-left-tab-panel" id="ltab-final" style="display:none;">
+            @if(empty($finalSubmitted) || !$finalSubmitted)
+            <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                    <i class="fas fa-lock" style="font-size:24px;"></i>
+                </div>
+                <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Final Report Not Available Yet</h3>
+                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+                    The LPI has not officially submitted the final report for this project.
+                    Grading will be unlocked once the report is submitted.
+                </p>
+            </div>
+            @else
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-file-pdf"></i> Final Report</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($finalVersions->count() > 1)
+                        <select class="ws-version-select" data-iframe="final-iframe" onchange="switchVersion(this, 'final-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($finalVersions as $fv)
+                            <option value="{{ $fv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $fv->version }} — {{ $fv->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @elseif($finalVersions->count() === 1)
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $finalVersions->first()->stored_filename }}</span>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
+                </div>
+                <iframe id="final-iframe" class="ws-iframe" src="{{ $finalVersions->count() > 0 ? route('serveFile2', ['submission_id' => $finalVersions->first()->id]) : route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+            </div>
+            @endif
+        </div>
+        @endif
+
+        {{-- Tab: QU Readiness Map --}}
+        @if(!$isProgressStep)
+        <div class="ws-left-tab-panel" id="ltab-readiness" style="display:none;">
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-file-pdf"></i> QU Readiness Map</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($readinessVersions->count() > 1)
+                        <select class="ws-version-select" data-iframe="readiness-iframe" onchange="switchVersion(this, 'readiness-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($readinessVersions as $rv)
+                            <option value="{{ $rv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $rv->version }} — {{ $rv->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @elseif($readinessVersions->count() === 1)
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $readinessVersions->first()->stored_filename }}</span>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
+                </div>
+                <iframe id="readiness-iframe" class="ws-iframe" src="{{ $readinessVersions->count() > 0 ? route('serveFile2', ['submission_id' => $readinessVersions->first()->id]) : route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+            </div>
+        </div>
+        @endif
+
+        {{-- Tab: Commitments --}}
+        <div class="ws-left-tab-panel" id="ltab-commitments" style="display:none;">
+            <div class="ws-card">
+                <div class="ws-section-title"><span><i class="fas fa-handshake"></i> Commitments vs Outcomes</span></div>
                 @php
-                    // Map commitment fields to outcome types for counting
                     $commitOutcomeMap = [
                         'q1article'   => ['label' => 'Q1 Articles',              'outcome_type' => 'journal_q1'],
                         'q2article'   => ['label' => 'Q2 Articles',              'outcome_type' => 'journal_q2'],
@@ -110,7 +238,6 @@
                         'ethical'     => ['label' => 'Ethical Approvals',         'outcome_type' => null],
                     ];
 
-                    // Count outcomes by type
                     $outcomeCounts = [];
                     foreach ($outcomes as $o) {
                         $type = $o->type;
@@ -118,7 +245,6 @@
                         $outcomeCounts[$type]++;
                     }
 
-                    // Build rows
                     $commitRows = [];
                     if ($commitments) {
                         foreach ($commitOutcomeMap as $field => $info) {
@@ -179,7 +305,6 @@
                         </table>
                     </div>
 
-                    {{-- Narrative deficiency summary --}}
                     @php
                         $metCount = 0;
                         $shortCount = 0;
@@ -215,289 +340,354 @@
                 @endif
             </div>
         </div>
-    </div>
-</div>
 
-{{-- Progress Report --}}
-<div class="ws-tab-panel" id="tab-progress" style="display:none;">
-    @if(empty($progressSubmitted) || !$progressSubmitted)
-    {{-- LOCK: LPI has not submitted the progress report yet --}}
-    <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
-        <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-            <i class="fas fa-lock" style="font-size:24px;"></i>
-        </div>
-        <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Progress Report Not Available Yet</h3>
-        <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
-            The LPI has not officially submitted the progress report for this project.
-            Grading will be unlocked once the report is submitted.
-        </p>
-    </div>
-    @else
-    <div class="ws-split">
-        <div class="ws-pdf-col">
+        {{-- Tab: Outcomes --}}
+        <div class="ws-left-tab-panel" id="ltab-outcomes" style="display:none;">
+
+            {{-- ── Publications ── --}}
+            @php
+                $pubTypes = ['journal_q1','journal_q2','journal_q3','journal_q4','conference','book','edited_book','book_chapter'];
+                $outcomePubs = $outcomes->filter(fn($o) => in_array($o->type, $pubTypes));
+            @endphp
             <div class="ws-card">
                 <div class="ws-section-title">
-                    <span><i class="fas fa-file-pdf"></i> Progress Report</span>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        @php $progressVersions = $submissions->where('type', 'progress')->sortByDesc('version'); @endphp
-                        @if($progressVersions->count() > 1)
-                        <select class="ws-version-select" data-iframe="progress-iframe" onchange="switchVersion(this, 'progress-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
-                            @foreach($progressVersions as $pv)
-                            <option value="{{ $pv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $pv->version }} — {{ $pv->stored_filename }}</option>
-                            @endforeach
-                        </select>
-                        @elseif($progressVersions->count() === 1)
-                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $progressVersions->first()->stored_filename }}</span>
-                        @else
-                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
-                        @endif
-                        <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
-                            <i class="fas fa-external-link-alt"></i> Open
-                        </a>
-                    </div>
+                    <span><i class="fas fa-book-open"></i> Publications</span>
+                    <span class="ws-pill ws-pill-ink">{{ $outcomePubs->count() }} record(s)</span>
                 </div>
-                <iframe id="progress-iframe" class="ws-iframe" src="{{ $progressVersions->count() > 0 ? route('serveFile2', ['submission_id' => $progressVersions->first()->id]) : route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+                @if($outcomePubs->count())
+                    <div style="overflow-x:auto;">
+                        <table class="ws-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Type</th>
+                                    <th>Title</th>
+                                    <th>Authors</th>
+                                    <th>Journal</th>
+                                    <th>Year</th>
+                                    <th>DOI</th>
+                                    <th>System Verification</th>
+                                    <th>Reviewer Verification</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($outcomePubs as $o)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td>{{ $o->type ?? '—' }}</td>
+                                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;">
+                                        @if($o->publication)
+                                            {{ $o->publication->publication_title ?? '—' }}
+                                        @else
+                                            <span style="color:var(--ink-400);">{{ $o->identifier ?? '—' }}</span>
+                                        @endif
+                                    </td>
+                                    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        {{ $o->publication->authors ?? '—' }}
+                                    </td>
+                                    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        {{ $o->publication->journal ?? '—' }}
+                                    </td>
+                                    <td>{{ $o->publication->year ?? '—' }}</td>
+                                    <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        @if($o->publication && $o->publication->doi)
+                                            <a href="https://doi.org/{{ $o->publication->doi }}" target="_blank" style="color:var(--brand-600);text-decoration:none;">{{ $o->publication->doi }}</a>
+                                        @else
+                                            <span style="color:var(--ink-400);">—</span>
+                                        @endif
+                                    </td>
+                                    <td style="text-align:center;">
+                                        @if($o->publication)
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                        @else
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        @endif
+                                    </td>
+                                    <td style="text-align:center;">
+                                        @if($o->verifcation_by_reviewer === 'verified')
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                        @else
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        @endif
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <p style="color:var(--ink-400);font-size:13px;margin:0;">No publications recorded.</p>
+                @endif
             </div>
+
+            {{-- ── Students ── --}}
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-user-graduate"></i> Students</span>
+                    <span class="ws-pill ws-pill-ink">{{ $students->count() }} record(s)</span>
+                </div>
+                @if($students->count())
+                    <div style="overflow-x:auto;">
+                        <table class="ws-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Type</th>
+                                    <th>Student ID</th>
+                                    <th>Name</th>
+                                    <th>Major</th>
+                                    <th>College</th>
+                                    <th>Program</th>
+                                    <th>Days</th>
+                                    <th>System Verification</th>
+                                    <th>Reviewer Verification</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($students as $s)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td><span class="ws-pill ws-pill-brand">{{ $s->type ?? '—' }}</span></td>
+                                    <td>{{ $s->std_id ?? '—' }}</td>
+                                    <td style="font-weight:500;">
+                                        @if($s->details)
+                                            {{ $s->details->full_name }}
+                                        @else
+                                            <span style="color:var(--ink-400);">—</span>
+                                        @endif
+                                    </td>
+                                    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        @if($s->details)
+                                            {{ $s->details->major ?? '—' }}
+                                        @else
+                                            <span style="color:var(--ink-400);">—</span>
+                                        @endif
+                                    </td>
+                                    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        @if($s->details)
+                                            {{ $s->details->college ?? '—' }}
+                                        @else
+                                            <span style="color:var(--ink-400);">—</span>
+                                        @endif
+                                    </td>
+                                    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        @if($s->details)
+                                            {{ $s->details->std_program ?? '—' }}
+                                        @else
+                                            <span style="color:var(--ink-400);">—</span>
+                                        @endif
+                                    </td>
+                                    <td style="text-align:center;">{{ $s->days ?? '—' }}</td>
+                                    <td style="text-align:center;">
+                                        @if($s->details)
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                        @else
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        @endif
+                                    </td>
+                                    <td style="text-align:center;">
+                                        @if($s->verifcation_by_reviewer === 'verified')
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                        @else
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        @endif
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <p style="color:var(--ink-400);font-size:13px;margin:0;">No students recorded.</p>
+                @endif
+            </div>
+
+            {{-- ── Researchers ── --}}
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-users"></i> Researchers</span>
+                    <span class="ws-pill ws-pill-ink">{{ $researchers->count() }} record(s)</span>
+                </div>
+                @if($researchers->count())
+                    <div style="overflow-x:auto;">
+                        <table class="ws-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Days</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($researchers as $r)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td style="font-weight:500;">{{ $r->name ?? '—' }}</td>
+                                    <td>{{ $r->category ?? '—' }}</td>
+                                    <td style="text-align:center;">{{ $r->days ?? '—' }}</td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <p style="color:var(--ink-400);font-size:13px;margin:0;">No researchers recorded.</p>
+                @endif
+            </div>
+
+            {{-- ── Contributions (from outcomes table, excluding publications) ── --}}
+            @php
+                $pubBookTypes = ['journal_q1','journal_q2','journal_q3','journal_q4','conference','book','edited_book','book_chapter'];
+                $outcomeContributions = $outcomes->reject(fn($o) => in_array($o->type, $pubBookTypes));
+            @endphp
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-lightbulb"></i> Contributions</span>
+                    <span class="ws-pill ws-pill-ink">{{ $outcomeContributions->count() }} record(s)</span>
+                </div>
+                @if($outcomeContributions->count())
+                    <div style="overflow-x:auto;">
+                        <table class="ws-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Type</th>
+                                    <th>Identifier</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($outcomeContributions as $c)
+                                <tr>
+                                    <td>{{ $loop->iteration }}</td>
+                                    <td>{{ $c->type ?? '—' }}</td>
+                                    <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                        {{ $c->identifier ?? '—' }}
+                                    </td>
+                                </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <p style="color:var(--ink-400);font-size:13px;margin:0;">No contributions recorded.</p>
+                @endif
+            </div>
+
         </div>
-        <div class="ws-form-col">
+    </div>
+
+    {{-- ─── RIGHT COLUMN: Grading Forms ─── --}}
+    <div class="ws-form-col">
+
+        {{-- PROGRESS GRADING MODE --}}
+        @if($isProgressStep)
             @include('grading.partials.progress-grade', [
                 'report' => null,
                 'grading' => $progressGrading ?? null,
                 'index' => 1,
                 'project' => $project,
-                'showSubmitGrade' => $progressGrading && $progressGrading->isAccepted !== null && !$project->hasStatus(\App\Models\Project::STATUS_GRADED)
+                'showSubmitGrade' => $progressGrading && $progressGrading->isAccepted !== null && !$project->hasStatus(\App\Models\Project::STATUS_GRADED),
+                'showAsSummary' => false
             ])
-        </div>
-    </div>
-    @endif
-</div>
 
-{{-- Final Report --}}
-<div class="ws-tab-panel" id="tab-final" style="display:none;">
-    @if(empty($finalSubmitted) || !$finalSubmitted)
-    {{-- LOCK: LPI has not submitted the final report yet --}}
-    <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
-        <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-            <i class="fas fa-lock" style="font-size:24px;"></i>
-        </div>
-        <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Final Report Not Available Yet</h3>
-        <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
-            The LPI has not officially submitted the final report for this project.
-            Grading will be unlocked once the report is submitted.
-        </p>
-    </div>
-    @else
-    <div class="ws-split">
-        <div class="ws-pdf-col">
-            <div class="ws-card">
-                <div class="ws-section-title">
-                    <span><i class="fas fa-file-pdf"></i> Final Report</span>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        @php $finalVersions = $submissions->where('type', 'final')->sortByDesc('version'); @endphp
-                        @if($finalVersions->count() > 1)
-                        <select class="ws-version-select" data-iframe="final-iframe" onchange="switchVersion(this, 'final-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
-                            @foreach($finalVersions as $fv)
-                            <option value="{{ $fv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $fv->version }} — {{ $fv->stored_filename }}</option>
-                            @endforeach
-                        </select>
-                        @elseif($finalVersions->count() === 1)
-                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $finalVersions->first()->stored_filename }}</span>
-                        @else
-                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
-                        @endif
-                        <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
-                            <i class="fas fa-external-link-alt"></i> Open
-                        </a>
-                    </div>
-                </div>
-                <iframe id="final-iframe" class="ws-iframe" src="{{ $finalVersions->count() > 0 ? route('serveFile2', ['submission_id' => $finalVersions->first()->id]) : route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
-            </div>
-        </div>
-        <div class="ws-form-col">
-            @include('grading.partials.final-grades', [
-                'grading' => $finalGrading,
-                'project' => $project
-            ])
-        </div>
-    </div>
-    @endif
-</div>
-
-{{-- QU Readiness Map --}}
-<div class="ws-tab-panel" id="tab-readiness" style="display:none;">
-    <div class="ws-card">
-        <div class="ws-section-title">
-            <span><i class="fas fa-file-pdf"></i> QU Readiness Map</span>
-            <div style="display:flex;align-items:center;gap:6px;">
-                @php $readinessVersions = $submissions->where('type', 'readiness')->sortByDesc('version'); @endphp
-                @if($readinessVersions->count() > 1)
-                <select class="ws-version-select" data-iframe="readiness-iframe" onchange="switchVersion(this, 'readiness-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
-                    @foreach($readinessVersions as $rv)
-                    <option value="{{ $rv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $rv->version }} — {{ $rv->stored_filename }}</option>
-                    @endforeach
-                </select>
-                @elseif($readinessVersions->count() === 1)
-                    <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $readinessVersions->first()->stored_filename }}</span>
-                @else
-                    <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
-                @endif
-                <a href="{{ route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
-                    <i class="fas fa-external-link-alt"></i> Open
-                </a>
-            </div>
-        </div>
-        <iframe id="readiness-iframe" class="ws-iframe" src="{{ $readinessVersions->count() > 0 ? route('serveFile2', ['submission_id' => $readinessVersions->first()->id]) : route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
-    </div>
-</div>
-
-{{-- Review & Submit --}}
-<div class="ws-tab-panel" id="tab-review" style="display:none;">
-    <div class="ws-card">
-        <div class="ws-section-title">
-            <span><i class="fas fa-check-circle"></i> Review & Submit Grade</span>
-        </div>
-
-        <p style="color:var(--ink-500);font-size:13px;margin:0 0 16px;line-height:1.5;">
-            Review your grading decisions and submit the final grade. Once submitted, the project status will be marked as <strong>Graded</strong> in the workflow.
-        </p>
-
-        {{-- Summary of saved grades --}}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px;">
-            {{-- Progress Report Grade Summary --}}
-            <div style="background:var(--sand-50);border:1px solid var(--ink-100);border-radius:8px;padding:14px;">
-                <div style="font-size:12px;font-weight:600;color:var(--ink-800);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-                    <i class="fas fa-star" style="color:var(--brand-500);"></i> Progress Report
-                </div>
-                @if($progressGrading && $progressGrading->isAccepted !== null)
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-                        @if($progressGrading->isAccepted == 1)
-                            <span style="display:inline-flex;align-items:center;gap:4px;color:var(--success);font-weight:600;font-size:12px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                                Accepted
-                            </span>
-                        @else
-                            <span style="display:inline-flex;align-items:center;gap:4px;color:var(--danger);font-weight:600;font-size:12px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                Rejected
-                            </span>
-                        @endif
-                    </div>
-                    @php
-                        $pgSections = [
-                            'A' => ['label' => 'Scientific Merit', 'grade' => $progressGrading->achievementsRating ?? null, 'comment' => $progressGrading->achievementsComments ?? null],
-                            'B' => ['label' => 'Methodology', 'grade' => $progressGrading->publicationsRating ?? null, 'comment' => $progressGrading->publicationsComments ?? null],
-                            'C' => ['label' => 'Progress vs Plan', 'grade' => $progressGrading->studentsRating ?? null, 'comment' => $progressGrading->studentsComments ?? null],
-                            'D' => ['label' => 'Budget Compliance', 'grade' => $progressGrading->budgetRating ?? null, 'comment' => $progressGrading->budgetComments ?? null],
-                        ];
-                    @endphp
-                    @foreach($pgSections as $key => $s)
-                        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--ink-100);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <span style="font-weight:600;color:var(--ink-700);font-size:11px;">{{ $s['label'] }}</span>
-                                <strong style="color:var(--brand-600);font-size:14px;">{{ $s['grade'] ?? '—' }}/5</strong>
-                            </div>
-                            @if($s['comment'])
-                                <div style="margin-top:2px;color:var(--ink-500);font-size:10.5px;font-style:italic;">{{ $s['comment'] }}</div>
-                            @endif
-                        </div>
-                    @endforeach
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--ink-100);display:flex;justify-content:space-between;align-items:center;">
-                        <span class="ws-mini-label">Total</span>
-                        <strong style="color:var(--brand-600);font-size:15px;">
-                            @php
-                                $pgTotal = collect([
-                                    $progressGrading->achievementsRating,
-                                    $progressGrading->publicationsRating,
-                                    $progressGrading->studentsRating,
-                                    $progressGrading->budgetRating
-                                ])->sum();
-                            @endphp
-                            {{ $pgTotal > 0 ? $pgTotal : '—' }}
-                        </strong>
-                    </div>
-                @else
-                    <div style="font-size:12px;color:var(--ink-400);">
-                        <i class="fas fa-exclamation-triangle" style="color:var(--warning);margin-right:4px;"></i>
-                        Not yet graded. Please complete the Progress Report tab first.
-                    </div>
-                @endif
-            </div>
-
-            {{-- Final Report Grade Summary --}}
-            <div style="background:var(--sand-50);border:1px solid var(--ink-100);border-radius:8px;padding:14px;">
-                <div style="font-size:12px;font-weight:600;color:var(--ink-800);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-                    <i class="fas fa-star" style="color:var(--brand-500);"></i> Final Report
-                </div>
-                @if($finalGrading && $finalGrading->isAccepted !== null)
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-                        @if($finalGrading->isAccepted == 1)
-                            <span style="display:inline-flex;align-items:center;gap:4px;color:var(--success);font-weight:600;font-size:12px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                                Accepted
-                            </span>
-                        @else
-                            <span style="display:inline-flex;align-items:center;gap:4px;color:var(--danger);font-weight:600;font-size:12px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                Rejected
-                            </span>
-                        @endif
-                    </div>
-                    @php
-                        $fgSections = [
-                            'A' => ['label' => 'Achievements against objectives', 'grade' => $finalGrading->gradeA ?? null, 'comment' => $finalGrading->commentA ?? null],
-                            'B' => ['label' => 'Publications & IP', 'grade' => $finalGrading->gradeB ?? null, 'comment' => $finalGrading->commentB ?? null],
-                            'C' => ['label' => 'Student & Young Researcher Involvement', 'grade' => $finalGrading->gradeC ?? null, 'comment' => $finalGrading->commentC ?? null],
-                            'D' => ['label' => 'Project Impact', 'grade' => $finalGrading->gradeD ?? null, 'comment' => $finalGrading->commentD ?? null],
-                        ];
-                    @endphp
-                    @foreach($fgSections as $key => $s)
-                        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--ink-100);">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <span style="font-weight:600;color:var(--ink-700);font-size:11px;">{{ $s['label'] }}</span>
-                                <strong style="color:var(--brand-600);font-size:14px;">{{ $s['grade'] ?? '—' }}/5</strong>
-                            </div>
-                            @if($s['comment'])
-                                <div style="margin-top:2px;color:var(--ink-500);font-size:10.5px;font-style:italic;">{{ $s['comment'] }}</div>
-                            @endif
-                        </div>
-                    @endforeach
-                    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--ink-100);display:flex;justify-content:space-between;align-items:center;">
-                        <span class="ws-mini-label">Total</span>
-                        <strong style="color:var(--brand-600);font-size:15px;">{{ $finalGrading->total ?? '—' }}</strong>
-                    </div>
-                @else
-                    <div style="font-size:12px;color:var(--ink-400);">
-                        <i class="fas fa-exclamation-triangle" style="color:var(--warning);margin-right:4px;"></i>
-                        Not yet graded. Please complete the Final Report tab first.
-                    </div>
-                @endif
-            </div>
-        </div>
-
-        {{-- Submit Grade Button --}}
-        <div style="display:flex;justify-content:center;padding-top:16px;border-top:1px solid var(--ink-100);">
-            @if($project->hasStatus(\App\Models\Project::STATUS_GRADED))
-                <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;background:#e8f5ee;border:1px solid #a8e6b8;border-radius:8px;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                    <span style="font-size:14px;font-weight:600;color:var(--success);">Grade Already Submitted</span>
-                </div>
-            @else
-                <button type="button" class="ws-btn ws-btn-primary" id="submitGradeBtn" onclick="submitFinalGrade()" style="font-size:14px;padding:10px 24px;">
-                    <i class="fas fa-check-circle"></i> Submit Grade
+        {{-- FINAL GRADING MODE --}}
+        @elseif($isFinalStep)
+            <div class="ws-right-tabs" role="tablist">
+                @if($progressGrading)
+                <button type="button" class="ws-tab active" role="tab" data-tab="rtab-progress-ro" onclick="switchRightTab('rtab-progress-ro', this)">
+                    <i class="fas fa-chart-line"></i> Progress Grading
                 </button>
+                @endif
+                <button type="button" class="ws-tab {{ !$progressGrading ? 'active' : '' }}" role="tab" data-tab="rtab-final" onclick="switchRightTab('rtab-final', this)">
+                    <i class="fas fa-star"></i> Final Grade
+                </button>
+            </div>
+
+            @if($progressGrading)
+            <div class="ws-right-tab-panel" id="rtab-progress-ro" style="display:block;">
+                @include('grading.partials.progress-grade', [
+                    'grading' => $progressGrading,
+                    'project' => $project,
+                    'showAsSummary' => true
+                ])
+            </div>
             @endif
-        </div>
+
+            <div class="ws-right-tab-panel" id="rtab-final" style="display:{{ $progressGrading ? 'none' : 'block' }};">
+                @include('grading.partials.final-grades', [
+                    'grading' => $finalGrading,
+                    'project' => $project
+                ])
+            </div>
+
+        {{-- NO ACTIVE STEP --}}
+        @else
+            {{-- Check if grading was already submitted --}}
+            @if(($progressGrading && $progressGrading->publish !== 'pending') || ($finalGrading && $finalGrading->publish !== 'pending'))
+                {{-- Show read-only view of submitted gradings --}}
+                @if($finalGrading && $finalGrading->publish !== 'pending')
+                    @if($progressGrading && $progressGrading->publish !== 'pending')
+                    <div class="ws-right-tabs" role="tablist">
+                        <button type="button" class="ws-tab active" role="tab" data-tab="rtab-progress-ro" onclick="switchRightTab('rtab-progress-ro', this)">
+                            <i class="fas fa-chart-line"></i> Progress Grading
+                        </button>
+                        <button type="button" class="ws-tab" role="tab" data-tab="rtab-final" onclick="switchRightTab('rtab-final', this)">
+                            <i class="fas fa-star"></i> Final Grade
+                        </button>
+                    </div>
+
+                    <div class="ws-right-tab-panel" id="rtab-progress-ro" style="display:block;">
+                        @include('grading.partials.progress-grade', [
+                            'grading' => $progressGrading,
+                            'project' => $project,
+                            'showAsSummary' => true
+                        ])
+                    </div>
+
+                    <div class="ws-right-tab-panel" id="rtab-final" style="display:none;">
+                        @include('grading.partials.final-grades', [
+                            'grading' => $finalGrading,
+                            'project' => $project
+                        ])
+                    </div>
+                    @else
+                        @include('grading.partials.final-grades', [
+                            'grading' => $finalGrading,
+                            'project' => $project
+                        ])
+                    @endif
+                @elseif($progressGrading && $progressGrading->publish !== 'pending')
+                    @include('grading.partials.progress-grade', [
+                        'grading' => $progressGrading,
+                        'project' => $project,
+                        'showAsSummary' => true
+                    ])
+                @endif
+            @else
+                <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+                    <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                        <i class="fas fa-clipboard-check" style="font-size:24px;"></i>
+                    </div>
+                    <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">No Active Grading Step</h3>
+                    <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+                        There is no grading step currently active for this project.
+                        The grading forms will appear here when the LPI submits a report.
+                    </p>
+                </div>
+            @endif
+        @endif
+
     </div>
 </div>
 
-{{-- Help modals --}}
 @include('grading.partials.help-modals')
 
 @endsection
 
 @push('styles')
 <style>
-/* ─── Page head (matches Add Progress) ─── */
+/* ─── Page head ─── */
 .page-head {
     display: flex;
     justify-content: space-between;
@@ -527,12 +717,12 @@
 }
 .btn-secondary:hover { background: var(--ink-50); border-color: var(--ink-300); }
 
-/* ─── Workspace tabs (identical to Add Progress) ─── */
-.ws-tabs {
+/* ─── Tabs (shared for left, right) ─── */
+.ws-tabs, .ws-left-tabs, .ws-right-tabs {
     display: flex;
     gap: 4px;
     border-bottom: 1px solid var(--ink-100);
-    margin-bottom: 22px;
+    margin-bottom: 14px;
     flex-wrap: wrap;
 }
 .ws-tab {
@@ -557,9 +747,9 @@
     border-bottom-color: var(--brand-500);
     font-weight: 600;
 }
-.ws-tab svg { opacity: .8; }
+.ws-tab i { opacity: .8; font-size: 12px; }
 
-.ws-tab-panel { animation: fadeIn .2s ease; }
+.ws-tab-panel, .ws-left-tab-panel, .ws-right-tab-panel { animation: fadeIn .2s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* ─── Cards ─── */
@@ -651,7 +841,7 @@
     background: var(--sand-50);
 }
 
-/* ─── 70/30 split: PDF (left) + form (right) ─── */
+/* ─── 70/30 split ─── */
 .ws-split {
     display: grid;
     grid-template-columns: 70% 30%;
@@ -713,6 +903,18 @@
     box-shadow: var(--fluent-depth-4);
 }
 
+/* ─── Grade radio row read-only ─── */
+.ws-grade-row-readonly { display: flex; gap: 6px; justify-content: center; }
+.ws-grade-readonly-opt {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 6px;
+    border: 1px solid var(--ink-200); background: var(--ink-50);
+    font-weight: 600; font-size: 13px; color: var(--ink-500);
+}
+.ws-grade-readonly-opt.selected {
+    background: var(--brand-500); color: #fff; border-color: var(--brand-600);
+}
+
 /* ─── Help link ─── */
 .ws-help {
     display: inline-flex; align-items: center; gap: 6px;
@@ -722,7 +924,7 @@
 }
 .ws-help:hover { background: var(--brand-100); }
 
-/* ─── Help modal (custom WS) ─── */
+/* ─── Help modal ─── */
 .ws-modal-overlay {
     position: fixed; inset: 0; z-index: 1000;
     background: rgba(22,19,26,.45);
@@ -750,8 +952,50 @@
 .ws-modal-body ul { margin: 6px 0 0; padding-left: 18px; }
 .ws-modal-body li { margin-bottom: 3px; }
 
-/* ─── Toast ─── */
-/* (moved to centralized showToast in layout) */
+/* ─── Read-only summary ─── */
+.ws-ro-summary {
+    background: var(--sand-50);
+    border: 1px solid var(--ink-100);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-size: 13px;
+}
+.ws-ro-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--ink-100);
+}
+.ws-ro-row:last-child { border-bottom: none; }
+.ws-ro-label { font-weight: 600; color: var(--ink-700); font-size: 12.5px; }
+.ws-ro-value { font-weight: 600; color: var(--brand-600); font-size: 14px; }
+.ws-ro-comment { color: var(--ink-500); font-size: 12px; font-style: italic; margin-top: 3px; }
+
+/* ─── Auto-grade box ─── */
+.ws-auto-grade-box {
+    background: var(--brand-50);
+    border: 1px solid var(--brand-200);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--brand-700);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.ws-auto-grade-box i { color: var(--brand-500); }
+.ws-auto-hint {
+    color: var(--warning);
+    font-size: 11px;
+    margin-top: 6px;
+    padding: 4px 8px;
+    background: #fef7e0;
+    border: 1px solid #fce8b2;
+    border-radius: 4px;
+    display: none;
+}
 
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -761,17 +1005,29 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    window.switchTab = function(tabId, btn) {
-        document.querySelectorAll('.ws-tab-panel').forEach(function(p) { p.style.display = 'none'; });
-        document.querySelectorAll('.ws-tab').forEach(function(t) { t.classList.remove('active'); });
+    // ─── Left-side tab switching ───
+    window.switchLeftTab = function(tabId, btn) {
+        var col = btn.closest('.ws-pdf-col');
+        col.querySelectorAll('.ws-left-tab-panel').forEach(function(p) { p.style.display = 'none'; });
+        col.querySelectorAll('.ws-left-tabs .ws-tab').forEach(function(t) { t.classList.remove('active'); });
         btn.classList.add('active');
         var panel = document.getElementById(tabId);
         if (panel) panel.style.display = 'block';
     };
-    var firstTab = document.querySelector('.ws-tab.active');
-    if (firstTab) firstTab.click();
+    var firstLeftTab = document.querySelector('.ws-left-tabs .ws-tab.active');
+    if (firstLeftTab) firstLeftTab.click();
 
-    // Ethical approval toggle label update
+    // ─── Right-side tab switching (final grading sub-tabs) ───
+    window.switchRightTab = function(tabId, btn) {
+        var col = btn.closest('.ws-form-col');
+        col.querySelectorAll('.ws-right-tab-panel').forEach(function(p) { p.style.display = 'none'; });
+        col.querySelectorAll('.ws-right-tabs .ws-tab').forEach(function(t) { t.classList.remove('active'); });
+        btn.classList.add('active');
+        var panel = document.getElementById(tabId);
+        if (panel) panel.style.display = 'block';
+    };
+
+    // ─── Ethical approval toggle label ───
     document.querySelectorAll('input[name="ethical"]').forEach(function(toggle) {
         function updateLabel() {
             var wrap = toggle.closest('div');
@@ -789,6 +1045,281 @@ document.addEventListener('DOMContentLoaded', function() {
         updateLabel();
     });
 
+    // ─── Auto-grade diff detection ───
+    document.querySelectorAll('.ws-grade-row input[type="radio"]').forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            var card = this.closest('.ws-card');
+            if (!card) return;
+            var autoBox = card.querySelector('.ws-auto-grade-box');
+            var hint = card.querySelector('.ws-auto-hint');
+            if (autoBox && hint) {
+                var autoVal = autoBox.querySelector('.ws-auto-grade-value')?.textContent || autoBox.dataset.value;
+                var selectedVal = this.value;
+                if (selectedVal !== autoVal) {
+                    hint.textContent = '\u26A0 Your selection (' + selectedVal + ') differs from auto-calculated (' + autoVal + ')';
+                    hint.style.display = 'block';
+                } else {
+                    hint.style.display = 'none';
+                }
+            }
+        });
+    });
+
+    // ─── Achievement checkbox auto-grade recalculation ───
+    function recalcAchievement(section) {
+        if (!section) return;
+        var autoGradeBox = section.querySelector('.ws-auto-grade-box');
+        var scoreDisplay = section.querySelector('.ws-achievement-score');
+        var gradeDisplay = section.querySelector('.ws-achievement-grade');
+        if (!autoGradeBox) return;
+        var baseExpected = parseFloat(autoGradeBox.dataset.baseExpected) || 0;
+
+        var actualSum = 0;
+        section.querySelectorAll('.ws-check-item input[type="checkbox"]:checked').forEach(function(checked) {
+            actualSum += parseFloat(checked.dataset.points) || 0;
+        });
+
+        if (scoreDisplay) scoreDisplay.textContent = actualSum;
+
+        var newGrade = 0;
+        if (baseExpected > 0) {
+            newGrade = Math.min(Math.round((actualSum / baseExpected) * 5 * 100) / 100, 5);
+        }
+        if (gradeDisplay) gradeDisplay.textContent = baseExpected > 0 ? newGrade : '—';
+        autoGradeBox.dataset.value = newGrade;
+
+        // Update hidden fields
+        var form = section.closest('form');
+        if (form) {
+            var scoreInput = form.querySelector('.ws-score-a');
+            var autoInput = form.querySelector('.ws-auto-grade-a');
+            if (scoreInput) scoreInput.value = actualSum;
+            if (autoInput) autoInput.value = newGrade;
+        }
+
+        // Auto-select radio only if we have commitment data
+        if (baseExpected > 0) {
+            var roundedGrade = Math.round(newGrade);
+            if (roundedGrade < 1) roundedGrade = 1;
+            var targetRadio = section.querySelector('input[name="gradeA"][value="' + roundedGrade + '"]');
+            if (targetRadio) {
+                targetRadio.checked = true;
+            }
+        }
+
+        // Update diff hint
+        var hint = section.querySelector('.ws-auto-hint');
+        if (hint && baseExpected > 0) {
+            var roundedGrade = Math.round(newGrade);
+            var gradeARadio = section.querySelector('input[name="gradeA"]:checked');
+            if (gradeARadio && parseFloat(gradeARadio.value) !== newGrade) {
+                hint.textContent = '\u26A0 Auto-calculated: ' + newGrade + ' (rounded to ' + roundedGrade + ')';
+                hint.style.display = 'block';
+            } else {
+                hint.style.display = 'none';
+            }
+        } else if (hint) {
+            hint.style.display = 'none';
+        }
+    }
+
+    // ─── Send verification update to server ───
+    function sendVerification(type, ids, status) {
+        fetch('{{ route("grading.updateVerification") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('input[name="_token"]')?.value || '',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ type: type, ids: ids, status: status })
+        }).catch(function(err) {
+            console.error('Verification update failed:', err);
+        });
+    }
+
+    document.querySelectorAll('.ws-achievement-section').forEach(function(section) {
+        recalcAchievement(section);
+        // Send initial verification for checked items on page load
+        var checkedIds = [];
+        section.querySelectorAll('.ws-check-item input[type="checkbox"]:checked').forEach(function(cb) {
+            checkedIds.push(cb.value);
+        });
+        if (checkedIds.length) sendVerification('outcome', checkedIds, 'verified');
+    });
+
+    document.querySelectorAll('.ws-achievement-section input[type="checkbox"]').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var section = this.closest('.ws-achievement-section');
+            recalcAchievement(section);
+            // Send verification update
+            var type = this.dataset.points !== undefined ? 'outcome' : 'outcome';
+            var id = this.value;
+            var status = this.checked ? 'verified' : 'pending';
+            sendVerification('outcome', [id], status);
+        });
+    });
+
+    // ─── Publication checkbox recalculation ───
+    function recalcPublication(section) {
+        if (!section) return;
+        var autoGradeBox = section.querySelector('.ws-auto-grade-box');
+        var scoreDisplay = section.querySelector('.ws-pub-score');
+        var gradeDisplay = section.querySelector('.ws-pub-grade');
+        if (!autoGradeBox) return;
+        var baseExpected = parseFloat(autoGradeBox.dataset.baseExpected) || 0;
+
+        var actualSum = 0;
+        section.querySelectorAll('.ws-check-item input[type="checkbox"]:checked').forEach(function(checked) {
+            actualSum += parseFloat(checked.dataset.points) || 0;
+        });
+
+        if (scoreDisplay) scoreDisplay.textContent = actualSum;
+
+        var newGrade = 0;
+        if (baseExpected > 0) {
+            newGrade = Math.min(Math.round((actualSum / baseExpected) * 5 * 100) / 100, 5);
+        }
+        if (gradeDisplay) gradeDisplay.textContent = baseExpected > 0 ? newGrade : '—';
+        autoGradeBox.dataset.value = newGrade;
+
+        // Update hidden fields
+        var form = section.closest('form');
+        if (form) {
+            var scoreInput = form.querySelector('.ws-score-b');
+            var autoInput = form.querySelector('.ws-auto-grade-b');
+            if (scoreInput) scoreInput.value = actualSum;
+            if (autoInput) autoInput.value = newGrade;
+        }
+
+        // Auto-select radio only if we have commitment data
+        if (baseExpected > 0) {
+            var roundedGrade = Math.round(newGrade);
+            if (roundedGrade < 1) roundedGrade = 1;
+            var targetRadio = section.querySelector('input[name="gradeB"][value="' + roundedGrade + '"]');
+            if (targetRadio) targetRadio.checked = true;
+        }
+
+        var hint = section.querySelector('.ws-auto-hint');
+        if (hint && baseExpected > 0) {
+            var roundedGrade = Math.round(newGrade);
+            var radio = section.querySelector('input[name="gradeB"]:checked');
+            if (radio && parseFloat(radio.value) !== newGrade) {
+                hint.textContent = '\u26A0 Auto-calculated: ' + newGrade + ' (rounded to ' + roundedGrade + ')';
+                hint.style.display = 'block';
+            } else {
+                hint.style.display = 'none';
+            }
+        } else if (hint) {
+            hint.style.display = 'none';
+        }
+    }
+
+    document.querySelectorAll('.ws-publication-section').forEach(function(section) {
+        recalcPublication(section);
+        // Send initial verification for checked items on page load
+        var checkedIds = [];
+        section.querySelectorAll('.ws-check-item input[type="checkbox"]:checked').forEach(function(cb) {
+            checkedIds.push(cb.value);
+        });
+        if (checkedIds.length) sendVerification('outcome', checkedIds, 'verified');
+    });
+
+    document.querySelectorAll('.ws-publication-section input[type="checkbox"]').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var section = this.closest('.ws-publication-section');
+            recalcPublication(section);
+            // Send verification update
+            var id = this.value;
+            var status = this.checked ? 'verified' : 'pending';
+            sendVerification('outcome', [id], status);
+        });
+    });
+
+    // ─── Student checkbox recalculation ───
+    function recalcStudent(section) {
+        if (!section) return;
+        var autoGradeBox = section.querySelector('.ws-auto-grade-box');
+        var scoreDisplay = section.querySelector('.ws-student-score');
+        var gradeDisplay = section.querySelector('.ws-student-grade');
+        if (!autoGradeBox) return;
+        var baseExpected = parseFloat(autoGradeBox.dataset.baseExpected) || 0;
+
+        var actualSum = 0;
+        section.querySelectorAll('.ws-check-item input[type="checkbox"]:checked').forEach(function(checked) {
+            actualSum += parseFloat(checked.dataset.points) || 0;
+        });
+
+        if (scoreDisplay) scoreDisplay.textContent = actualSum;
+
+        var newGrade = 0;
+        if (baseExpected > 0) {
+            newGrade = Math.min(Math.round((actualSum / baseExpected) * 5 * 100) / 100, 5);
+        }
+        if (gradeDisplay) gradeDisplay.textContent = baseExpected > 0 ? newGrade : '—';
+        autoGradeBox.dataset.value = newGrade;
+
+        // Update hidden fields
+        var form = section.closest('form');
+        if (form) {
+            var scoreInput = form.querySelector('.ws-score-c');
+            var autoInput = form.querySelector('.ws-auto-grade-c');
+            if (scoreInput) scoreInput.value = actualSum;
+            if (autoInput) autoInput.value = newGrade;
+        }
+
+        // Auto-select radio only if we have commitment data
+        if (baseExpected > 0) {
+            var roundedGrade = Math.round(newGrade);
+            if (roundedGrade < 1) roundedGrade = 1;
+            var targetRadio = section.querySelector('input[name="gradeC"][value="' + roundedGrade + '"]');
+            if (targetRadio) targetRadio.checked = true;
+        }
+
+        var hint = section.querySelector('.ws-auto-hint');
+        if (hint && baseExpected > 0) {
+            var roundedGrade = Math.round(newGrade);
+            var radio = section.querySelector('input[name="gradeC"]:checked');
+            if (radio && parseFloat(radio.value) !== newGrade) {
+                hint.textContent = '\u26A0 Auto-calculated: ' + newGrade + ' (rounded to ' + roundedGrade + ')';
+                hint.style.display = 'block';
+            } else {
+                hint.style.display = 'none';
+            }
+        } else if (hint) {
+            hint.style.display = 'none';
+        }
+    }
+
+    document.querySelectorAll('.ws-student-section').forEach(function(section) {
+        recalcStudent(section);
+        // Send initial verification for checked items on page load
+        var studentIds = [];
+        var researcherIds = [];
+        section.querySelectorAll('.ws-check-item input[type="checkbox"]:checked').forEach(function(cb) {
+            if (cb.name === 'researcher_items[]') {
+                researcherIds.push(cb.value);
+            } else {
+                studentIds.push(cb.value);
+            }
+        });
+        if (studentIds.length) sendVerification('student', studentIds, 'verified');
+        if (researcherIds.length) sendVerification('researcher', researcherIds, 'verified');
+    });
+
+    document.querySelectorAll('.ws-student-section input[type="checkbox"]').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var section = this.closest('.ws-student-section');
+            recalcStudent(section);
+            // Send verification update
+            var id = this.value;
+            var status = this.checked ? 'verified' : 'pending';
+            var type = this.name === 'researcher_items[]' ? 'researcher' : 'student';
+            sendVerification(type, [id], status);
+        });
+    });
+
+    // ─── PDF version switching ───
     window.switchVersion = function(select, iframeId) {
         var submissionId = select.value;
         var iframe = document.getElementById(iframeId);
@@ -797,6 +1328,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
+    // ─── Help modals ───
     window.openHelp = function(id) {
         var m = document.getElementById(id);
         if (m) m.style.display = 'flex';
@@ -805,13 +1337,24 @@ document.addEventListener('DOMContentLoaded', function() {
         var m = document.getElementById(id);
         if (m) m.style.display = 'none';
     };
+
+    // ─── Detail modals (publications, students) ───
+    window.openDetailModal = function(id) {
+        var m = document.getElementById(id);
+        if (m) m.style.display = 'flex';
+    };
+    window.closeDetailModal = function(id) {
+        var m = document.getElementById(id);
+        if (m) m.style.display = 'none';
+    };
+
     document.querySelectorAll('.ws-modal-overlay').forEach(function(ov) {
         ov.addEventListener('click', function(e) {
             if (e.target === ov) ov.style.display = 'none';
         });
     });
 
-    // Progress grade AJAX submit
+    // ─── Progress grade AJAX submit ───
     document.querySelectorAll('form[data-progress-grade]').forEach(function(form) {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -849,7 +1392,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Final grade AJAX submit
+    // ─── Final grade AJAX submit ───
     document.querySelectorAll('form[data-final-grade]').forEach(function(form) {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -887,40 +1430,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Submit Grade — marks project as Graded in workflow
-    window.submitFinalGrade = function() {
-        var btn = document.getElementById('submitGradeBtn');
-        if (!btn) return;
-        btn.disabled = true;
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin" style="margin-right:6px;"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/></svg> Submitting…';
-
-        var csrf = document.querySelector('meta[name="csrf-token"]');
-        var projectId = {{ $project->id }};
-
-        fetch('/grading/' + projectId + '/submit-grade', {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrf ? csrf.content : ''
-            }
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) {
-                showToast('success', 'Grade submitted successfully! Project marked as Graded.');
-                setTimeout(function() { location.reload(); }, 1500);
-            } else {
-                showToast('error', data.error || 'Failed to submit grade.');
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-check-circle"></i> Submit Grade';
-            }
-        })
-        .catch(function(err) {
-            showToast('error', 'Network error: ' + err.message);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check-circle"></i> Submit Grade';
-        });
-    };
 });
 </script>
 @endpush

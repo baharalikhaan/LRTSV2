@@ -81,6 +81,7 @@
                         $canRegister = $activeRole === 'LPI';
                         $programInactive = $cp->program && !$cp->programIsActive();
                         $availActions = $cp->availableActions($user);
+                        $hasProgressExtended = $cp->hasStatus(\App\Models\Project::STATUS_PROGRESS_EXTENDED) ?? false;
 
                         // Determine "Next Step" info (what happens next & who is responsible)
                         $nextStepLabel = '';
@@ -91,6 +92,9 @@
                             $nextStepIcon = 'fa-lock';
                             $nextStepColor = 'var(--color-danger)';
                         } else {
+                            // Check if extended progress is enabled
+                            $isExtended = $cp->is_extended ?? false;
+
                             switch ($flowStatus) {
                                 case 'imported':
                                     $nextStepLabel = 'Register by LPI / Admin';
@@ -98,20 +102,66 @@
                                     $nextStepColor = 'var(--color-brand-500)';
                                     break;
                                 case 'registered':
-                                    $nextStepLabel = 'Add Progress by LPI';
-                                    $nextStepIcon = 'fa-chart-line';
-                                    $nextStepColor = 'var(--color-brand-500)';
-                                    break;
-                                case 'progress':
-                                case 'progress_add':
-                                    $nextStepLabel = 'Assign Reviewers by Admin';
+                                    $nextStepLabel = 'Assign Reviewer by Admin + Add Progress by LPI';
                                     $nextStepIcon = 'fa-user-tag';
                                     $nextStepColor = 'var(--color-gold-500)';
                                     break;
                                 case 'Assigned':
                                 case 'assigned':
-                                    $nextStepLabel = 'Reviewers have to Accept/Reject proposals';
+                                    $nextStepLabel = 'Reviewer has to Accept/Reject proposal / Add Progress by LPI';
                                     $nextStepIcon = 'fa-check-circle';
+                                    $nextStepColor = 'var(--color-brand-500)';
+                                    break;
+                                case 'Claimed':
+                                case 'claimed':
+                                    $nextStepLabel = 'Review Progress by Reviewer';
+                                    $nextStepIcon = 'fa-clipboard-check';
+                                    $nextStepColor = 'var(--color-brand-500)';
+                                    break;
+                                case 'progress':
+                                case 'progress_add':
+                                case 'progress_added':
+                                    $hasReviewer = DB::table('projects_reviewers')->where('project_id', $cp->id)->exists();
+                                    $nextStepLabel = $hasReviewer ? 'Review Progress by Reviewer' : 'Assign Reviewer by Admin';
+                                    $nextStepIcon = $hasReviewer ? 'fa-clipboard-check' : 'fa-user-tag';
+                                    $nextStepColor = 'var(--color-brand-500)';
+                                    // Debug: uncomment to see values
+                                    // dd($flowStatus, $hasReviewer, $nextStepLabel);
+                                    break;
+                                case 'progress_reviewed':
+                                    $nextStepLabel = $isExtended ? 'Add Extended Progress by LPI' : 'Add Final Report by LPI';
+                                    $nextStepIcon = $isExtended ? 'fa-sync-alt' : 'fa-paper-plane';
+                                    $nextStepColor = 'var(--color-brand-500)';
+                                    break;
+                                case 'progress_rejected':
+                                    $nextStepLabel = 'Resubmit Progress by LPI';
+                                    $nextStepIcon = 'fa-chart-line';
+                                    $nextStepColor = 'var(--color-danger)';
+                                    break;
+                                case 'rejected':
+                                case 'proposal_rejected':
+                                    $nextStepLabel = 'Assign Reviewer by Admin + Add Progress by LPI';
+                                    $nextStepIcon = 'fa-user-tag';
+                                    $nextStepColor = 'var(--color-gold-500)';
+                                    break;
+                                case 'progress_extended':
+                                    $nextStepLabel = 'Review Extended Progress by Reviewer';
+                                    $nextStepIcon = 'fa-clipboard-check';
+                                    $nextStepColor = 'var(--color-brand-500)';
+                                    break;
+                                case 'progress_ext_reviewed':
+                                    $nextStepLabel = 'Add Final Report by LPI';
+                                    $nextStepIcon = 'fa-paper-plane';
+                                    $nextStepColor = 'var(--color-brand-500)';
+                                    break;
+                                case 'progress_ext_rejected':
+                                    $nextStepLabel = 'Resubmit Extended Progress by LPI';
+                                    $nextStepIcon = 'fa-sync-alt';
+                                    $nextStepColor = 'var(--color-danger)';
+                                    break;
+                                case 'final_added':
+                                    $nextStepLabel = 'Grade Final by Reviewer';
+                                    $nextStepIcon = 'fa-flag-checkered';
                                     $nextStepColor = 'var(--color-brand-500)';
                                     break;
                                 case \App\Models\Project::STATUS_CLAIM1:
@@ -149,8 +199,7 @@
                                 default:
                                     $nextStepLabel = '—';
                                     $nextStepIcon = 'fa-minus';
-                                    $nextStepColor = 'var(--color-ink-400)';
-                                    break;
+                                    $nextStepColor = 'var(--color-ink-300)';
                             }
                         }
                     @endphp
@@ -167,9 +216,15 @@
                                 switch($flowStatus) {
                                     case 'imported': $statusPillClass = 'warning'; break;
                                     case 'registered': $statusPillClass = 'accepted'; break;
-                                    case 'progress':
-                                    case 'progress_add': $statusPillClass = 'info'; break;
                                     case 'assigned': $statusPillClass = 'review'; break;
+                                    case 'claimed': $statusPillClass = 'accepted'; break;
+                                    case 'progress':
+                                    case 'progress_add':
+                                    case 'progress_added':
+                                    case 'progress_reviewed': $statusPillClass = 'info'; break;
+                                    case 'progress_rejected':
+                                    case 'rejected': $statusPillClass = 'danger'; break;
+                                    case 'final_added': $statusPillClass = 'info'; break;
                                     case 'accepted': $statusPillClass = 'accepted'; break;
                                     case 'reviewed': $statusPillClass = 'info'; break;
                                     case 'graded': $statusPillClass = 'accepted'; break;

@@ -8,7 +8,13 @@ use App\Models\Pillar;
 use App\Models\Project;
 use App\Models\CycleConfig;
 use App\Models\College;
+use App\Models\User;
+use App\Models\ReportReminderSent;
+use App\Services\CycleProgressReportService;
+use App\Mail\ProjectReminderMail;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -259,5 +265,155 @@ class ReportController extends Controller
         });
 
         return view('reports.pillar-summary', compact('pillarData', 'pillars', 'grants'));
+    }
+
+    /**
+     * Cycle Progress Report — shows per-cycle project status across all report dimensions.
+     * Admin selects a cycle, sees one row per project with footer summary and email reminder actions.
+     */
+    public function cycleProgressReport(Request $request)
+    {
+        $service = new CycleProgressReportService();
+        $cycles = CycleConfig::orderBy('year', 'desc')->orderBy('title')->get();
+
+        $cycleId = $request->input('cycle_id') ? (int) $request->input('cycle_id') : null;
+        $report = $cycleId ? $service->buildReport($cycleId) : null;
+
+        return view('reports.cycle-progress-report', [
+            'rows'           => $report ? $report['rows'] : collect(),
+            'footer'         => $report ? $report['footer'] : [],
+            'totalProjects'  => $report ? $report['totalProjects'] : 0,
+            'cycle'          => $report ? $report['cycle'] : null,
+            'cycles'         => $cycles,
+            'cycleId'        => $cycleId,
+            'columns'        => CycleProgressReportService::COLUMNS,
+        ]);
+    }
+
+    /**
+     * Send reminder emails for a specific column of the cycle progress report.
+     * For pending projects, sends to LPIs/reviewers/admins as appropriate.
+     * Returns JSON response for AJAX handling.
+     */
+    public function sendCycleReportReminder(Request $request)
+    {
+        $request->validate([
+            'cycle_id'   => 'required|integer|exists:cycle_configs,id',
+            'column_key' => 'required|string|in:' . implode(',', array_keys(CycleProgressReportService::COLUMNS)),
+        ]);
+
+        $service = new CycleProgressReportService();
+        $cycleId = (int) $request->input('cycle_id');
+        $columnKey = $request->input('column_key');
+
+        $report = $service->buildReport($cycleId);
+        $pendingProjects = $service->getPendingProjects($report['rows'], $columnKey);
+
+        if ($pendingProjects->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'count'   => 0,
+                'message' => 'No pending projects for this column.',
+            ]);
+        }
+
+        $cycleTitle = $report['cycle'] ? $report['cycle']->title . ' (' . $report['cycle']->year . ')' : 'Unknown Cycle';
+        $recipientType = $service->getRecipientType($columnKey);
+        $emailCount = 0;
+
+        // Load full project models with relationships for email sending
+        $pendingProjectIds = $pendingProjects->pluck('id')->toArray();
+        $fullProjects = Project::whereIn('id', $pendingProjectIds)
+            ->with(['lpi', 'program'])
+            ->get();
+
+        if ($recipientType === 'lpi') {
+            // Group by LPI email, send one email per LPI
+            $grouped = $fullProjects->where('lpi', '!=', null)->groupBy('lpi.email');
+
+            foreach ($grouped as $email => $projects) {
+                $lpiName = $projects->first()->lpi->name;
+
+                foreach ($projects as $project) {
+                    Mail::to($email)->queue(
+                        new ProjectReminderMail($columnKey, $project->title, $cycleTitle, $lpiName)
+                    );
+
+                    ReportReminderSent::create([
+                        'program_id'      => $project->program_id,
+                        'column_key'      => $columnKey,
+                        'project_id'      => $project->id,
+                        'recipient_email' => $email,
+                        'recipient_type'  => 'lpi',
+                        'sent_at'         => now(),
+                    ]);
+
+                    $emailCount++;
+                }
+            }
+        } elseif ($recipientType === 'reviewer') {
+            // Find assigned reviewers for pending projects
+            foreach ($fullProjects as $project) {
+                $reviewer = DB::table('projects_reviewers')
+                    ->where('project_id', $project->id)
+                    ->first();
+
+                if (!$reviewer) {
+                    continue;
+                }
+
+                $reviewerUser = User::find($reviewer->user_id);
+                if (!$reviewerUser) {
+                    continue;
+                }
+
+                Mail::to($reviewerUser->email)->queue(
+                    new ProjectReminderMail($columnKey, $project->title, $cycleTitle, $reviewerUser->name)
+                );
+
+                ReportReminderSent::create([
+                    'program_id'      => $project->program_id,
+                    'column_key'      => $columnKey,
+                    'project_id'      => $project->id,
+                    'recipient_email' => $reviewerUser->email,
+                    'recipient_type'  => 'reviewer',
+                    'sent_at'         => now(),
+                ]);
+
+                $emailCount++;
+            }
+        } else {
+            // Admin: send to all admin users
+            $admins = User::where('type', 'Admin')
+                ->orWhere('type', 'Admin+LPI+Reviewer')
+                ->get();
+
+            $pendingTitles = $pendingProjects->pluck('title')->implode(', ');
+
+            foreach ($admins as $admin) {
+                Mail::to($admin->email)->queue(
+                    new ProjectReminderMail($columnKey, $pendingTitles, $cycleTitle, $admin->name)
+                );
+
+                foreach ($pendingProjects as $project) {
+                    ReportReminderSent::create([
+                        'program_id'      => null,
+                        'column_key'      => $columnKey,
+                        'project_id'      => $project['id'],
+                        'recipient_email' => $admin->email,
+                        'recipient_type'  => 'admin',
+                        'sent_at'         => now(),
+                    ]);
+                }
+
+                $emailCount++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'count'   => $emailCount,
+            'message' => "{$emailCount} reminder(s) sent successfully.",
+        ]);
     }
 }

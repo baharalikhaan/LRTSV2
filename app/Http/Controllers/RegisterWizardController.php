@@ -86,39 +86,49 @@ class RegisterWizardController extends Controller
         $projectPillarIds = $confProject->pillars()->pluck('pillars.id')->toArray();
         $projectCollegeIds = $confProject->colleges()->pluck('colleges.id')->toArray();
 
-        // Build proposal PDF URL if a proposal file exists
-        $proposalUrl = null;
-        if ($confProject->proposal_filename) {
-            $proposalUrl = route('wizard.proposal', $confProject->id);
-        }
+        // Build proposal PDF URL. serveProposal() resolves the actual file via
+        // multiple naming conventions, so we always link it even if the
+        // proposal_filename column is empty (e.g. legacy imports).
+        $proposalUrl = route('wizard.proposal', $confProject->id);
 
         return view('projects.register-wizard-page', compact('confProject', 'pillars', 'colleges', 'proposalUrl', 'projectPillarIds', 'projectCollegeIds'));
     }
 
     /**
      * Serve the proposal PDF for a project (authenticated).
+     *
+     * Tries multiple naming conventions so already-imported projects with
+     * legacy filename values still display correctly:
+     *   1. proposal_filename column (as stored)
+     *   2. <old_id>_proposal.pdf
+     *   3. <old_id>_Application.pdf
      */
     public function serveProposal($id)
     {
         $project = Project::findOrFail($id);
 
-        if (!$project->proposal_filename) {
-            abort(404, 'No proposal file for this project.');
+        $dir = $project->getStorageDir('proposals');
+        $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+
+        $candidates = [];
+
+        if ($project->proposal_filename) {
+            $candidates[] = $project->proposal_filename;
+        }
+        $candidates[] = $oldId . '_proposal.pdf';
+        $candidates[] = $oldId . '_Application.pdf';
+
+        foreach (array_unique($candidates) as $candidate) {
+            $fullPath = storage_path('app/' . $dir . '/' . $candidate);
+            if (file_exists($fullPath)) {
+                return response()->file($fullPath, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="' . basename($candidate) . '"',
+                ]);
+            }
         }
 
-        $filePath = $project->getStorageDir('proposals') . '/' . $project->proposal_filename;
-        $fullPath = storage_path('app/' . $filePath);
-
-        if (!file_exists($fullPath)) {
-            abort(404, 'Proposal file not found on disk.');
-        }
-
-        $filename = basename($project->proposal_filename);
-
-        return response()->file($fullPath, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $filename . '"',
-        ]);
+        abort(404, 'Proposal file not found on disk.');
     }
 
     /**

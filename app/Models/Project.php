@@ -11,18 +11,26 @@ use Illuminate\Support\Facades\DB;
 
 class Project extends Model
 {
-    // Spreadsheet-defined statuses (single-reviewer workflow)
-    public const STATUS_REGISTERED = 'registered';
-    public const STATUS_PROGRESS = 'progress_add';
-    public const STATUS_ASSIGNED = 'Assigned';
-    public const STATUS_CLAIMED = 'Claimed';
-    public const STATUS_GRADED = 'Graded';
-    // New submission / rejection milestones (append-only in status_histories).
+    // New workflow statuses (single-reviewer workflow)
+    public const STATUS_IMPORTED        = 'imported';
+    public const STATUS_REGISTERED      = 'registered';
+    public const STATUS_ASSIGNED        = 'Assigned';
+    public const STATUS_CLAIMED         = 'Claimed';
+    public const STATUS_PROGRESS_ADDED  = 'progress_added';
+    public const STATUS_PROGRESS_REVIEWED = 'progress_reviewed';
+    public const STATUS_PROGRESS_REJECTED = 'progress_rejected';
+    public const STATUS_PROGRESS_EXTENDED = 'progress_extended';
+    public const STATUS_PROGRESS_EXT_REVIEWED = 'progress_ext_reviewed';
+    public const STATUS_PROGRESS_EXT_REJECTED = 'progress_ext_rejected';
+    public const STATUS_FINAL_ADDED     = 'final_added';
+    public const STATUS_GRADED          = 'Graded';
+    public const STATUS_PROPOSAL_REJECTED = 'proposal_rejected';
+
+    // Deprecated/removed (kept so old status_history records don't break)
+    public const STATUS_PROGRESS           = 'progress_add';
     public const STATUS_PROGRESS_SUBMITTED = 'progress_submitted';
     public const STATUS_FINAL_SUBMITTED    = 'final_submitted';
     public const STATUS_REJECTED           = 'rejected';
-
-    // Deprecated/removed (kept so old status_history records don't break)
     public const STATUS_CLAIM1 = 'Claim-1';
     public const STATUS_CLAIM2 = 'Claim-2';
     public const STATUS_GRADE1 = 'Grade-1';
@@ -53,6 +61,7 @@ class Project extends Model
         'reviewer_assigned_at',
         'grading_finalized',
         'cycle_id',
+        'is_extended',
         'grant_type',
         'current_status_id',
         'submitted_at',
@@ -170,6 +179,22 @@ class Project extends Model
     }
 
     /**
+     * Get the progress report gradings for this project.
+     */
+    public function progressGradings(): HasMany
+    {
+        return $this->hasMany(ProgressReportGrading::class);
+    }
+
+    /**
+     * Get the final report gradings for this project.
+     */
+    public function finalGradings(): HasMany
+    {
+        return $this->hasMany(FinalReportGrading::class);
+    }
+
+    /**
      * Get the reviewers assigned to this project.
      */
     public function reviewers(): BelongsToMany
@@ -201,14 +226,16 @@ class Project extends Model
     /**
      * Get the full storage filename for a given document type.
      * type = proposal | progress | readiness | final
+     * Optionally pass a version number for versioned files (e.g. progress resubmission).
      */
-    public function getStorageFilename(string $type): string
+    public function getStorageFilename(string $type, ?int $version = null): string
     {
         $oldId = str_replace('/', '', $this->old_project_id ?? $this->id);
         $typeFolder = $type === 'proposal' ? 'proposals'
             : ($type === 'progress' ? 'progress_reports'
             : ($type === 'readiness' ? 'readiness_reports' : 'final_reports'));
-        return $this->getStorageDir($typeFolder) . '/' . $oldId . '_' . $type . '.pdf';
+        $versionSuffix = $version ? '_v' . $version : '';
+        return $this->getStorageDir($typeFolder) . '/' . $oldId . '_' . $type . $versionSuffix . '.pdf';
     }
 
     /**
@@ -239,14 +266,19 @@ class Project extends Model
     public static function statusLabels(): array
     {
         return [
-            self::STATUS_REGISTERED         => 'Registered',
-            self::STATUS_PROGRESS           => 'Progress Added',
-            self::STATUS_ASSIGNED           => 'Assigned',
-            self::STATUS_CLAIMED            => 'Claimed',
-            self::STATUS_GRADED             => 'Graded',
-            self::STATUS_PROGRESS_SUBMITTED => 'Progress Submitted',
-            self::STATUS_FINAL_SUBMITTED    => 'Final Submitted',
-            self::STATUS_REJECTED           => 'Rejected',
+            self::STATUS_IMPORTED            => 'Imported',
+            self::STATUS_REGISTERED          => 'Registered',
+            self::STATUS_ASSIGNED            => 'Assigned',
+            self::STATUS_CLAIMED             => 'Claimed',
+            self::STATUS_PROPOSAL_REJECTED     => 'Proposal Rejected',
+            self::STATUS_PROGRESS_ADDED      => 'Progress Added',
+            self::STATUS_PROGRESS_REVIEWED   => 'Progress Reviewed',
+            self::STATUS_PROGRESS_REJECTED   => 'Progress Rejected',
+            self::STATUS_PROGRESS_EXTENDED   => 'Extended Progress Added',
+            self::STATUS_PROGRESS_EXT_REVIEWED => 'Extended Progress Reviewed',
+            self::STATUS_PROGRESS_EXT_REJECTED => 'Extended Progress Rejected',
+            self::STATUS_FINAL_ADDED         => 'Final Added',
+            self::STATUS_GRADED              => 'Graded',
         ];
     }
 
@@ -329,17 +361,20 @@ class Project extends Model
     }
 
     /**
-     * Determine which actions are available to a user based on the single-reviewer workflow.
+     * Determine which actions are available to a user based on the new workflow:
      *
-     * Workflow:
-     * | # | Current Status   | Next Action     | Result Status       | By Whom   |
-     * |---|------------------|-----------------|---------------------|-----------|
-     * | 0 | unregistered     | Register        | registered          | LPI       |
-     * | 1 | registered       | Add Progress    | progress_add        | LPI       |
-     * | 2 | progress_add     | Assign Reviewer | Assigned            | Admin     |
-     * | 3 | Assigned         | Claim           | Claimed             | Reviewer  |
-     * | 4 | Claimed          | Grade           | Graded              | Reviewer  |
-     * | 5 | Graded           | Report Card     | (view only)         | All       |
+     * Workflow (Admin Assign + LPI Add Progress run in parallel after registration):
+     * | # | Current Status        | Next Action        | Result Status           | By Whom   |
+     * |---|-----------------------|--------------------|-------------------------|-----------|
+     * | 0 | imported / none       | Register           | registered              | LPI       |
+     * | 1 | registered            | Assign Reviewer    | Assigned                | Admin     |
+     * | 1 | registered            | Add Progress       | progress_added          | LPI       |
+     * | 2 | Assigned              | Claim              | Claimed                 | Reviewer  |
+     * | 3 | progress_added        | Review Progress    | progress_reviewed       | Reviewer  |
+     * |   | progress_rejected     | Add Progress (v2)  | progress_added          | LPI       |
+     * | 4 | progress_reviewed     | Add Final Report   | final_added             | LPI       |
+     * | 5 | final_added           | Grade Final        | Graded                  | Reviewer  |
+     * | 6 | Graded                | Report Card        | (view only)             | All       |
      */
     public function availableActions($user = null): array
     {
@@ -352,20 +387,98 @@ class Project extends Model
         $role = $user->activeRole();
         $actions = [];
 
-        $hasRegistered = $this->hasStatus(self::STATUS_REGISTERED);
-        $hasProgress   = $this->hasStatus(self::STATUS_PROGRESS);
-        $hasAssigned   = $this->hasStatus(self::STATUS_ASSIGNED);
-        $hasClaimed    = $this->hasStatus(self::STATUS_CLAIMED);
-        $hasGraded     = $this->hasStatus(self::STATUS_GRADED) || in_array($this->currentWorkflowStatus(), ['graded', 'report', self::STATUS_GRADED]);
+        $hasImported        = $this->hasStatus(self::STATUS_IMPORTED);
+        $hasRegistered      = $this->hasStatus(self::STATUS_REGISTERED);
+        $hasAssigned        = $this->hasStatus(self::STATUS_ASSIGNED);
+        $hasClaimed         = $this->hasStatus(self::STATUS_CLAIMED);
+        $hasProgressAdded   = $this->hasStatus(self::STATUS_PROGRESS_ADDED);
+        $hasProgressRev     = $this->hasStatus(self::STATUS_PROGRESS_REVIEWED);
+        $hasProgressRej     = $this->hasStatus(self::STATUS_PROGRESS_REJECTED);
+    $hasProposalRej = $this->hasStatus(self::STATUS_PROPOSAL_REJECTED);
+        $hasFinalAdded      = $this->hasStatus(self::STATUS_FINAL_ADDED);
+        $hasGraded          = $this->hasStatus(self::STATUS_GRADED);
+
+        $currentStatus = $this->currentWorkflowStatus();
+
+        // Admin actions (check first so Admin+Reviewer sees both)
+        if ($role === 'Admin') {
+            $adminActions = [];
+
+            // Check if reviewer exists in projects_reviewers table
+            $hasReviewerEntry = DB::table('projects_reviewers')
+                ->where('project_id', $this->id)
+                ->exists();
+
+            // Assign Reviewer: show if registered AND (no reviewer entry OR proposal rejected but not yet re-assigned)
+            if ($hasRegistered && !$hasGraded && (!$hasReviewerEntry || ($hasProposalRej && !$hasAssigned))) {
+                $adminActions[] = ['action' => 'assign', 'label' => 'Assign Reviewer'];
+            }
+
+            // Enable Extended Progress Report (after progress reviewed, before final)
+            if ($hasProgressAdded && $hasProgressRev && !$hasFinalAdded && !$this->is_extended) {
+                $adminActions[] = ['action' => 'enable-extended-progress', 'label' => 'Enable Extended Progress'];
+            }
+
+            // Disable Extended Progress Report (if enabled but not yet submitted)
+            if ($this->is_extended && !$hasFinalAdded) {
+                $adminActions[] = ['action' => 'disable-extended-progress', 'label' => 'Disable Extended Progress'];
+            }
+
+            if ($hasGraded) {
+                $adminActions[] = ['action' => 'report-card', 'label' => 'Report Card'];
+            }
+
+            // If user is also a reviewer, merge reviewer actions
+            if ($user->isReviewer()) {
+                $reviewerActions = $this->getReviewerActions($user,
+                    $hasAssigned, $hasClaimed,
+                    $hasProgressAdded, $hasProgressRev,
+                    $hasFinalAdded, $hasGraded
+                );
+                return array_merge($adminActions, $reviewerActions);
+            }
+
+            return $adminActions;
+        }
 
         // LPI actions
         if ($role === 'LPI') {
-            if (!$hasRegistered) {
+            // Register (if imported or no status yet)
+            if (!$hasRegistered && ($hasImported || !$currentStatus)) {
                 $actions[] = ['action' => 'register', 'label' => 'Register'];
             }
 
-            if ($hasRegistered && !$hasProgress) {
+            // Add Progress v1 — show if status is registered, assigned, claimed, or proposal_rejected
+            // AND no progress added yet
+            $canAddProgress = ($hasRegistered || $hasAssigned || $hasClaimed || $hasProposalRej) && !$hasProgressAdded;
+            if ($canAddProgress) {
                 $actions[] = ['action' => 'progress', 'label' => 'Add Progress'];
+            }
+            // Resubmit Progress after progress rejection (not proposal rejection)
+            // Only show if last rejection is newer than last progress_added
+            if ($hasProgressRej && !$hasProgressRev) {
+                $lastRejection = $this->statusHistories()->where('status', self::STATUS_PROGRESS_REJECTED)->latest()->first();
+                $lastProgressAdded = $this->statusHistories()->where('status', self::STATUS_PROGRESS_ADDED)->latest()->first();
+                if ($lastRejection && (!$lastProgressAdded || $lastProgressAdded->created_at->lt($lastRejection->created_at))) {
+                    $actions[] = ['action' => 'progress', 'label' => 'Resubmit Progress'];
+                }
+            }
+
+            // Add Extended Progress v2 — after progress reviewed, if is_extended and not yet added
+            $hasProgressExtended = $this->hasStatus(self::STATUS_PROGRESS_EXTENDED);
+            $hasProgressExtRev = $this->hasStatus(self::STATUS_PROGRESS_EXT_REVIEWED);
+            if ($this->is_extended && $hasProgressRev && !$hasProgressExtended && !$hasProgressExtRev && !$hasFinalAdded && !$hasGraded) {
+                $actions[] = ['action' => 'progress-v2', 'label' => 'Add Extended Progress'];
+            }
+            // Resubmit Extended Progress after rejection
+            $hasProgressExtRej = $this->hasStatus(self::STATUS_PROGRESS_EXT_REJECTED);
+            if ($hasProgressExtRej && !$hasProgressExtRev) {
+                $actions[] = ['action' => 'progress-v2', 'label' => 'Resubmit Extended Progress'];
+            }
+
+            // Add Final Report (if progress reviewed or extended progress reviewed, and not yet added final)
+            if (($hasProgressRev || $hasProgressExtRev) && !$hasFinalAdded && !$hasGraded) {
+                $actions[] = ['action' => 'final-report', 'label' => 'Add Final Report'];
             }
 
             if ($hasGraded) {
@@ -377,45 +490,26 @@ class Project extends Model
 
         // Reviewer actions
         if ($user->isReviewer()) {
-            return $this->getReviewerActions($user, $hasAssigned, $hasClaimed, $hasGraded);
-        }
-
-        // Admin actions
-        if ($role === 'Admin') {
-            $adminActions = [];
-
-            if ($hasProgress && !$this->reviewers()->exists() && !$hasGraded) {
-                $adminActions[] = ['action' => 'assign', 'label' => 'Assign Reviewer'];
-            }
-
-            if ($hasGraded) {
-                $adminActions[] = ['action' => 'report-card', 'label' => 'Report Card'];
-            }
-
-            // Admin may also be a reviewer — merge their reviewer actions if assigned
-            if ($user->isReviewer()) {
-                $reviewerActions = $this->getReviewerActions($user, $hasAssigned, $hasClaimed, $hasGraded);
-                return array_merge($adminActions, $reviewerActions);
-            }
-
-            return $adminActions;
+            return $this->getReviewerActions($user,
+                $hasAssigned, $hasClaimed,
+                $hasProgressAdded, $hasProgressRev,
+                $hasFinalAdded, $hasGraded
+            );
         }
 
         return $actions;
     }
 
     /**
-     * Get reviewer-specific actions for the single-reviewer workflow.
-     *
-     * Step 3: Claiming
-     * Step 4: Progress Grading
-     * Step 5: Final Grading
-     * Step 6: Graded (complete)
+     * Get reviewer-specific actions for the new workflow.
      */
     private function getReviewerActions(
         $user,
         bool $hasAssigned,
         bool $hasClaimed,
+        bool $hasProgressAdded,
+        bool $hasProgressReviewed,
+        bool $hasFinalAdded,
         bool $hasGraded
     ): array {
         $reviewerActions = [];
@@ -428,42 +522,43 @@ class Project extends Model
         }
 
         $hasUserClaimed = $this->userHasClaimed($user->id);
-        $hasUserGraded = $this->userHasGraded($user->id);
-
-        // Check if the user has saved a progress grade
-        $hasProgressGrade = \App\Models\ProgressReportGrading::where('project_id', $this->id)
-            ->where('user_id', $user->id)
-            ->exists();
-
-        // Check if the user has saved a final grade
-        $hasFinalGrade = \App\Models\FinalReportGrading::where('project_id', $this->id)
-            ->where('user_id', $user->id)
-            ->exists();
-
-        // LPI submission gates — reviewer cannot grade a report before the LPI has submitted it.
-        $hasProgressSubmitted = $this->hasStatus(self::STATUS_PROGRESS_SUBMITTED);
-        $hasFinalSubmitted    = $this->hasStatus(self::STATUS_FINAL_SUBMITTED);
 
         // Must be Assigned (or beyond) for any reviewer actions
         if (!$hasAssigned && !$hasClaimed) {
             return [];
         }
 
-        // Step 3: Claim — reviewer can claim if they haven't already and project is not yet graded
+        // Step 2: Claim — reviewer can claim if they haven't already
         if (!$hasUserClaimed && !$hasGraded) {
             $reviewerActions[] = ['action' => 'claim', 'label' => 'Claim', 'step' => 'Claim'];
         }
 
-        // Step 4: Progress Grade — reviewer can grade progress only after claiming
-        // AND once the LPI has officially submitted the progress report.
-        if ($hasUserClaimed && !$hasProgressGrade && !$hasGraded && $hasProgressSubmitted) {
-            $reviewerActions[] = ['action' => 'progress-grade', 'label' => 'Grade Project', 'step' => 'Progress Grade'];
+        // Check if extended progress was submitted
+        $hasProgressExtended = $this->hasStatus(self::STATUS_PROGRESS_EXTENDED);
+
+        // Step 4a: Review Progress V1 — after LPI has added progress report v1 (and no extended progress)
+        // Only show if last progress_added is newer than last progress_rejected
+        if ($hasUserClaimed && $hasProgressAdded && !$hasProgressReviewed && !$hasProgressExtended && !$hasGraded) {
+            $lastRejection = $this->statusHistories()->where('status', self::STATUS_PROGRESS_REJECTED)->latest()->first();
+            $lastProgressAdded = $this->statusHistories()->where('status', self::STATUS_PROGRESS_ADDED)->latest()->first();
+            if (!$lastRejection || ($lastProgressAdded && $lastProgressAdded->created_at->gt($lastRejection->created_at))) {
+                $reviewerActions[] = ['action' => 'progress-grade', 'label' => 'Review Progress', 'step' => 'Progress Review'];
+            }
         }
 
-        // Step 5: Final Grade — after progress grade done AND once the LPI has
-        // officially submitted the final report.
-        if ($hasUserClaimed && $hasProgressGrade && !$hasFinalGrade && !$hasGraded && $hasFinalSubmitted) {
-            $reviewerActions[] = ['action' => 'final-grade', 'label' => 'Grade Project', 'step' => 'Final Grade'];
+        // Step 4b: Review Extended Progress V2 — after LPI has added extended progress
+        // Only show if last progress_extended is newer than last progress_ext_rejected
+        if ($hasUserClaimed && $hasProgressExtended && !$hasProgressReviewed && !$hasGraded) {
+            $lastExtRejection = $this->statusHistories()->where('status', self::STATUS_PROGRESS_EXT_REJECTED)->latest()->first();
+            $lastExtProgress = $this->statusHistories()->where('status', self::STATUS_PROGRESS_EXTENDED)->latest()->first();
+            if (!$lastExtRejection || ($lastExtProgress && $lastExtProgress->created_at->gt($lastExtRejection->created_at))) {
+                $reviewerActions[] = ['action' => 'progress-ext-grade', 'label' => 'Review Extended Progress', 'step' => 'Extended Progress Review'];
+            }
+        }
+
+        // Step 6: Grade Final — after LPI has added final report & progress was reviewed
+        if ($hasUserClaimed && $hasProgressReviewed && $hasFinalAdded && !$hasGraded) {
+            $reviewerActions[] = ['action' => 'final-grade', 'label' => 'Grade Final Report', 'step' => 'Final Grade'];
         }
 
         return $reviewerActions;
@@ -558,7 +653,7 @@ class Project extends Model
             ->orderByDesc('submitted_at')
             ->first();
 
-        return $row?->submitted_at;
+        return $row ? $row->submitted_at : null;
     }
 
     /**
@@ -586,6 +681,11 @@ class Project extends Model
      */
     public function previousRejectors()
     {
+        // Defensive: reviewer_rejections may not exist until the migration runs.
+        if (!\Illuminate\Support\Facades\Schema::hasTable('reviewer_rejections')) {
+            return collect();
+        }
+
         return \App\Models\ReviewerRejection::where('project_id', $this->id)
             ->with('user')
             ->orderByDesc('created_at')
@@ -599,25 +699,28 @@ class Project extends Model
     public function getLifecycleAttribute(): array
     {
         $stages = [
-            'submission'          => ['label' => 'Import from conf-tool',            'icon' => 'fa-file-import',     'done' => false, 'date' => null, 'user_name' => null],
-            'registered'          => ['label' => 'Project Registration by LPI',     'icon' => 'fa-clipboard-check', 'done' => false, 'date' => null, 'user_name' => null],
-            'progress'            => ['label' => 'Progress Update by LPI',          'icon' => 'fa-chart-line',      'done' => false, 'date' => null, 'user_name' => null],
-            'progress_submitted'  => ['label' => 'Progress Report Submitted',       'icon' => 'fa-paper-plane',     'done' => false, 'date' => null, 'user_name' => null],
-            'assigned'            => ['label' => 'Reviewer Assignment by Admin',    'icon' => 'fa-user-tag',        'done' => false, 'date' => null, 'user_name' => null],
-            'claimed'             => ['label' => 'Proposal Acceptance by Reviewer', 'icon' => 'fa-handshake',       'done' => false, 'date' => null, 'user_name' => null],
-            'final_submitted'     => ['label' => 'Final Report Submitted',          'icon' => 'fa-paper-plane',     'done' => false, 'date' => null, 'user_name' => null],
-            'graded'              => ['label' => 'Grading by Reviewer',             'icon' => 'fa-flag-checkered',  'done' => false, 'date' => null, 'user_name' => null],
+            'imported'          => ['label' => 'Import from Excel',               'icon' => 'fa-file-import',     'done' => false, 'date' => null, 'user_name' => null],
+            'registered'        => ['label' => 'Project Registration by LPI',     'icon' => 'fa-clipboard-check', 'done' => false, 'date' => null, 'user_name' => null],
+            'assigned'          => ['label' => 'Reviewer Assignment by Admin',    'icon' => 'fa-user-tag',        'done' => false, 'date' => null, 'user_name' => null],
+            'claimed'           => ['label' => 'Proposal Acceptance by Reviewer', 'icon' => 'fa-handshake',       'done' => false, 'date' => null, 'user_name' => null],
+            'progress_added'    => ['label' => 'Progress Report by LPI',          'icon' => 'fa-chart-line',      'done' => false, 'date' => null, 'user_name' => null],
+            'progress_reviewed' => ['label' => 'Progress Review by Reviewer',     'icon' => 'fa-clipboard-check', 'done' => false, 'date' => null, 'user_name' => null],
+            'final_added'       => ['label' => 'Final Report by LPI',             'icon' => 'fa-paper-plane',     'done' => false, 'date' => null, 'user_name' => null],
+            'graded'            => ['label' => 'Final Grading by Reviewer',       'icon' => 'fa-flag-checkered',  'done' => false, 'date' => null, 'user_name' => null],
         ];
 
         // Map status_history status values to our lifecycle keys
         $statusStageMap = [
-            'registered'         => 'registered',
-            'progress_add'       => 'progress',
-            'progress_submitted' => 'progress_submitted',
-            'Assigned'           => 'assigned',
-            'Claimed'            => 'claimed',
-            'final_submitted'    => 'final_submitted',
-            'Graded'             => 'graded',
+            'imported'            => 'imported',
+            'registered'          => 'registered',
+            'Assigned'            => 'assigned',
+            'Claimed'             => 'claimed',
+            self::STATUS_PROPOSAL_REJECTED   => 'claimed',  // unmarks the claimed stage
+            'progress_added'      => 'progress_added',
+            'progress_reviewed'   => 'progress_reviewed',
+            'progress_rejected'   => 'progress_added',   // unmarks the progress stage
+            'final_added'         => 'final_added',
+            'Graded'              => 'graded',
         ];
 
         // Get all status histories ordered by created_at
@@ -626,20 +729,25 @@ class Project extends Model
         foreach ($histories as $history) {
             $stageKey = $statusStageMap[$history->status] ?? null;
             if ($stageKey && isset($stages[$stageKey])) {
-                $stages[$stageKey]['done'] = true;
-                $stages[$stageKey]['date'] = $history->created_at->toDateTimeString();
-                $stages[$stageKey]['user_name'] = $history->user ? $history->user->name : null;
+                if ($history->status === self::STATUS_PROGRESS_REJECTED) {
+                    // Rejection unmarks the progress stage (LPI needs to resubmit)
+                    $stages[$stageKey]['done'] = false;
+                } else {
+                    $stages[$stageKey]['done'] = true;
+                    $stages[$stageKey]['date'] = $history->created_at->toDateTimeString();
+                    $stages[$stageKey]['user_name'] = $history->user ? $history->user->name : null;
+                }
             }
         }
 
-        // Always mark "submission" as done if the project exists
-        $stages['submission']['done'] = true;
-        $stages['submission']['date'] = $this->submitted_at ? $this->submitted_at->toDateTimeString() : $this->created_at->toDateTimeString();
+        // Always mark "imported" as done if the project exists
+        $stages['imported']['done'] = true;
+        $stages['imported']['date'] = $this->submitted_at ? $this->submitted_at->toDateTimeString() : $this->created_at->toDateTimeString();
 
-        // Check if there were imported/unregistered statuses — mark submission as earliest
+        // Check if there were imported/unregistered statuses — mark imported as earliest
         $earliestHistory = $this->statusHistories()->orderBy('created_at')->first();
         if ($earliestHistory && !$this->submitted_at) {
-            $stages['submission']['date'] = $earliestHistory->created_at->toDateTimeString();
+            $stages['imported']['date'] = $earliestHistory->created_at->toDateTimeString();
         }
 
         return $stages;
@@ -689,7 +797,7 @@ class Project extends Model
             return 'badge badge-success';
         }
 
-        if (in_array($status, ['rejected', 'returned'])) {
+        if (in_array($status, ['rejected', 'returned', self::STATUS_PROPOSAL_REJECTED, self::STATUS_PROGRESS_REJECTED])) {
             return 'badge badge-danger';
         }
 

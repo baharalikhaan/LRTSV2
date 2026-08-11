@@ -209,9 +209,22 @@ class ProgramController extends Controller
                     foreach ($files as $file) {
                         if ($file === '.' || $file === '..') continue;
                         $filenameWithoutExt = pathinfo($file, PATHINFO_FILENAME);
-                        \App\Models\Project::where('old_project_id', $filenameWithoutExt)
+
+                        // Proposal files use the conf-tool naming <old_id>_Application.pdf,
+                        // so strip the "_Application" suffix to match the project's old_project_id.
+                        $candidateId = $filenameWithoutExt;
+                        $candidateId = preg_replace('/_Application$/i', '', $candidateId);
+
+                        $updated = \App\Models\Project::where('old_project_id', $candidateId)
                             ->where('program_id', $program->id)
                             ->update(['proposal_filename' => $file]);
+
+                        // Fallback: try matching the full filename without extension too
+                        if ($updated === 0 && $candidateId !== $filenameWithoutExt) {
+                            \App\Models\Project::where('old_project_id', $filenameWithoutExt)
+                                ->where('program_id', $program->id)
+                                ->update(['proposal_filename' => $file]);
+                        }
                     }
                 }
             } catch (\Exception $e) {

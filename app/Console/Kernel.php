@@ -15,7 +15,8 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        // $schedule->command('inspire')->hourly();
+        // Check report deadlines and auto-submit when deadlines pass
+        $schedule->command('reports:check-deadlines')->daily();
     }
 
     /**

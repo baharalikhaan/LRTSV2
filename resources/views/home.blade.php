@@ -73,7 +73,7 @@
                                     $class = 'success';
                                 } elseif (in_array($code, ['Assigned', 'Claimed', 'accepted', 'Accepted', 'Claim-1', 'Claim-2', 'Grade-1', 'Grade-2'])) {
                                     $class = 'review';
-                                } elseif (in_array($code, ['registered', 'Registered', 'progress_add', 'progress_added', 'report'])) {
+                                } elseif (in_array($code, ['registered', 'Registered', 'progress_add', 'progress_added', 'progress_reviewed', 'progress_rejected', 'final_added', 'report'])) {
                                     $class = 'info';
                                 } else {
                                     $class = 'info';

@@ -1,67 +1,175 @@
 @php
     $d = $draft ?? (isset($grading) ? $grading : null);
+    $showAsSummary = $showAsSummary ?? false;
 @endphp
 
 <div class="ws-card">
     <div class="ws-section-title">
         <span><i class="fas fa-clipboard-check"></i> Progress Report</span>
+        @if(!$showAsSummary)
         <button type="button" class="ws-help" onclick="openHelp('helpProgress')">
             <i class="fas fa-question-circle"></i> Grading Help
         </button>
+        @endif
     </div>
 
+    @if(!$showAsSummary)
     <p style="color:var(--ink-500);font-size:13px;margin:0 0 16px;line-height:1.5;">
         Kindly evaluate the progress report based on the following criteria on a scale of 1 to 5, where 1 indicates the highest level of dissatisfaction and 5 indicates the highest level of satisfaction.
     </p>
+    @endif
 
-        @if($d && $d->publish !== 'pending' && $d->isAccepted !== null)
-            {{-- Already graded/submitted — show read-only view --}}
-            <div style="background:var(--sand-50);border:1px solid var(--ink-100);border-radius:6px;padding:12px 14px;font-size:13px;margin-bottom:12px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <span class="ws-mini-label">Status</span>
-                @if($d->isAccepted == 1)
-                    <span style="display:inline-flex;align-items:center;gap:4px;color:var(--success);font-weight:600;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                        Accepted
-                    </span>
-                @else
-                    <span style="display:inline-flex;align-items:center;gap:4px;color:var(--danger);font-weight:600;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                        Rejected
-                    </span>
-                @endif
-            </div>
-
-            @php
-                $ratings = [
-                    'achievements' => ['label' => 'Progress Toward Achieving Outcomes', 'rating' => $d->achievementsRating ?? null, 'comments' => $d->achievementsComments ?? null],
-                    'publications' => ['label' => 'Progress in Publications',           'rating' => $d->publicationsRating ?? null, 'comments' => $d->publicationsComments ?? null],
-                    'students'     => ['label' => 'Student Involvement & Capacity Building', 'rating' => $d->studentsRating ?? null, 'comments' => $d->studentsComments ?? null],
-                    'budget'       => ['label' => 'Budget Utilization',                 'rating' => $d->budgetRating ?? null,       'comments' => $d->budgetComments ?? null],
-                ];
-            @endphp
-            @foreach($ratings as $key => $r)
-                <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--ink-100);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-weight:600;color:var(--ink-700);font-size:12.5px;">{{ $r['label'] }}</span>
-                        <strong style="color:var(--brand-600);font-size:16px;">{{ $r['rating'] ?? '—' }}/5</strong>
-                    </div>
-                    @if($r['comments'])
-                        <div style="margin-top:4px;color:var(--ink-500);font-size:12px;font-style:italic;">{{ $r['comments'] }}</div>
+    {{-- ═══ READ-ONLY SUMMARY MODE (for final grading right-side tab) ═══ --}}
+    @if($showAsSummary)
+        @if($d)
+            @if($d->publish !== 'pending' && $d->isAccepted !== null)
+                {{-- Already graded — show status + ratings --}}
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:{{ $d->isAccepted == 1 ? '#e8f5ee' : '#fbeef1' }};border:1px solid {{ $d->isAccepted == 1 ? '#a8e6b8' : '#f5c6cb' }};border-radius:8px;margin-bottom:12px;">
+                    @if($d->isAccepted == 1)
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        <span style="font-size:13px;font-weight:500;color:var(--success);">Accepted</span>
+                    @else
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                        <span style="font-size:13px;font-weight:500;color:var(--danger);">Rejected</span>
                     @endif
                 </div>
+
+                @php
+                    $ratings = [
+                        'achievements' => ['label' => 'Progress Toward Achieving Outcomes', 'rating' => $d->achievementsRating ?? null, 'comments' => $d->achievementsComments ?? null],
+                        'publications' => ['label' => 'Progress in Publications',           'rating' => $d->publicationsRating ?? null, 'comments' => $d->publicationsComments ?? null],
+                        'students'     => ['label' => 'Student Involvement & Capacity Building', 'rating' => $d->studentsRating ?? null, 'comments' => $d->studentsComments ?? null],
+                        'budget'       => ['label' => 'Budget Utilization',                 'rating' => $d->budgetRating ?? null,       'comments' => $d->budgetComments ?? null],
+                    ];
+                @endphp
+
+                <div class="ws-ro-summary">
+                    @foreach($ratings as $key => $r)
+                        <div class="ws-ro-row">
+                            <span class="ws-ro-label">{{ $r['label'] }}</span>
+                            <span class="ws-ro-value">{{ $r['rating'] ?? '—' }}/5</span>
+                        </div>
+                        @if($r['comments'])
+                            <div class="ws-ro-comment" style="padding:0 0 8px 0;">{{ $r['comments'] }}</div>
+                        @endif
+                    @endforeach
+
+                    @if($d->ethical !== null)
+                        <div class="ws-ro-row">
+                            <span class="ws-ro-label">Ethical Approvals</span>
+                            <span class="ws-pill {{ $d->ethical ? 'ws-pill-success' : 'ws-pill-ink' }}">{{ $d->ethical ? 'Yes' : 'No' }}</span>
+                        </div>
+                    @endif
+
+                    @if($d->analysis)
+                        <div style="padding:8px 0 0;border-top:1px solid var(--ink-100);">
+                            <span class="ws-mini-label">Analysis</span>
+                            <div style="color:var(--ink-600);font-size:12px;margin-top:3px;">{{ $d->analysis }}</div>
+                        </div>
+                    @endif
+                    @if($d->comments)
+                        <div style="padding:8px 0 0;border-top:1px solid var(--ink-100);">
+                            <span class="ws-mini-label">Comments</span>
+                            <div style="color:var(--ink-600);font-size:12px;margin-top:3px;">{{ $d->comments }}</div>
+                        </div>
+                    @endif
+                    @if($d->recommendation)
+                        <div style="padding:8px 0 0;border-top:1px solid var(--ink-100);">
+                            <span class="ws-mini-label">Recommendation</span>
+                            <div style="color:var(--ink-600);font-size:12px;margin-top:3px;">{{ $d->recommendation }}</div>
+                        </div>
+                    @endif
+                </div>
+            @else
+                {{-- Grading exists but is still in draft/pending state --}}
+                <div class="ws-ro-summary">
+                    <p style="color:var(--ink-400);font-size:12px;margin:0;font-style:italic;">
+                        <i class="fas fa-info-circle" style="margin-right:4px;"></i>
+                        Progress grading has been started but not yet submitted.
+                    </p>
+                </div>
+            @endif
+        @else
+            {{-- No grading record exists yet --}}
+            <div class="ws-ro-summary">
+                <p style="color:var(--ink-400);font-size:12px;margin:0;font-style:italic;">
+                    <i class="fas fa-info-circle" style="margin-right:4px;"></i>
+                    No progress grading has been submitted for this project yet.
+                </p>
+            </div>
+        @endif
+
+    {{-- ═══ ALREADY GRADED READ-ONLY (existing logic) ═══ --}}
+    @elseif($d && $d->publish !== 'pending' && $d->isAccepted !== null)
+        @if($project->hasStatus(\App\Models\Project::STATUS_GRADED))
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#e8f5ee;border:1px solid #a8e6b8;border-radius:8px;margin-bottom:12px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span style="font-size:13px;font-weight:500;color:var(--success);">Grade Already Submitted</span>
+            </div>
+        @endif
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:8px 12px;background:{{ $d->isAccepted == 1 ? '#e8f5ee' : '#fbeef1' }};border:1px solid {{ $d->isAccepted == 1 ? '#a8e6b8' : '#f5c6cb' }};border-radius:8px;">
+            <span style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-400);font-weight:600;">Status</span>
+            @if($d->isAccepted == 1)
+                <span style="display:inline-flex;align-items:center;gap:4px;color:var(--success);font-weight:500;font-size:13px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    Accepted
+                </span>
+            @else
+                <span style="display:inline-flex;align-items:center;gap:4px;color:var(--danger);font-weight:500;font-size:13px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    Rejected
+                </span>
+            @endif
+        </div>
+
+        @php
+            $ratings = [
+                'achievements' => ['label' => 'Progress Toward Achieving Outcomes', 'rating' => $d->achievementsRating ?? null, 'comments' => $d->achievementsComments ?? null],
+                'publications' => ['label' => 'Progress in Publications',           'rating' => $d->publicationsRating ?? null, 'comments' => $d->publicationsComments ?? null],
+                'students'     => ['label' => 'Student Involvement & Capacity Building', 'rating' => $d->studentsRating ?? null, 'comments' => $d->studentsComments ?? null],
+                'budget'       => ['label' => 'Budget Utilization',                 'rating' => $d->budgetRating ?? null,       'comments' => $d->budgetComments ?? null],
+            ];
+        @endphp
+
+        <div class="ws-ro-summary">
+            @foreach($ratings as $key => $r)
+                <div class="ws-ro-row">
+                    <span class="ws-ro-label">{{ $r['label'] }}</span>
+                    <span class="ws-ro-value">{{ $r['rating'] ?? '—' }}/5</span>
+                </div>
+                @if($r['comments'])
+                    <div class="ws-ro-comment" style="padding:0 0 8px 0;">{{ $r['comments'] }}</div>
+                @endif
             @endforeach
 
-            @if($d->analysis || $d->comments || $d->recommendation)
-                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink-100);">
-                    @if($d->analysis)<div style="margin-bottom:4px;"><span class="ws-mini-label">Analysis</span><br>{{ $d->analysis }}</div>@endif
-                    @if($d->comments)<div style="margin-bottom:4px;"><span class="ws-mini-label">Comments</span><br>{{ $d->comments }}</div>@endif
-                    @if($d->recommendation)<div><span class="ws-mini-label">Recommendation</span><br>{{ $d->recommendation }}</div>@endif
+            @if($d->ethical !== null)
+                <div class="ws-ro-row">
+                    <span class="ws-ro-label">Ethical Approvals</span>
+                    <span class="ws-pill {{ $d->ethical ? 'ws-pill-success' : 'ws-pill-ink' }}">{{ $d->ethical ? 'Yes' : 'No' }}</span>
+                </div>
+            @endif
+
+            @if($d->analysis)
+                <div style="padding:8px 0 0;border-top:1px solid var(--ink-100);">
+                    <span style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-400);font-weight:600;">Analysis</span>
+                    <div style="color:var(--ink-600);font-size:12px;margin-top:3px;">{{ $d->analysis }}</div>
+                </div>
+            @endif
+            @if($d->comments)
+                <div style="padding:8px 0 0;border-top:1px solid var(--ink-100);">
+                    <span style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-400);font-weight:600;">Comments</span>
+                    <div style="color:var(--ink-600);font-size:12px;margin-top:3px;">{{ $d->comments }}</div>
+                </div>
+            @endif
+            @if($d->recommendation)
+                <div style="padding:8px 0 0;border-top:1px solid var(--ink-100);">
+                    <span style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-400);font-weight:600;">Recommendation</span>
+                    <div style="color:var(--ink-600);font-size:12px;margin-top:3px;">{{ $d->recommendation }}</div>
                 </div>
             @endif
         </div>
     @else
-        @php $projectId = $project->id ?? ($report->project_id ?? ''); @endphp
+        @php $projectId = $project->id ?? ($report->project_id ?? ''); @endphp>
         <form method="POST" action="/grading/{{ $projectId }}/save-progress-grade" data-progress-grade style="margin-top:4px;">
             @csrf
             <input type="hidden" name="report_type" value="progress">

@@ -75,9 +75,16 @@
                             switch($flowStatus) {
                                 case 'imported': $flowPillClass = 'warning'; break;
                                 case 'registered': $flowPillClass = 'info'; break;
-                                case 'progress':
-                                case 'progress_add': $flowPillClass = 'info'; break;
                                 case 'assigned': $flowPillClass = 'review'; break;
+                                case 'claimed': $flowPillClass = 'accepted'; break;
+                                case 'progress':
+                                case 'progress_add':
+                                case 'progress_added':
+                                case 'progress_reviewed': $flowPillClass = 'info'; break;
+                                case 'progress_rejected':
+                                case 'rejected':
+                                case 'proposal_rejected': $flowPillClass = 'danger'; break;
+                                case 'final_added': $flowPillClass = 'info'; break;
                                 case 'accepted': $flowPillClass = 'accepted'; break;
                                 case 'reviewed': $flowPillClass = 'info'; break;
                                 case 'graded': $flowPillClass = 'accepted'; break;

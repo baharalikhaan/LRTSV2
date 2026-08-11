@@ -28,9 +28,115 @@ class ProjectController extends Controller
             'lpi',
             'pillars',
             'colleges',
+            'commitments',
+            'outcomes.publication',
+            'students.details',
+            'researchers',
+            'contributions',
+            'submissions',
         ])->findOrFail($id);
 
-        return view('projects.show', compact('project'));
+        // Compute commitments vs outcomes for the view
+        $commitment = $project->commitments()->first();
+        $hasCommitments = $commitment && (
+            $commitment->q1article || $commitment->q2article || $commitment->q3article || $commitment->q4article ||
+            $commitment->confArticle || $commitment->books || $commitment->editBooks || $commitment->chapters ||
+            $commitment->ip || $commitment->filedPatent || $commitment->openSourceSW || $commitment->startUp ||
+            $commitment->ethical || $commitment->master || $commitment->UG || $commitment->Phd || $commitment->crossCollege
+        );
+
+        $commitmentsData = $this->computeCommitmentsVsOutcomes($project, $commitment);
+
+        return view('projects.show', compact('project', 'commitment', 'hasCommitments', 'commitmentsData'));
+    }
+
+    public function reportCard($id)
+    {
+        $project = Project::with([
+            'program.grant',
+            'lpi',
+            'pillars',
+            'colleges',
+            'commitments',
+            'outcomes.publication',
+            'students.details',
+            'researchers',
+            'contributions',
+            'submissions',
+        ])->findOrFail($id);
+
+        $commitment = $project->commitments()->first();
+        $finalGrading = \App\Models\FinalReportGrading::where('project_id', $id)->first();
+        $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $id)->first();
+
+        $outcomes = $project->outcomes()->get();
+        $students = $project->students()->get();
+        $researchers = $project->researchers()->get();
+
+        return view('projects.report-card', compact(
+            'project', 'commitment', 'finalGrading', 'progressGrading',
+            'outcomes', 'students', 'researchers'
+        ));
+    }
+
+    private function computeCommitmentsVsOutcomes($project, $commitment)
+    {
+        $outcomes = $project->outcomes;
+        $outcomesByType = $outcomes->groupBy('type');
+        $emptyCollection = collect();
+
+        $verifiedCount = $outcomes->filter(fn($o) => $o->verifcation_by_reviewer === 'verified')->count();
+        $unverifiedCount = $outcomes->filter(fn($o) => $o->verifcation_by_reviewer !== 'verified')->count();
+
+        // Publications
+        $pubTypes = [
+            'journal_q1' => 'q1article', 'journal_q2' => 'q2article',
+            'journal_q3' => 'q3article', 'journal_q4' => 'q4article',
+            'conference' => 'confArticle', 'book' => 'books',
+            'edited_book' => 'editBooks', 'book_chapter' => 'chapters',
+        ];
+        $pubLabels = [
+            'journal_q1' => 'Q1 Journal', 'journal_q2' => 'Q2 Journal',
+            'journal_q3' => 'Q3 Journal', 'journal_q4' => 'Q4 Journal',
+            'conference' => 'Conference', 'book' => 'Books',
+            'edited_book' => 'Ed. Books', 'book_chapter' => 'Chapters',
+        ];
+        $pubItems = [];
+        foreach ($pubTypes as $type => $field) {
+            $collection = $outcomesByType->get($type, $emptyCollection);
+            $pubItems[] = [
+                'label' => $pubLabels[$type],
+                'commit' => $commitment->$field ?? null,
+                'verified' => $collection->where('verifcation_by_reviewer', 'verified')->count(),
+                'total' => $collection->count(),
+            ];
+        }
+
+        // IP
+        $ipVerified = $outcomesByType->get('ip_disclosure', $emptyCollection)->where('verifcation_by_reviewer', 'verified')->count();
+        $ipTotal = $outcomesByType->get('ip_disclosure', $emptyCollection)->count();
+        $patentsVerified = $outcomesByType->get('provisional_patent', $emptyCollection)->where('verifcation_by_reviewer', 'verified')->count() + $outcomesByType->get('patent_granted', $emptyCollection)->where('verifcation_by_reviewer', 'verified')->count();
+        $patentsTotal = $outcomesByType->get('provisional_patent', $emptyCollection)->count() + $outcomesByType->get('patent_granted', $emptyCollection)->count();
+        $ossVerified = $outcomesByType->get('open_source_sw', $emptyCollection)->where('verifcation_by_reviewer', 'verified')->count();
+        $ossTotal = $outcomesByType->get('open_source_sw', $emptyCollection)->count();
+        $startupVerified = $outcomesByType->get('startup', $emptyCollection)->where('verifcation_by_reviewer', 'verified')->count();
+        $startupTotal = $outcomesByType->get('startup', $emptyCollection)->count();
+
+        $ipItems = [
+            ['label' => 'IP Disclosure', 'commit' => $commitment->ip ?? null, 'verified' => $ipVerified, 'total' => $ipTotal],
+            ['label' => 'Patents', 'commit' => $commitment->filedPatent ?? null, 'verified' => $patentsVerified, 'total' => $patentsTotal],
+            ['label' => 'Open Source SW', 'commit' => $commitment->openSourceSW ?? null, 'verified' => $ossVerified, 'total' => $ossTotal],
+            ['label' => 'Start-up', 'commit' => $commitment->startUp ?? null, 'verified' => $startupVerified, 'total' => $startupTotal],
+        ];
+
+        // Students
+        $studentItems = [
+            ['label' => 'Masters', 'commit' => $commitment->master ?? null, 'count' => $project->students->where('type', 'masters')->count()],
+            ['label' => 'Undergrad', 'commit' => $commitment->UG ?? null, 'count' => $project->students->where('type', 'ug')->count()],
+            ['label' => 'PhD', 'commit' => $commitment->Phd ?? null, 'count' => $project->students->where('type', 'phd')->count()],
+        ];
+
+        return compact('verifiedCount', 'unverifiedCount', 'pubItems', 'ipItems', 'studentItems');
     }
 
     // ─── LPI: View available (unregistered) projects ─────────────────────────

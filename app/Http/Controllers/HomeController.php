@@ -137,28 +137,40 @@ class HomeController extends Controller
         // ── LPI Project Statistics ────────────────────────────────────────
         $allProjectsCount = $myProjects->count();
 
-        // Unregistered: projects claimed by this LPI but NOT yet registered
+        // Unregistered: projects claimed by this LPI but NOT yet progressed through workflow
         $unregisteredCount = $myProjects->filter(function ($p) {
             $latest = optional($p->latestStatus)->status;
             return !$latest || $latest === '' || !in_array($latest, [
                 Project::STATUS_REGISTERED,
-                Project::STATUS_PROGRESS,
                 Project::STATUS_ASSIGNED,
                 Project::STATUS_CLAIMED,
+                Project::STATUS_PROGRESS_ADDED,
+                Project::STATUS_PROGRESS_REVIEWED,
+                Project::STATUS_PROGRESS_REJECTED,
+                Project::STATUS_FINAL_ADDED,
                 Project::STATUS_GRADED,
             ]);
         })->count();
 
-        // Report Upload Pending: projects that have registered status but NOT yet added progress report
+        // Report Upload Pending: projects registered (or beyond) but NOT yet added progress report
         $reportUploadPendingCount = $myProjects->filter(function ($p) {
             $latest = optional($p->latestStatus)->status;
-            return $latest === Project::STATUS_REGISTERED;
+            return in_array($latest, [
+                Project::STATUS_REGISTERED,
+                Project::STATUS_ASSIGNED,
+                Project::STATUS_CLAIMED,
+            ]);
         })->count();
 
-        // Progress Report Done: projects that have progress_added (but not yet graded)
+        // Progress Report Done: projects that have progress_added or were reviewed (but not yet added final report)
         $progressDoneCount = $myProjects->filter(function ($p) {
             $latest = optional($p->latestStatus)->status;
-            return $latest === Project::STATUS_PROGRESS;
+            return in_array($latest, [
+                Project::STATUS_PROGRESS_ADDED,
+                Project::STATUS_PROGRESS_REVIEWED,
+                Project::STATUS_PROGRESS_REJECTED,
+                Project::STATUS_FINAL_ADDED,
+            ]);
         })->count();
 
         // Graded: projects fully graded
@@ -283,14 +295,15 @@ class HomeController extends Controller
             $latest = optional($p->latestStatus)->status;
             $programsStats[$progKey]['all']++;
             if (!$latest || $latest === '' || !in_array($latest, [
-                Project::STATUS_REGISTERED, Project::STATUS_PROGRESS,
-                Project::STATUS_ASSIGNED, Project::STATUS_CLAIMED,
-                Project::STATUS_GRADED,
+                Project::STATUS_REGISTERED, Project::STATUS_ASSIGNED,
+                Project::STATUS_CLAIMED, Project::STATUS_PROGRESS_ADDED,
+                Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
+                Project::STATUS_FINAL_ADDED, Project::STATUS_GRADED,
             ])) {
                 $programsStats[$progKey]['unreg']++;
-            } elseif ($latest === Project::STATUS_REGISTERED) {
+            } elseif (in_array($latest, [Project::STATUS_REGISTERED, Project::STATUS_ASSIGNED, Project::STATUS_CLAIMED])) {
                 $programsStats[$progKey]['pending']++;
-            } elseif ($latest === Project::STATUS_PROGRESS) {
+            } elseif (in_array($latest, [Project::STATUS_PROGRESS_ADDED, Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED])) {
                 $programsStats[$progKey]['progress']++;
             } elseif ($latest === Project::STATUS_GRADED) {
                 $programsStats[$progKey]['graded']++;
@@ -317,14 +330,15 @@ class HomeController extends Controller
                 $latest = optional($p->latestStatus)->status;
                 $pillarsStats[$pillarKey]['all']++;
                 if (!$latest || $latest === '' || !in_array($latest, [
-                    Project::STATUS_REGISTERED, Project::STATUS_PROGRESS,
-                    Project::STATUS_ASSIGNED, Project::STATUS_CLAIMED,
-                    Project::STATUS_GRADED,
+                    Project::STATUS_REGISTERED, Project::STATUS_ASSIGNED,
+                    Project::STATUS_CLAIMED, Project::STATUS_PROGRESS_ADDED,
+                    Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
+                    Project::STATUS_FINAL_ADDED, Project::STATUS_GRADED,
                 ])) {
                     $pillarsStats[$pillarKey]['unreg']++;
-                } elseif ($latest === Project::STATUS_REGISTERED) {
+                } elseif (in_array($latest, [Project::STATUS_REGISTERED, Project::STATUS_ASSIGNED, Project::STATUS_CLAIMED])) {
                     $pillarsStats[$pillarKey]['pending']++;
-                } elseif ($latest === Project::STATUS_PROGRESS) {
+                } elseif (in_array($latest, [Project::STATUS_PROGRESS_ADDED, Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED])) {
                     $pillarsStats[$pillarKey]['progress']++;
                 } elseif ($latest === Project::STATUS_GRADED) {
                     $pillarsStats[$pillarKey]['graded']++;

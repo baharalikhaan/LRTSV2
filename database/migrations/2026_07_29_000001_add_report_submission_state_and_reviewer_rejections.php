@@ -2,10 +2,30 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class AddReportSubmissionStateAndReviewerRejections extends Migration
 {
+    /**
+     * Check whether an index exists on a table (Laravel 8 has no Schema::hasIndex).
+     */
+    protected function indexExists(string $table, string $indexName): bool
+    {
+        try {
+            $indexes = DB::select('SHOW INDEX FROM `' . $table . '`');
+            foreach ($indexes as $index) {
+                if (($index->Key_name ?? $index->key_name) === $indexName) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Table may not exist yet — treat as no index.
+        }
+
+        return false;
+    }
+
     public function up()
     {
         // Track per-report submission state (draft vs submitted) + when submitted.
@@ -16,7 +36,8 @@ class AddReportSubmissionStateAndReviewerRejections extends Migration
                 $table->timestamp('submitted_at')->nullable()->after('submitted');
             });
         }
-        if (!Schema::hasIndex('project_submissions', 'project_submissions_project_id_type_submitted_index')) {
+        if (!Schema::hasTable('project_submissions')
+            || !$this->indexExists('project_submissions', 'project_submissions_project_id_type_submitted_index')) {
             Schema::table('project_submissions', function (Blueprint $table) {
                 $table->index(['project_id', 'type', 'submitted']);
             });
@@ -41,12 +62,16 @@ class AddReportSubmissionStateAndReviewerRejections extends Migration
         Schema::dropIfExists('reviewer_rejections');
 
         Schema::table('project_submissions', function (Blueprint $table) {
-            if (Schema::hasIndex('project_submissions', 'project_submissions_project_id_type_submitted_index')) {
-                $table->dropIndex(['project_id', 'type', 'submitted']);
-            }
             if (Schema::hasColumn('project_submissions', 'submitted')) {
                 $table->dropColumn(['submitted', 'submitted_at']);
             }
         });
+
+        if (Schema::hasTable('project_submissions')
+            && $this->indexExists('project_submissions', 'project_submissions_project_id_type_submitted_index')) {
+            Schema::table('project_submissions', function (Blueprint $table) {
+                $table->dropIndex('project_submissions_project_id_type_submitted_index');
+            });
+        }
     }
 }

@@ -5,15 +5,20 @@
 @if(count($actions) > 0)
     @foreach($actions as $act)
         @php
-            $iconMap = [
-                'progress'        => 'fas fa-chart-line',
-                'assign'          => 'fas fa-user-tag',
-                'accept-proposal' => 'fas fa-check-circle',
-                'review'          => 'fas fa-clipboard-check',
-                'accepted'        => 'fas fa-check-circle',
-                'graded'          => 'fas fa-star',
-                'report-card'     => 'fas fa-file-alt',
-            ];
+        $iconMap = [
+            'progress'                  => 'fas fa-chart-line',
+            'progress-v2'               => 'fas fa-sync-alt',
+            'progress-ext-grade'        => 'fas fa-clipboard-check',
+            'assign'                    => 'fas fa-user-tag',
+            'accept-proposal'           => 'fas fa-check-circle',
+            'review'                    => 'fas fa-clipboard-check',
+            'accepted'                  => 'fas fa-check-circle',
+            'graded'                    => 'fas fa-star',
+            'report-card'               => 'fas fa-file-alt',
+            'final-report'              => 'fas fa-paper-plane',
+            'enable-extended-progress'  => 'fas fa-clock',
+            'disable-extended-progress' => 'fas fa-ban',
+        ];
             $actIcon = $iconMap[$act['action']] ?? 'fas fa-arrow-right';
             $actLabel = $act['label'] ?? ucfirst($act['action']);
 
@@ -38,9 +43,9 @@
             $hasUrl = !empty($act['url']);
         @endphp
 
-        @if($act['action'] === 'progress')
+        @if(in_array($act['action'], ['progress', 'progress-v2']))
             <a href="{{ route('progress.add', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}">
-                <i class="{{ $actIcon }}"></i> Add Progress
+                <i class="{{ $actIcon }}"></i> {{ $actLabel }}
             </a>
         @elseif($hasUrl)
             <a href="{{ $act['url'] }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}">
@@ -60,7 +65,7 @@
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'report-card', 'lg')">
                 <i class="{{ $actIcon }}"></i> {{ $actLabel }}
             </button>
-        @elseif(in_array($act['action'], ['progress-grade', 'final-grade']))
+        @elseif(in_array($act['action'], ['progress-grade', 'progress-ext-grade', 'final-grade']))
             <a href="{{ route('projects.grading', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" style="text-decoration:none;">
                 @if($act['action'] === 'progress-grade')
                     <i class="fas fa-star"></i>
@@ -69,10 +74,22 @@
                 @endif
                 {{ $actLabel }}
             </a>
+        @elseif($act['action'] === 'final-report')
+            <a href="{{ route('progress.final', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" style="text-decoration:none;">
+                <i class="fas fa-paper-plane"></i> {{ $actLabel }}
+            </a>
         @elseif($act['action'] === 'claim')
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'accept-proposal')">
                 <i class="fas fa-check-circle"></i> {{ $actLabel }}
             </button>
+        @elseif(in_array($act['action'], ['enable-extended-progress', 'disable-extended-progress']))
+            <form method="POST" action="{{ route('workflow.toggle-extended', $project->id ?? '') }}" style="display:inline;">
+                @csrf
+                <input type="hidden" name="enable" value="{{ $act['action'] === 'enable-extended-progress' ? '1' : '0' }}">
+                <button type="submit" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}">
+                    <i class="{{ $actIcon }}"></i> {{ $actLabel }}
+                </button>
+            </form>
         @else
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, '{{ $act['action'] }}')">
                 <i class="{{ $actIcon }}"></i> {{ $actLabel }}

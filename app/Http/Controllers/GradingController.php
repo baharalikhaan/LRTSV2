@@ -9,6 +9,7 @@ use App\Models\FinalReportGrading;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class GradingController extends Controller
 {
@@ -70,7 +71,10 @@ class GradingController extends Controller
             'commitments',
             'contributions',
             'outcomes',
+            'outcomes.publication',
             'students',
+            'students.details',
+            'researchers',
         ])->findOrFail($id);
 
         $finalGrading = FinalReportGrading::where('project_id', $id)->first();
@@ -80,15 +84,25 @@ class GradingController extends Controller
         $contributions = $project->contributions()->get();
         $outcomes = $project->outcomes()->get();
         $students = $project->students()->get();
+        $researchers = $project->researchers()->get();
 
         $submissions = $project->submissions()
             ->orderBy('created_at', 'desc')
             ->get();
 
         // LPI submission gates — reviewers cannot grade a report the LPI has not
-        // officially submitted yet. These flags drive per-tab lock UI on the grading page.
-        $progressSubmitted = $project->hasStatus(Project::STATUS_PROGRESS_SUBMITTED);
-        $finalSubmitted    = $project->hasStatus(Project::STATUS_FINAL_SUBMITTED);
+        // added yet. These flags drive per-tab lock UI on the grading page.
+        $progressSubmitted = $project->hasStatus(Project::STATUS_PROGRESS_ADDED);
+        $finalSubmitted    = $project->hasStatus(Project::STATUS_FINAL_ADDED);
+
+        // Whether progress was rejected (show rejection info)
+        $progressRejected = $project->hasStatus(Project::STATUS_PROGRESS_REJECTED);
+
+        // All submission versions (for reviewer to compare after rejection)
+        $progressVersions = $project->submissions()
+            ->where('type', 'progress')
+            ->orderBy('version', 'asc')
+            ->get();
 
         $typeMappings = [
             'prototype'      => 'Prototype',
@@ -103,6 +117,64 @@ class GradingController extends Controller
             'undergrad'      => 'Undergraduate Student',
         ];
 
+        // ─── Auto-grade calculations (scores from database) ───
+        $scoreMap = \App\Models\Score::getMap();
+
+        $achievementTypes = [
+            'ip_disclosure', 'provisional_patent', 'granted_patent',
+            'open_source', 'open_source_sw', 'startup', 'prototype', 'cross_college',
+        ];
+
+        $studentTypes = ['masters', 'UG', 'PhD'];
+
+        // Grade A & B: Expected sum from commitments
+        $expectedSumA = 0;
+        if ($commitments) {
+            $expectedSumA = ($commitments->q1article ?? 0) * ($scoreMap['journal_q1'] ?? 0)
+                + ($commitments->q2article ?? 0) * ($scoreMap['journal_q2'] ?? 0)
+                + ($commitments->q3article ?? 0) * ($scoreMap['journal_q3'] ?? 0)
+                + ($commitments->q4article ?? 0) * ($scoreMap['journal_q4'] ?? 0)
+                + ($commitments->confArticle ?? 0) * ($scoreMap['conference'] ?? 0)
+                + ($commitments->books ?? 0) * ($scoreMap['book'] ?? 0)
+                + ($commitments->editBooks ?? 0) * ($scoreMap['edited_book'] ?? 0)
+                + ($commitments->chapters ?? 0) * ($scoreMap['book_chapter'] ?? 0)
+                + ($commitments->ip ?? 0) * ($scoreMap['ip_disclosure'] ?? 0)
+                + ($commitments->filedPatent ?? 0) * ($scoreMap['provisional_patent'] ?? 0)
+                + ($commitments->grantedPatent ?? 0) * ($scoreMap['granted_patent'] ?? 0)
+                + ($commitments->openSourceSW ?? 0) * ($scoreMap['open_source_sw'] ?? 0)
+                + ($commitments->startUp ?? 0) * ($scoreMap['startup'] ?? 0);
+        }
+
+        // Grade A & B: Actual sum from outcomes (use scoreMap from database)
+        $actualSumA = $outcomes->reduce(function ($carry, $o) use ($scoreMap) {
+            return $carry + ($scoreMap[$o->type] ?? 0);
+        }, 0);
+
+        // Grade A: normalized to 1-5, capped at 5
+        $autoGradeA = $expectedSumA > 0 ? min(round(($actualSumA / $expectedSumA) * 5, 2), 5) : 0;
+
+        // Grade B: same calculation as Grade A (publications & IP)
+        $autoGradeB = $expectedSumA > 0 ? min(round(($actualSumA / $expectedSumA) * 5, 2), 5) : 0;
+
+        // Grade C: Student & Researcher Involvement
+        $expectedSumC = 0;
+        if ($commitments) {
+            $expectedSumC = ($commitments->master ?? 0) * ($scoreMap['masters'] ?? 0)
+                + ($commitments->UG ?? 0) * ($scoreMap['ug'] ?? 0)
+                + ($commitments->Phd ?? 0) * ($scoreMap['phd'] ?? 0);
+        }
+        // Use scoreMap from database for students and researchers
+        $actualSumC = $students->reduce(function ($carry, $s) use ($scoreMap) {
+            $key = strtolower($s->type);
+            return $carry + ($scoreMap[$key] ?? 0);
+        }, 0) + $researchers->reduce(function ($carry, $r) use ($scoreMap) {
+            return $carry + ($scoreMap['researcher'] ?? 0);
+        }, 0);
+        $autoGradeC = $expectedSumC > 0 ? min(round(($actualSumC / $expectedSumC) * 5, 2), 5) : 0;
+
+        // Grade D: no auto-calculation
+        $autoGradeD = null;
+
         return view('grading.grading-page', compact(
             'project',
             'finalGrading',
@@ -111,10 +183,19 @@ class GradingController extends Controller
             'contributions',
             'outcomes',
             'students',
+            'researchers',
             'submissions',
             'typeMappings',
             'progressSubmitted',
-            'finalSubmitted'
+            'finalSubmitted',
+            'progressRejected',
+            'progressVersions',
+            'autoGradeA',
+            'autoGradeB',
+            'autoGradeC',
+            'autoGradeD',
+            'expectedSumA',
+            'scoreMap'
         ));
     }
 
@@ -166,8 +247,12 @@ class GradingController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
-        // Gate: reviewer can only grade the progress report once the LPI has submitted it.
-        if (!$project->hasStatus(Project::STATUS_PROGRESS_SUBMITTED)) {
+        // Determine which version is being graded based on project status
+        $hasProgressAdded = $project->hasStatus(Project::STATUS_PROGRESS_ADDED);
+        $hasProgressExtended = $project->hasStatus(Project::STATUS_PROGRESS_EXTENDED);
+
+        // Gate: reviewer can only grade if progress has been submitted
+        if (!$hasProgressAdded && !$hasProgressExtended) {
             return response()->json([
                 'success' => false,
                 'error'   => 'The LPI has not submitted the progress report yet. Grading is locked until then.',
@@ -175,15 +260,18 @@ class GradingController extends Controller
         }
 
         // Determine publish value based on save_action
-        // "draft" = save as pending, "submit" = use the form's publish value
         $publishValue = $saveAction === 'draft' ? 'pending' : $request->publish;
 
-        // Determine isAccepted from the user's actual selection (preserved even for drafts)
-        $userSelection = $request->publish; // 'accepted' or 'rejected' or null
+        // Determine isAccepted from the user's actual selection
+        $userSelection = $request->publish;
         $isAcceptedValue = $userSelection === 'accepted' ? 1 : ($userSelection === 'rejected' ? 0 : 0);
 
+        // Determine report type: extended progress takes priority
+        $reportType = $hasProgressExtended ? 'progress_extended' : 'progress';
+
+        // Use updateOrCreate with report_type to handle v1 and v2 separately
         $grading = \App\Models\ProgressReportGrading::updateOrCreate(
-            ['project_id' => $project->id, 'user_id' => $user->id],
+            ['project_id' => $project->id, 'user_id' => $user->id, 'report_type' => $reportType],
             [
                 'achievementsRating'    => $request->achievementsRating,
                 'publicationsRating'    => $request->publicationsRating,
@@ -198,10 +286,57 @@ class GradingController extends Controller
                 'comments'              => $request->comments ?? '',
                 'recommendation'        => $request->recommendation ?? '',
                 'publish'               => $publishValue,
-                'report_type'           => $request->report_type ?? 'progress',
+                'report_type'           => $reportType,
                 'isAccepted'            => $isAcceptedValue,
             ]
         );
+
+        // On submit, record the workflow status
+        if ($saveAction === 'submit') {
+            if ($hasProgressExtended) {
+                // Extended progress v2 grading
+                if ($userSelection === 'accepted' && !$project->hasStatus(Project::STATUS_PROGRESS_EXT_REVIEWED)) {
+                    $project->recordStatus(Project::STATUS_PROGRESS_EXT_REVIEWED, [
+                        'triggered_by' => 'progress-ext-grade-accept',
+                    ], $user->id);
+                } elseif ($userSelection === 'rejected') {
+                    // Record rejection in reviewer_rejections table
+                    if (Schema::hasTable('reviewer_rejections')) {
+                        \App\Models\ReviewerRejection::create([
+                            'project_id' => $project->id,
+                            'user_id'    => $user->id,
+                            'reason'     => $request->comments ?? null,
+                        ]);
+                    }
+
+                    $project->recordStatus(Project::STATUS_PROGRESS_EXT_REJECTED, [
+                        'triggered_by' => 'progress-ext-grade-reject',
+                        'comment'      => $request->comments ?? null,
+                    ], $user->id);
+                }
+            } else {
+                // Progress v1 grading
+                if ($userSelection === 'accepted' && !$project->hasStatus(Project::STATUS_PROGRESS_REVIEWED)) {
+                    $project->recordStatus(Project::STATUS_PROGRESS_REVIEWED, [
+                        'triggered_by' => 'progress-grade-accept',
+                    ], $user->id);
+                } elseif ($userSelection === 'rejected') {
+                    // Record rejection in reviewer_rejections table
+                    if (Schema::hasTable('reviewer_rejections')) {
+                        \App\Models\ReviewerRejection::create([
+                            'project_id' => $project->id,
+                            'user_id'    => $user->id,
+                            'reason'     => $request->comments ?? null,
+                        ]);
+                    }
+
+                    $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
+                        'triggered_by' => 'progress-grade-reject',
+                        'comment'      => $request->comments ?? null,
+                    ], $user->id);
+                }
+            }
+        }
 
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => 'Progress grade saved successfully.']);
@@ -226,13 +361,19 @@ class GradingController extends Controller
             'commentC'  => 'nullable|string|max:2000',
             'gradeD'    => 'required|numeric|between:1,5',
             'commentD'  => 'nullable|string|max:2000',
+            'scoreA'    => 'nullable|numeric',
+            'scoreB'    => 'nullable|numeric',
+            'scoreC'    => 'nullable|numeric',
+            'autoGradeA'=> 'nullable|numeric',
+            'autoGradeB'=> 'nullable|numeric',
+            'autoGradeC'=> 'nullable|numeric',
         ];
 
-        // For "draft", publish is optional; for "submit", it's required
+        // Grade-only: final report has no rejection — only 'accepted' or 'pending' (draft).
         if ($saveAction === 'draft') {
-            $rules['publish'] = 'nullable|in:accepted,rejected,reserved,pending';
+            $rules['publish'] = 'nullable|in:accepted,pending';
         } else {
-            $rules['publish'] = 'required|in:accepted,rejected,reserved,pending';
+            $rules['publish'] = 'required|in:accepted,pending';
         }
 
         $request->validate($rules);
@@ -240,25 +381,23 @@ class GradingController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
-        // Gate: reviewer can only grade the final report once the LPI has submitted it.
-        if (!$project->hasStatus(Project::STATUS_FINAL_SUBMITTED)) {
+        // Gate: reviewer can only grade the final report once the LPI has added it.
+        if (!$project->hasStatus(Project::STATUS_FINAL_ADDED)) {
             return response()->json([
                 'success' => false,
                 'error'   => 'The LPI has not submitted the final report yet. Grading is locked until then.',
             ], 403);
         }
 
-        // Determine publish value based on save_action
         $publishValue = $saveAction === 'draft' ? 'pending' : $request->publish;
 
-        // Determine isAccepted from the user's actual selection (preserved even for drafts)
+        // Determine isAccepted from the user's actual selection
         $userSelection = $request->publish;
-        $isAcceptedValue = $userSelection === 'accepted' ? 1 : ($userSelection === 'rejected' ? 0 : 0);
+        $isAcceptedValue = $userSelection === 'accepted' ? 1 : 0;
 
-        $total = $request->gradeA +
-                 $request->gradeB +
-                 $request->gradeC +
-                 $request->gradeD;
+        $total = ($request->scoreA ?? 0) +
+                 ($request->scoreB ?? 0) +
+                 ($request->scoreC ?? 0);
 
         $final = FinalReportGrading::updateOrCreate(
             ['project_id' => $project->id],
@@ -272,11 +411,26 @@ class GradingController extends Controller
                 'commentC'    => $request->commentC ?? '',
                 'gradeD'      => $request->gradeD,
                 'commentD'    => $request->commentD ?? '',
+                'scoreA'      => $request->scoreA ?? 0,
+                'autoGradeA'  => $request->autoGradeA ?? 0,
+                'scoreB'      => $request->scoreB ?? 0,
+                'autoGradeB'  => $request->autoGradeB ?? 0,
+                'scoreC'      => $request->scoreC ?? 0,
+                'autoGradeC'  => $request->autoGradeC ?? 0,
                 'total'       => $total,
                 'publish'     => $publishValue,
                 'isAccepted'  => $isAcceptedValue,
             ]
         );
+
+        // On submit with accepted, record the Graded status
+        if ($saveAction === 'submit' && $userSelection === 'accepted') {
+            if (!$project->hasStatus(Project::STATUS_GRADED)) {
+                $project->recordStatus(Project::STATUS_GRADED, [
+                    'triggered_by' => 'final-grade',
+                ], $user->id);
+            }
+        }
 
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => 'Final grade saved successfully.']);
@@ -291,6 +445,39 @@ class GradingController extends Controller
     public function submitFinalGrade(Request $request, $id)
     {
         return $this->saveFinalGrade($request, $id);
+    }
+
+    /**
+     * Update verification status for outcomes, students, and researchers (AJAX endpoint).
+     */
+    public function updateVerification(Request $request)
+    {
+        $request->validate([
+            'type'   => 'required|in:outcome,student,researcher',
+            'ids'    => 'required|array',
+            'status' => 'required|in:verified,pending',
+        ]);
+
+        $model = null;
+        switch ($request->type) {
+            case 'outcome':
+                $model = \App\Models\Outcome::class;
+                break;
+            case 'student':
+                $model = \App\Models\ProjectStudent::class;
+                break;
+            case 'researcher':
+                $model = \App\Models\ProjectResearcher::class;
+                break;
+        }
+
+        if ($model) {
+            $model::whereIn('id', $request->ids)->update([
+                'verifcation_by_reviewer' => $request->status,
+            ]);
+        }
+
+        return response()->json(['success' => true]);
     }
 
     /**
@@ -310,8 +497,8 @@ class GradingController extends Controller
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
         }
 
-        // Gate: cannot finalize the grade until the LPI has submitted the final report.
-        if (!$project->hasStatus(Project::STATUS_FINAL_SUBMITTED)) {
+        // Gate: cannot finalize the grade until the LPI has added the final report.
+        if (!$project->hasStatus(Project::STATUS_FINAL_ADDED)) {
             return response()->json([
                 'success' => false,
                 'error'   => 'The LPI has not submitted the final report yet. You cannot finalize the grade until then.',

@@ -77,6 +77,7 @@ Route::prefix('projects')->name('projects.')->group(function () {
     Route::get('/assign-review/{cycleId}', [ProjectController::class, 'assignView'])->name('assign-review');
     Route::post('/bulk-assign', [ProjectController::class, 'bulkAssign'])->name('bulk-assign');
     Route::get('/{id}', [ProjectController::class, 'show'])->name('show');
+    Route::get('/{id}/report-card', [ProjectController::class, 'reportCard'])->name('report-card');
     Route::get('/my-assignments', [ProjectController::class, 'myAssignments'])->name('my-assignments');
 });
 
@@ -88,6 +89,14 @@ Route::prefix('users')->name('users.')->group(function () {
     Route::get('/{id}/edit', [UserController::class, 'edit'])->name('edit');
     Route::put('/{id}', [UserController::class, 'update'])->name('update');
     Route::delete('/{id}', [UserController::class, 'destroy'])->name('destroy');
+});
+
+// ─── Admin Email ─────────────────────────────────────────────────────────────
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::get('/send-email', [\App\Http\Controllers\EmailController::class, 'compose'])->name('send-email');
+    Route::post('/send-email', [\App\Http\Controllers\EmailController::class, 'send'])->name('send-email.store');
+    Route::post('/retry-email/{log}', [\App\Http\Controllers\EmailController::class, 'retry'])->name('retry-email');
+    Route::get('/get-users', [\App\Http\Controllers\EmailController::class, 'getUsers'])->name('get-users');
 });
 
 // ─── Announcements ───────────────────────────────────────────────────────────
@@ -144,6 +153,7 @@ Route::prefix('grading')->name('grading.')->group(function () {
     Route::post('/{id}/save-final-grade', [GradingController::class, 'saveFinalGrade'])->name('saveFinalGrade');
     Route::post('/{id}/final-grade', [GradingController::class, 'submitFinalGrade'])->name('submitFinalGrade');
     Route::post('/{id}/submit-grade', [GradingController::class, 'submitGrade'])->name('submitGrade');
+    Route::post('/update-verification', [GradingController::class, 'updateVerification'])->name('updateVerification');
 });
 
 // ─── Project Grading Pages (full page, merged progress + final grading) ─────
@@ -250,6 +260,19 @@ HTML;
     return response()->file($path, ['Content-Type' => 'application/pdf']);
 })->name('serveFile2');
 
+Route::get('/download-template/{type}', function ($type) {
+    $allowed = ['progress', 'final', 'readiness'];
+    if (!in_array($type, $allowed)) {
+        abort(404);
+    }
+    $filename = $type . '_template.docx';
+    $path = storage_path('downloads/' . $filename);
+    if (!file_exists($path)) {
+        abort(404);
+    }
+    return response()->download($path, $filename);
+})->name('download.template');
+
 // Convenience aliases
 Route::get('/graded-projects', [GradingController::class, 'gradedProjects'])->name('gradedProjects');
 // Note: /programs, /users, /announcements are defined under their own prefix groups above.
@@ -274,7 +297,9 @@ Route::prefix('workflow')->name('workflow.')->group(function () {
     Route::post('/record-redirect', [\App\Http\Controllers\WorkflowController::class, 'recordAndRedirect'])->name('record-redirect');
     Route::post('/assign-reviewers', [\App\Http\Controllers\WorkflowController::class, 'assignReviewers'])->name('assign-reviewers');
     Route::post('/submit-decision', [\App\Http\Controllers\WorkflowController::class, 'submitProposalDecision'])->name('submit-decision');
+    Route::post('/submit-progress-review', [\App\Http\Controllers\WorkflowController::class, 'submitProgressReview'])->name('submit-progress-review');
     Route::get('/view-grade/{projectId}', [\App\Http\Controllers\WorkflowController::class, 'viewGrade'])->name('view-grade');
+    Route::post('/toggle-extended/{id}', [\App\Http\Controllers\WorkflowController::class, 'toggleExtendedProgress'])->name('toggle-extended');
 });
 
 // ─── Progress Reports (Full Page) ──────────────────────────────────────────
@@ -286,6 +311,8 @@ Route::prefix('progress')->name('progress.')->group(function () {
     Route::post('/delete-outcome/{id}', [\App\Http\Controllers\ProgressController::class, 'deleteOutcome'])->name('delete-outcome');
     Route::post('/save-students/{id}', [\App\Http\Controllers\ProgressController::class, 'saveStudents'])->name('save-students');
     Route::post('/save-single-student/{id}', [\App\Http\Controllers\ProgressController::class, 'saveSingleStudent'])->name('save-single-student');
+    Route::post('/retry-student-verification/{id}', [\App\Http\Controllers\ProgressController::class, 'retryStudentVerification'])->name('retry-student-verification');
+    Route::post('/verify-outcome/{id}', [\App\Http\Controllers\ProgressController::class, 'verifyOutcome'])->name('verify-outcome');
     Route::post('/delete-student/{id}', [\App\Http\Controllers\ProgressController::class, 'deleteStudent'])->name('delete-student');
     Route::post('/save-single-researcher/{id}', [\App\Http\Controllers\ProgressController::class, 'saveSingleResearcher'])->name('save-single-researcher');
     Route::post('/delete-researcher/{id}', [\App\Http\Controllers\ProgressController::class, 'deleteResearcher'])->name('delete-researcher');
@@ -293,8 +320,40 @@ Route::prefix('progress')->name('progress.')->group(function () {
     Route::post('/save-contributions/{id}', [\App\Http\Controllers\ProgressController::class, 'saveContributions'])->name('save-contributions');
     Route::post('/upload-submission/{id}', [\App\Http\Controllers\ProgressController::class, 'uploadFile'])->name('upload-submission');
     Route::post('/delete-submission/{id}', [\App\Http\Controllers\ProgressController::class, 'deleteFile'])->name('delete-submission');
-    Route::post('/submit-report/{id}', [\App\Http\Controllers\ProgressController::class, 'submitReport'])->name('submit-report');
+    Route::get('/final/{id}', [\App\Http\Controllers\ProgressController::class, 'addFinalReport'])->name('final');
+    Route::post('/final/{id}', [\App\Http\Controllers\ProgressController::class, 'saveFinalReport'])->name('save-final');
     Route::get('/{id}', [\App\Http\Controllers\ProgressController::class, 'show'])->name('show');
+});
+
+// ─── Test CrossRef API ──────────────────────────────────────────────────────
+Route::get('/test-crossref-api/{doi}', function ($doi) {
+    try {
+        $client = new \GuzzleHttp\Client([
+            'verify'   => false,
+            'timeout'  => 15,
+            'headers'  => [
+                'User-Agent' => 'LRTS-System/1.0 (mailto:admin@university.edu)',
+            ],
+        ]);
+
+        $url = 'https://api.crossref.org/works/' . $doi;
+        $response = $client->request('GET', $url);
+
+        $body = $response->getBody()->getContents();
+        $res = json_decode($body, true);
+
+        return response()->json([
+            'success' => true,
+            'doi' => $doi,
+            'data' => $res['message'] ?? null,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'doi' => $doi,
+            'error' => $e->getMessage(),
+        ]);
+    }
 });
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -304,6 +363,8 @@ Route::prefix('reports')->name('reports.')->group(function () {
     Route::get('/grants', [\App\Http\Controllers\ReportController::class, 'grantReport'])->name('grant-summary');
     Route::get('/projects', [\App\Http\Controllers\ReportController::class, 'projectReport'])->name('project-status');
     Route::get('/pillars', [\App\Http\Controllers\ReportController::class, 'pillarReport'])->name('pillar-summary');
+    Route::get('/cycle-progress', [\App\Http\Controllers\ReportController::class, 'cycleProgressReport'])->name('cycle-progress');
+    Route::post('/cycle-progress/send-reminder', [\App\Http\Controllers\ReportController::class, 'sendCycleReportReminder'])->name('cycle-progress.send-reminder');
 });
 
 // ─── Reviewer Grading (Admin) ──────────────────────────────────────────────
@@ -332,3 +393,32 @@ Route::prefix('about')->name('about.')->group(function () {
 Route::get('/projects/new', function () {
     return redirect()->route('home')->with('info', 'Project creation is not yet implemented.');
 })->name('newProject');
+
+// ─── File Explorer (Admin) ─────────────────────────────────────────────────
+Route::prefix('file-explorer')->name('file-explorer.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\FileExplorerController::class, 'index'])->name('index');
+    Route::get('/download-project/{id}', [\App\Http\Controllers\FileExplorerController::class, 'downloadProject'])->name('download-project');
+    Route::get('/download-program/{programId}', [\App\Http\Controllers\FileExplorerController::class, 'downloadProgram'])->name('download-program');
+    Route::get('/ajax-list', [\App\Http\Controllers\FileExplorerController::class, 'ajaxList'])->name('ajax-list');
+});
+
+// ─── Email Templates (Admin) ──────────────────────────────────────────────
+Route::resource('email-templates', \App\Http\Controllers\EmailTemplateController::class)->except(['show']);
+Route::get('/email-templates/{emailTemplate}/preview', [\App\Http\Controllers\EmailTemplateController::class, 'preview'])->name('email-templates.preview');
+
+// ─── Gauge Settings (Admin) ───────────────────────────────────────────────
+Route::prefix('gauge-settings')->name('gauge-settings.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\GaugeSettingsController::class, 'index'])->name('index');
+    Route::put('/{gaugeSetting}', [\App\Http\Controllers\GaugeSettingsController::class, 'update'])->name('update');
+});
+
+// ─── Team Management (Admin) ──────────────────────────────────────────────
+Route::resource('teams', \App\Http\Controllers\TeamController::class)->except(['show', 'create', 'edit']);
+
+// ─── Budget Utilization (Admin) ───────────────────────────────────────────
+Route::prefix('budget-utilization')->name('budget-utilization.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\BudgetUtilizationController::class, 'index'])->name('index');
+    Route::post('/sync', [\App\Http\Controllers\BudgetUtilizationController::class, 'sync'])->name('sync');
+    Route::get('/ajax-list', [\App\Http\Controllers\BudgetUtilizationController::class, 'ajaxList'])->name('ajax-list');
+    Route::get('/send-reminder/{budgetUtilization}', [\App\Http\Controllers\BudgetUtilizationController::class, 'sendReminder'])->name('send-reminder');
+});

@@ -45,23 +45,29 @@ class ProjectModelTest extends TestCase
 
     public function test_status_constants_define_the_new_submission_and_rejection_milestones()
     {
-        $this->assertSame('progress_submitted', Project::STATUS_PROGRESS_SUBMITTED);
-        $this->assertSame('final_submitted',    Project::STATUS_FINAL_SUBMITTED);
-        $this->assertSame('rejected',           Project::STATUS_REJECTED);
+        $this->assertSame('progress_added',      Project::STATUS_PROGRESS_ADDED);
+        $this->assertSame('progress_reviewed',   Project::STATUS_PROGRESS_REVIEWED);
+        $this->assertSame('progress_rejected',   Project::STATUS_PROGRESS_REJECTED);
+        $this->assertSame('final_added',         Project::STATUS_FINAL_ADDED);
+        $this->assertSame('imported',            Project::STATUS_IMPORTED);
 
-        $this->assertNotEquals(Project::STATUS_PROGRESS_SUBMITTED, Project::STATUS_FINAL_SUBMITTED);
-        $this->assertNotEquals(Project::STATUS_PROGRESS_SUBMITTED, Project::STATUS_REJECTED);
-        $this->assertNotEquals(Project::STATUS_FINAL_SUBMITTED,    Project::STATUS_REJECTED);
+        $this->assertNotEquals(Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED);
+        $this->assertNotEquals(Project::STATUS_PROGRESS_ADDED,    Project::STATUS_FINAL_ADDED);
     }
 
-    public function test_status_labels_cover_submitted_and_rejected_states()
+    public function test_status_labels_cover_new_workflow_states()
     {
         $labels = Project::statusLabels();
 
-        $this->assertSame('Progress Submitted', $labels[Project::STATUS_PROGRESS_SUBMITTED] ?? null);
-        $this->assertSame('Final Submitted',    $labels[Project::STATUS_FINAL_SUBMITTED] ?? null);
-        $this->assertSame('Rejected',           $labels[Project::STATUS_REJECTED] ?? null);
-        $this->assertSame('Graded',             $labels[Project::STATUS_GRADED] ?? null);
+        $this->assertSame('Imported',          $labels[Project::STATUS_IMPORTED] ?? null);
+        $this->assertSame('Registered',        $labels[Project::STATUS_REGISTERED] ?? null);
+        $this->assertSame('Assigned',          $labels[Project::STATUS_ASSIGNED] ?? null);
+        $this->assertSame('Claimed',           $labels[Project::STATUS_CLAIMED] ?? null);
+        $this->assertSame('Progress Added',    $labels[Project::STATUS_PROGRESS_ADDED] ?? null);
+        $this->assertSame('Progress Reviewed', $labels[Project::STATUS_PROGRESS_REVIEWED] ?? null);
+        $this->assertSame('Progress Rejected', $labels[Project::STATUS_PROGRESS_REJECTED] ?? null);
+        $this->assertSame('Final Added',       $labels[Project::STATUS_FINAL_ADDED] ?? null);
+        $this->assertSame('Graded',            $labels[Project::STATUS_GRADED] ?? null);
     }
 
     public function test_project_submission_casts_submitted_and_submitted_at_fields()
