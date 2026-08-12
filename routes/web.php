@@ -422,3 +422,10 @@ Route::prefix('budget-utilization')->name('budget-utilization.')->group(function
     Route::get('/ajax-list', [\App\Http\Controllers\BudgetUtilizationController::class, 'ajaxList'])->name('ajax-list');
     Route::get('/send-reminder/{budgetUtilization}', [\App\Http\Controllers\BudgetUtilizationController::class, 'sendReminder'])->name('send-reminder');
 });
+
+// ─── Admin Upload Reports (Admin) ─────────────────────────────────────────
+Route::prefix('admin/upload-reports')->name('admin-upload.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\AdminUploadController::class, 'index'])->name('index');
+    Route::get('/ajax-list', [\App\Http\Controllers\AdminUploadController::class, 'ajaxList'])->name('ajax-list');
+    Route::post('/upload', [\App\Http\Controllers\AdminUploadController::class, 'upload'])->name('upload');
+});

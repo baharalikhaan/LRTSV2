@@ -232,4 +232,16 @@ return [
 
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Budget API Mock Mode
+    |--------------------------------------------------------------------------
+    |
+    | When true, the budget sync will generate dummy data from local projects
+    | instead of calling the live QU API. Set BUDGET_API_MOCK=true in .env.
+    |
+    */
+
+    'budget_api_mock' => env('BUDGET_API_MOCK', false),
+
 ];

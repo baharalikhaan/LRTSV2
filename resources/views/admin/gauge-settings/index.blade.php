@@ -38,9 +38,11 @@
                 {{ $gauge->name }}
             </h2>
         </div>
-        <div class="panel-body" style="text-align:center;">
+        <div class="panel-body">
             {{-- Gauge Chart --}}
-            <div id="chart_div{{ $gauge->id }}" style="width:100%; height:180px; margin-bottom:16px;"></div>
+            <div style="display:flex;justify-content:center;margin-bottom:12px;">
+                <div id="chart_div{{ $gauge->id }}" style="width:100%;max-width:220px;height:150px;"></div>
+            </div>
 
             {{-- Form --}}
             <form method="POST" action="{{ route('gauge-settings.update', $gauge->id) }}" id="gaugeForm{{ $gauge->id }}">
@@ -132,13 +134,15 @@ function drawGauge{{ $gauge->id }}() {
     ]);
 
     var options = {
-        width: '100%', height: 180,
+        width: 220, height: 150,
         redFrom: {{ $gauge->redfrom }}, redTo: {{ $gauge->redto }},
         yellowFrom: {{ $gauge->yellowfrom }}, yellowTo: {{ $gauge->yellowto }},
         greenFrom: {{ $gauge->greenfrom }}, greenTo: {{ $gauge->greento }},
         max: {{ $gauge->greento }},
         minorTicks: 5,
-        majorTicks: ['0', '{{ $gauge->greento }}'],
+        majorTicks: null,
+        labelFontSize: 10,
+        valueFontSize: 0.2,
     };
 
     var chart = new google.visualization.Gauge(document.getElementById('chart_div{{ $gauge->id }}'));
@@ -161,13 +165,15 @@ document.querySelectorAll('input[type="number"]').forEach(function(input) {
         var greenTo = parseInt(form.querySelector('[name="greento"]').value) || 100;
 
         var options = {
-            width: '100%', height: 180,
+            width: 220, height: 150,
             redFrom: redFrom, redTo: redTo,
             yellowFrom: yellowFrom, yellowTo: yellowTo,
             greenFrom: greenFrom, greenTo: greenTo,
             max: greenTo,
             minorTicks: 5,
-            majorTicks: ['0', String(greenTo)],
+            majorTicks: null,
+            labelFontSize: 10,
+            valueFontSize: 0.2,
         };
 
         if (window['gaugeChart' + id]) {

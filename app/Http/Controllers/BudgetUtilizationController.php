@@ -124,48 +124,75 @@ class BudgetUtilizationController extends Controller
         $synced = 0;
         $errors = 0;
 
+        $isMock = config('app.budget_api_mock', env('BUDGET_API_MOCK', false));
+
         try {
-            // Step 1: Fetch project list from QU API
-            $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 30]);
-            $listResponse = $client->get('https://residence.qu.edu.qa/ords/qucust/quapi/getProjects/123$$321');
-            $listBody = json_decode($listResponse->getBody()->getContents(), true);
-            $projects = $listBody['items'] ?? [];
+            if ($isMock) {
+                // ── Mock mode: generate dummy data from local projects ──
+                $projects = Project::whereNotNull('old_project_id')->limit(20)->get();
 
-            foreach ($projects as $item) {
-                $projectNum = $item['project_num'] ?? null;
-                if (!$projectNum) {
-                    continue;
-                }
+                foreach ($projects as $project) {
+                    $projectNum = $project->old_project_id;
+                    $budget = rand(50000, 500000);
+                    $spent = rand(0, intval($budget * 0.8));
+                    $committed = rand(0, $budget - $spent);
+                    $balance = $budget - $spent - $committed;
 
-                // Step 2: Fetch budget for each project
-                try {
-                    $budgetResponse = $client->get(
-                        'https://residence.qu.edu.qa/ords/qucust/quapi/getProjectBudget/' . $projectNum . '/123$$321'
+                    ProjectBudget::updateOrCreate(
+                        ['project_num' => $projectNum],
+                        [
+                            'project_id'        => $project->id,
+                            'project_name'      => $project->title,
+                            'budget_amount'     => $budget,
+                            'actual_exp_amount' => $spent,
+                            'commitment_amount' => $committed,
+                            'available_balance' => max(0, $balance),
+                            'last_synced_at'    => now(),
+                        ]
                     );
-                    $budgetBody = json_decode($budgetResponse->getBody()->getContents(), true);
-                    $budgetItems = $budgetBody['items'] ?? [];
-                    $budgetData = $budgetItems[0] ?? null;
+                    $synced++;
+                }
+            } else {
+                // ── Live mode: fetch from QU API ──
+                $client = new \GuzzleHttp\Client(['verify' => false, 'timeout' => 30]);
+                $listResponse = $client->get('https://residence.qu.edu.qa/ords/qucust/quapi/getProjects/123$$321');
+                $listBody = json_decode($listResponse->getBody()->getContents(), true);
+                $projects = $listBody['items'] ?? [];
 
-                    if ($budgetData) {
-                        // Find matching project in our system by old_project_id
-                        $project = Project::where('old_project_id', $projectNum)->first();
-
-                        ProjectBudget::updateOrCreate(
-                            ['project_num' => $projectNum],
-                            [
-                                'project_id'        => $project ? $project->id : null,
-                                'project_name'      => $budgetData['project_name'] ?? $item['project_name'] ?? null,
-                                'budget_amount'     => $budgetData['budget_amount'] ?? 0,
-                                'actual_exp_amount' => $budgetData['actual_exp_amount'] ?? 0,
-                                'commitment_amount' => $budgetData['committment_amount'] ?? 0,
-                                'available_balance' => $budgetData['available_balance'] ?? 0,
-                                'last_synced_at'    => now(),
-                            ]
-                        );
-                        $synced++;
+                foreach ($projects as $item) {
+                    $projectNum = $item['project_num'] ?? null;
+                    if (!$projectNum) {
+                        continue;
                     }
-                } catch (\Exception $e) {
-                    $errors++;
+
+                    try {
+                        $budgetResponse = $client->get(
+                            'https://residence.qu.edu.qa/ords/qucust/quapi/getProjectBudget/' . $projectNum . '/123$$321'
+                        );
+                        $budgetBody = json_decode($budgetResponse->getBody()->getContents(), true);
+                        $budgetItems = $budgetBody['items'] ?? [];
+                        $budgetData = $budgetItems[0] ?? null;
+
+                        if ($budgetData) {
+                            $project = Project::where('old_project_id', $projectNum)->first();
+
+                            ProjectBudget::updateOrCreate(
+                                ['project_num' => $projectNum],
+                                [
+                                    'project_id'        => $project ? $project->id : null,
+                                    'project_name'      => $budgetData['project_name'] ?? $item['project_name'] ?? null,
+                                    'budget_amount'     => $budgetData['budget_amount'] ?? 0,
+                                    'actual_exp_amount' => $budgetData['actual_exp_amount'] ?? 0,
+                                    'commitment_amount' => $budgetData['committment_amount'] ?? 0,
+                                    'available_balance' => $budgetData['available_balance'] ?? 0,
+                                    'last_synced_at'    => now(),
+                                ]
+                            );
+                            $synced++;
+                        }
+                    } catch (\Exception $e) {
+                        $errors++;
+                    }
                 }
             }
         } catch (\Exception $e) {
@@ -173,8 +200,9 @@ class BudgetUtilizationController extends Controller
                 ->with('error', 'API sync failed: ' . $e->getMessage());
         }
 
+        $mode = $isMock ? ' (mock data)' : '';
         return redirect()->route('budget-utilization.index')
-            ->with('success', "Sync complete. {$synced} project(s) updated. {$errors} error(s).");
+            ->with('success', "Sync complete{$mode}. {$synced} project(s) updated. {$errors} error(s).");
     }
 
     /**

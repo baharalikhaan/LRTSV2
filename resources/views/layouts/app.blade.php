@@ -109,6 +109,25 @@
 
     {{-- Page numbering via CSS counter --}}
     .print-report-footer .pageNumber::after { content: counter(page); }
+
+    {{-- Elegant small tooltips --}}
+    .tooltip-inner {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 4px;
+        max-width: 200px;
+        line-height: 1.4;
+        background: var(--ink-800, #38333e);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    }
+    .tooltip {
+        --bs-tooltip-opacity: 0.92;
+    }
+    .tooltip-arrow::before {
+        border-top-color: var(--ink-800, #38333e) !important;
+    }
     </style>
 
     @stack('styles')
@@ -140,11 +159,12 @@
             'users' => ['route' => 'users.index', 'icon' => 'fa-solid fa-users', 'label' => 'Users', 'can' => $isAdmin],
             'teams' => ['route' => 'teams.index', 'icon' => 'fa-solid fa-users-gear', 'label' => 'Team', 'can' => $isAdmin],
             'announcements' => ['route' => 'announcements.index', 'icon' => 'fa-solid fa-bullhorn', 'label' => 'Announcements', 'can' => $isAdmin],
+            'admin-upload' => ['route' => 'admin-upload.index', 'icon' => 'fa-solid fa-cloud-arrow-up', 'label' => 'Upload Reports', 'can' => $isAdmin],
             'budget-utilization' => ['route' => 'budget-utilization.index', 'icon' => 'fa-solid fa-coins', 'label' => 'Budget Utilization', 'can' => $isAdmin],
             'reviewer-grading' => ['route' => 'reviewer-grading.index', 'icon' => 'fa-solid fa-star', 'label' => 'Reviewer Grading', 'can' => $isAdmin],
             'send-email' => ['route' => 'admin.send-email', 'icon' => 'fa-solid fa-envelope', 'label' => 'Send Email', 'can' => $isAdmin],
             'email-templates' => ['route' => 'email-templates.index', 'icon' => 'fa-solid fa-file-lines', 'label' => 'Email Templates', 'can' => $isAdmin],
-            'file-explorer' => ['route' => 'file-explorer.index', 'icon' => 'fa-solid fa-folder-tree', 'label' => 'File Explorer', 'can' => $isAdmin],
+            'file-explorer' => ['route' => 'file-explorer.index', 'icon' => 'fa-solid fa-folder-tree', 'label' => 'File Downloads', 'can' => $isAdmin],
         ],
         'Reports' => [
             'cycle-progress' => ['route' => 'reports.cycle-progress', 'icon' => 'fa-solid fa-chart-bar', 'label' => 'Research Call Summary', 'can' => $isAdmin],

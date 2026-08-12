@@ -40,17 +40,24 @@ class FileExplorerController extends Controller
      */
     public function ajaxList(Request $request)
     {
-        $search = $request->input('search.value', '');
+        $search  = $request->input('search.value', '');
+        $program = $request->input('program_id', '');
 
         $query = Project::query()
-            ->select('id', 'old_project_id', 'title')
-            ->with('program.grant')
-            ->when($search, function ($q, $search) {
-                $q->where(function ($q2) use ($search) {
-                    $q2->where('old_project_id', 'like', "%{$search}%")
-                       ->orWhere('title', 'like', "%{$search}%");
-                });
+            ->select('id', 'old_project_id', 'title', 'program_id')
+            ->with(['program.cycle', 'program.grant']);
+
+        // Filter by program (research call)
+        if ($program) {
+            $query->where('program_id', $program);
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('old_project_id', 'like', "%{$search}%")
+                   ->orWhere('title', 'like', "%{$search}%");
             });
+        }
 
         $total    = $query->count();
         $start    = (int) $request->input('start', 0);
@@ -58,20 +65,20 @@ class FileExplorerController extends Controller
         $projects = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
 
         $data = $projects->map(function ($p) {
-            $oldId    = $p->old_project_id ?? $p->id;
-            $grant    = $p->program->grant->grant_code ?? '—';
+            $oldId     = $p->old_project_id ?? $p->id;
+            $grantCode = $p->program->grant->grant_code ?? '—';
             $cycleYear = $p->program->cycle->year ?? '—';
 
             $files = $this->getProjectFiles($p);
-            $fileCount = $files->sum('count');
+            $fileCount = $files->count();
 
             return [
                 'old_project_id' => e($oldId),
                 'title'          => e($p->title),
                 'cycle'          => e($cycleYear),
-                'grant'          => e($grant),
+                'grant'          => e($grantCode),
                 'files'          => $fileCount . ' file' . ($fileCount !== 1 ? 's' : ''),
-                'action'         => '<a href="' . route('file-explorer.download-project', $p->id) . '" class="btn btn-sm btn-ghost" title="Download Project ZIP"><i class="fa-solid fa-file-zipper"></i></a>',
+                'action'         => '<div class="btn-action-group" style="white-space:nowrap;"><a href="' . route('file-explorer.download-project', $p->id) . '" class="btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;" title="Download ZIP" data-bs-toggle="tooltip"><i class="fas fa-file-zipper" style="font-size:11px;"></i> ZIP</a></div>',
             ];
         });
 
