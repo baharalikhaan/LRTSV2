@@ -44,10 +44,10 @@
                     <th>Title</th>
                     <th>LPI</th>
                     <th>Research Call</th>
-                    <th class="text-center">Progress</th>
-                    <th class="text-center">Final</th>
-                    <th class="text-center">Readiness</th>
-                    <th class="text-center" style="min-width:200px;">Upload</th>
+                    <th class="text-center">Progress Report</th>
+                    <th class="text-center">Final Report</th>
+                    <th class="text-center">Readiness Report</th>
+                    <th class="text-center" style="min-width:220px;">Upload</th>
                 </tr>
             </thead>
         </table>
@@ -88,13 +88,13 @@ $(document).ready(function() {
         ajax: '{{ route("admin-upload.ajax-list") }}',
         dom: 'rt<"bottom"lip>',
         columns: [
-            { data: 'old_project_id', name: 'old_project_id', title: 'Project ID', width: '120px' },
+            { data: 'old_project_id', name: 'old_project_id', title: 'Project ID', width: '110px' },
             { data: 'title', name: 'title', title: 'Title', orderable: false, searchable: true },
-            { data: 'lpi', name: 'lpi', title: 'LPI', orderable: false, searchable: false, width: '120px' },
-            { data: 'cycle', name: 'cycle', title: 'Research Call', orderable: false, searchable: false, width: '120px' },
-            { data: 'progress', name: 'progress', title: 'Progress', orderable: false, searchable: false, className: 'text-center', width: '80px' },
-            { data: 'final', name: 'final', title: 'Final', orderable: false, searchable: false, className: 'text-center', width: '80px' },
-            { data: 'readiness', name: 'readiness', title: 'Readiness', orderable: false, searchable: false, className: 'text-center', width: '80px' },
+            { data: 'lpi', name: 'lpi', title: 'LPI', orderable: false, searchable: false, width: '150px' },
+            { data: 'program', name: 'program', title: 'Research Call', orderable: false, searchable: false, width: '160px' },
+            { data: 'progress', name: 'progress', title: 'Progress Report', orderable: false, searchable: false, className: 'text-center', width: '90px' },
+            { data: 'final', name: 'final', title: 'Final Report', orderable: false, searchable: false, className: 'text-center', width: '90px' },
+            { data: 'readiness', name: 'readiness', title: 'Readiness Report', orderable: false, searchable: false, className: 'text-center', width: '100px' },
             { data: 'action', name: 'action', title: 'Upload', orderable: false, searchable: false, className: 'text-center' },
         ],
         order: [[0, 'desc']],
@@ -122,7 +122,7 @@ function initUploadForms() {
         } else {
             label.removeClass('has-file');
             var type = $(this).data('type');
-            var labels = {progress: 'PRG', final: 'FIN', readiness: 'RDR'};
+            var labels = {progress: 'Progress', final: 'Final', readiness: 'Readiness'};
             $(this).closest('.admin-upload-label').find('.admin-upload-btn').html('<i class="fas fa-file-pdf" style="font-size:10px;"></i> ' + labels[type]);
         }
     });
@@ -164,7 +164,7 @@ function initUploadForms() {
                 form.find('.admin-upload-input').val('');
                 form.find('.admin-upload-label').removeClass('has-file');
                 form.find('.admin-upload-btn').each(function(i) {
-                    var labels = ['PRG', 'FIN', 'RDR'];
+                    var labels = ['Progress', 'Final', 'Readiness'];
                     $(this).html('<i class="fas fa-file-pdf" style="font-size:10px;"></i> ' + labels[i]);
                 });
                 submitBtn.prop('disabled', false).html('<i class="fas fa-upload" style="font-size:10px;"></i>');
