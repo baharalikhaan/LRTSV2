@@ -365,6 +365,7 @@ Route::prefix('reports')->name('reports.')->group(function () {
     Route::get('/pillars', [\App\Http\Controllers\ReportController::class, 'pillarReport'])->name('pillar-summary');
     Route::get('/cycle-progress', [\App\Http\Controllers\ReportController::class, 'cycleProgressReport'])->name('cycle-progress');
     Route::post('/cycle-progress/send-reminder', [\App\Http\Controllers\ReportController::class, 'sendCycleReportReminder'])->name('cycle-progress.send-reminder');
+    Route::get('/budget-utilization', [\App\Http\Controllers\ReportController::class, 'budgetUtilizationReport'])->name('budget-utilization');
 });
 
 // ─── Reviewer Grading (Admin) ──────────────────────────────────────────────

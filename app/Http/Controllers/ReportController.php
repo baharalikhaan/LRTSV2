@@ -416,4 +416,17 @@ class ReportController extends Controller
             'message' => "{$emailCount} reminder(s) sent successfully.",
         ]);
     }
+
+    /**
+     * Budget Utilization Report — shows all project budgets with utilization metrics.
+     */
+    public function budgetUtilizationReport(Request $request)
+    {
+        $programs = Program::with('grant', 'cycle')
+            ->withCount('projects as project_count')
+            ->orderByDesc('id')
+            ->get();
+
+        return view('reports.budget-utilization', compact('programs'));
+    }
 }
