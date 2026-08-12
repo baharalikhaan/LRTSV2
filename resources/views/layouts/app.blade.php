@@ -603,20 +603,20 @@ document.addEventListener('DOMContentLoaded', function() {
  * @param {string} action - 'progress', 'assign', 'review', 'report-card'
  * @param {string|null} size - optional size: 'sm', 'lg', 'xl', or null for default (540px)
  */
-function openWorkflowModal(projectId, action, size) {
+function openWorkflowModal(projectId, action, size, queryString) {
     // Cleanup any previous modals
     $('#workflowModal').remove();
     $('.modal-backdrop').remove();
     $('body').removeClass('modal-open');
 
     // Determine modal width based on size parameter
-    var modalWidth = '540px';
+    var modalWidth = '420px';
     if (size === 'lg') {
-        modalWidth = '820px';
+        modalWidth = '720px';
     } else if (size === 'xl') {
-        modalWidth = '960px';
+        modalWidth = '900px';
     } else if (size === 'sm') {
-        modalWidth = '380px';
+        modalWidth = '360px';
     }
 
     const modal = $('<div class="modal fade" id="workflowModal" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false">'
@@ -630,7 +630,12 @@ function openWorkflowModal(projectId, action, size) {
     $('body').append(modal);
     modal.modal('show');
 
-    $.get('/workflow/modal/' + action + '/' + projectId, function(res) {
+    var url = '/workflow/modal/' + action + '/' + projectId;
+    if (queryString) {
+        url += '?' + queryString;
+    }
+
+    $.get(url, function(res) {
         if (res.html) {
             modal.find('.modal-content').html(res.html);
         } else if (res.error) {
@@ -720,23 +725,17 @@ function submitProposalDecision() {
     const errorDiv = document.getElementById('proposalError');
     const errorText = document.getElementById('proposalErrorText');
     const decisionError = document.getElementById('decisionError');
-    if (!errorDiv || !errorText || !decisionError) {
-        // Fallback if span not found — use erroDiv directly
-        if (!errorText && errorDiv) {
-            errorDiv.textContent = 'An unexpected error occurred.';
-            errorDiv.style.display = 'block';
-        }
-        return;
-    }
 
     errorDiv.style.display = 'none';
-    decisionError.style.display = 'none';
+    if (decisionError) decisionError.style.display = 'none';
 
-    // Validate decision selection
-    const accept = form.querySelector('input[name="accept"]:checked');
-    if (!accept) {
-        decisionError.textContent = 'Please select Accept or Reject.';
-        decisionError.style.display = 'block';
+    // Validate decision selection using hidden input
+    const decisionValue = document.getElementById('decisionValue');
+    if (!decisionValue || !decisionValue.value) {
+        if (decisionError) {
+            decisionError.textContent = 'Please select Accept or Reject.';
+            decisionError.style.display = 'block';
+        }
         return;
     }
 
@@ -751,7 +750,7 @@ function submitProposalDecision() {
     data.append('_token', csrf ? csrf.content : '');
     data.append('project_id', projectId);
     data.append('r_id', rId);
-    data.append('accept', accept.value);
+    data.append('accept', decisionValue.value);
     // Include the optional rejection reason when present.
     var reasonEl = form.querySelector('textarea[name="reject_reason"]');
     if (reasonEl && reasonEl.value.trim()) {
@@ -846,6 +845,84 @@ function showToast(type, message) {
         position: 'right',
         style: { background: bg }
     }).showToast();
+}
+
+/**
+ * Confirm and execute un-assignment of a reviewer from a project.
+ */
+function confirmUnassignReviewer(projectId) {
+    // Cleanup any previous modals
+    $('#workflowModal').remove();
+    $('.modal-backdrop').remove();
+    $('body').removeClass('modal-open');
+
+    var modal = $('<div class="modal fade" id="workflowModal" tabindex="-1" role="dialog" data-backdrop="static">'
+        + '<div class="modal-dialog modal-dialog-centered" role="document" style="max-width:480px;">'
+        + '<div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 20px 60px rgba(0,0,0,.15);">'
+        + '<div style="padding:28px 28px 20px;text-align:center;">'
+        + '<div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#fee2e2,#fecaca);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">'
+        + '<i class="fas fa-user-minus" style="color:#dc2626;font-size:22px;"></i>'
+        + '</div>'
+        + '<h5 style="margin:0 0 8px;font-weight:700;font-size:17px;color:#1e1b4b;">Un-assign Reviewer?</h5>'
+        + '<p style="margin:0 0 20px;font-size:13px;color:#64748b;line-height:1.5;">'
+        + 'This will remove the currently assigned reviewer from this project. '
+        + 'You can assign a new reviewer afterwards.</p>'
+        + '<div style="margin-bottom:20px;text-align:left;">'
+        + '<label style="font-size:11px;font-weight:600;display:block;margin-bottom:6px;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Reason (optional)</label>'
+        + '<textarea id="unassignReason" rows="2" maxlength="2000" style="width:100%;font-size:13px;border:2px solid #e2e8f0;border-radius:8px;padding:10px 12px;color:#1e1b4b;resize:none;font-family:inherit;" placeholder="Optional reason for un-assigning..."></textarea>'
+        + '</div>'
+        + '<div style="display:flex;gap:10px;justify-content:center;">'
+        + '<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal" style="padding:10px 20px;border-radius:8px;font-weight:600;font-size:13px;">Cancel</button>'
+        + '<button type="button" class="btn btn-sm" id="confirmUnassignBtn" style="padding:10px 24px;border-radius:8px;font-weight:600;font-size:13px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(239,68,68,.3);" onclick="executeUnassignReviewer(' + projectId + ')">'
+        + '<i class="fas fa-user-minus"></i> Un-assign'
+        + '</button>'
+        + '</div>'
+        + '<div id="unassignError" style="display:none;margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;text-align:left;"></div>'
+        + '</div>'
+        + '</div></div></div>');
+
+    $('body').append(modal);
+    modal.modal('show');
+}
+
+function executeUnassignReviewer(projectId) {
+    var btn = document.getElementById('confirmUnassignBtn');
+    var errorDiv = document.getElementById('unassignError');
+    var reason = document.getElementById('unassignReason').value;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Un-assigning...';
+    errorDiv.style.display = 'none';
+
+    var data = new FormData();
+    data.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+    data.append('project_id', projectId);
+    if (reason.trim()) data.append('reason', reason.trim());
+
+    fetch('/workflow/unassign-reviewer', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+        body: data,
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            $('#workflowModal').modal('hide');
+            showToast('success', data.message || 'Reviewer un-assigned successfully.');
+            setTimeout(function() { location.reload(); }, 1000);
+        } else {
+            errorDiv.textContent = data.error || 'Failed to un-assign reviewer.';
+            errorDiv.style.display = 'block';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-user-minus"></i> Un-assign';
+        }
+    })
+    .catch(function() {
+        errorDiv.textContent = 'An error occurred. Please try again.';
+        errorDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-user-minus"></i> Un-assign';
+    });
 }
 
 // Process any queued flash messages from redirect (deferred until page ready)

@@ -68,7 +68,32 @@
                     <td>{{ $project->program->program_title ?? '—' }}</td>
                     <td><span class="pill info" style="font-size:11px;">{{ $project->program->grant->grant_code ?? 'N/A' }}</span></td>
                     <td><span class="pill info" style="font-size:11px;">{{ ucfirst($project->program->grant->category ?? 'N/A') }}</span></td>
-                    <td>{{ $project->requested_budget_qar ? number_format($project->requested_budget_qar, 2) : '—' }}</td>
+                    <td>
+                        @php
+                            $budget = \App\Models\ProjectBudget::where('project_id', $project->id)->first();
+                        @endphp
+                        @if($budget && $budget->budget_amount > 0)
+                            <div style="font-size:12px;">
+                                <span style="font-weight:600;color:var(--color-ink-700);">{{ number_format($budget->actual_exp_amount, 0) }}</span>
+                                <span style="color:var(--color-ink-400);">/</span>
+                                <span style="color:var(--color-ink-500);">{{ number_format($budget->budget_amount, 0) }}</span>
+                                <span style="color:var(--color-ink-400);font-size:10px;">QAR</span>
+                            </div>
+                            @php
+                                $pct = $budget->utilizationPercent();
+                                $color = $pct < 50 ? '#f59e0b' : ($pct <= 90 ? '#10b981' : '#3b82f6');
+                            @endphp
+                            <div style="margin-top:3px;height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
+                                <div style="width:{{ min($pct, 100) }}%;height:100%;background:{{ $color }};border-radius:2px;"></div>
+                            </div>
+                            <div style="font-size:10px;color:var(--color-ink-400);margin-top:2px;">{{ $pct }}% utilized</div>
+                        @elseif($project->requested_budget_qar)
+                            <span style="font-size:12px;color:var(--color-ink-500);">{{ number_format($project->requested_budget_qar, 0) }} QAR</span>
+                            <div style="font-size:10px;color:var(--color-ink-400);">Requested</div>
+                        @else
+                            <span style="color:var(--color-ink-400);">—</span>
+                        @endif
+                    </td>
                     <td>
                         @php
                             $flowStatus = $project->currentWorkflowStatus();

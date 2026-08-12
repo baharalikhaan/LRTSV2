@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Project;
 use App\Models\User;
+use App\Models\EmailSendLog;
+use App\Mail\GenericEmailMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 
 class WorkflowController extends Controller
@@ -95,6 +98,20 @@ class WorkflowController extends Controller
                     'project', 'commitment', 'finalGrading', 'progressGrading',
                     'outcomes', 'students', 'researchers'
                 ))->render();
+                break;
+
+            case 'approve-extended-progress':
+                $html = view('workflow.modals.approve-extended', compact('project'))->render();
+                break;
+
+            case 'review-rejection':
+                $reportType = request()->query('report_type', 'progress');
+                $html = view('workflow.modals.review-rejection', compact('project', 'reportType'))->render();
+                break;
+
+            case 'review-ext-rejection':
+                $reportType = 'extended_progress';
+                $html = view('workflow.modals.review-rejection', compact('project', 'reportType'))->render();
                 break;
 
             default:
@@ -474,4 +491,325 @@ class WorkflowController extends Controller
         $status = $enable ? 'enabled' : 'disabled';
         return redirect()->back()->with('success', "Extended progress report {$status} for this project.");
     }
+
+    /**
+     * AJAX: LPI requests to upload extended progress report.
+     * Records the request status and notifies admins.
+     */
+    public function requestExtendedProgress(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $user = auth()->user();
+
+        if (!$project->programIsActive()) {
+            return response()->json(['error' => 'This program is no longer active.'], 422);
+        }
+
+        // Only LPI can request
+        if ($user->activeRole() !== 'LPI' && !$user->isAdmin()) {
+            return response()->json(['error' => 'Only LPI can request extended progress.'], 403);
+        }
+
+        // Must have progress reviewed
+        if (!$project->hasStatus(Project::STATUS_PROGRESS_REVIEWED)) {
+            return response()->json(['error' => 'Progress report must be reviewed first.'], 422);
+        }
+
+        // Record the request
+        $project->recordStatus(Project::STATUS_EXT_PROGRESS_REQUESTED, [
+            'triggered_by' => 'request-extended-progress',
+        ], $user->id);
+
+        // Send notification to admins
+        $this->sendNotificationToAdmins(
+            $project,
+            $user,
+            'Extended Progress Request',
+            "LPI {$user->name} has requested to upload an extended progress report for project: {$project->title} (ID: {$project->old_project_id}).\n\nPlease review and approve/reject this request."
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Extended progress request submitted. Waiting for admin approval.'
+        ]);
+    }
+
+    /**
+     * AJAX: Admin approves or rejects extended progress request.
+     */
+    public function approveExtendedProgress(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'approve' => 'required|in:approved,rejected',
+            'message' => 'nullable|string|max:2000',
+        ]);
+
+        $project = Project::findOrFail($id);
+        $user = auth()->user();
+
+        if (!$user->isAdmin()) {
+            return response()->json(['error' => 'Only administrators can approve.'], 403);
+        }
+
+        if ($validated['approve'] === 'approved') {
+            $project->update(['is_extended' => true]);
+            $project->recordStatus(Project::STATUS_EXT_PROGRESS_APPROVED, [
+                'triggered_by' => 'approve-extended-progress',
+                'admin_message' => $validated['message'] ?? null,
+            ], $user->id);
+
+            // Notify LPI
+            $lpiMessage = "Your request to upload an extended progress report for project: {$project->title} has been approved by {$user->name}.";
+            if ($validated['message'] ?? null) {
+                $lpiMessage .= "\n\nAdmin message: {$validated['message']}";
+            }
+            $lpiMessage .= "\n\nYou can now upload the extended progress report.";
+            $this->sendNotificationToLpi($project, $user, 'Extended Progress Request Approved', $lpiMessage);
+
+            return response()->json(['success' => true, 'message' => 'Extended progress approved. LPI can now upload.']);
+        } else {
+            // Record rejection of the request
+            $project->recordStatus(Project::STATUS_EXT_PROGRESS_REQUEST_REJECTED, [
+                'triggered_by' => 'reject-extended-progress',
+                'admin_message' => $validated['message'] ?? null,
+            ], $user->id);
+
+            // Notify LPI
+            $lpiMessage = "Your request to upload an extended progress report for project: {$project->title} has been rejected by {$user->name}.";
+            if ($validated['message'] ?? null) {
+                $lpiMessage .= "\n\nAdmin message: {$validated['message']}";
+            }
+            $this->sendNotificationToLpi($project, $user, 'Extended Progress Request Rejected', $lpiMessage);
+
+            return response()->json(['success' => true, 'message' => 'Extended progress request rejected.']);
+        }
+    }
+
+    /**
+     * AJAX: Admin reviews progress rejection.
+     * Can either send to LPI for resubmission or override rejection.
+     */
+    public function reviewProgressRejection(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'action' => 'required|in:send_to_lpi,override',
+            'message' => 'required|string|max:2000',
+            'report_type' => 'required|in:progress,extended_progress',
+        ]);
+
+        $project = Project::findOrFail($validated['project_id']);
+        $user = auth()->user();
+
+        if (!$user->isAdmin()) {
+            return response()->json(['error' => 'Only administrators can review rejections.'], 403);
+        }
+
+        $statusMap = [
+            'progress' => Project::STATUS_PROGRESS_REJ_REVIEWED,
+            'extended_progress' => Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
+        ];
+
+        $status = $statusMap[$validated['report_type']];
+
+        $project->recordStatus($status, [
+            'action' => $validated['action'], // 'send_to_lpi' or 'override'
+            'admin_message' => $validated['message'],
+            'triggered_by' => 'review-rejection',
+        ], $user->id);
+
+        $reportLabel = $validated['report_type'] === 'extended_progress' ? 'Extended Progress Report' : 'Progress Report';
+
+        if ($validated['action'] === 'send_to_lpi') {
+            // Notify LPI to resubmit
+            $this->sendNotificationToLpi(
+                $project,
+                $user,
+                "{$reportLabel} Resubmission Required",
+                "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
+                "Admin message: {$validated['message']}\n\n" .
+                "Please resubmit your {$reportLabel}."
+            );
+
+            return response()->json(['success' => true, 'message' => "{$reportLabel} sent to LPI for resubmission."]);
+        } else {
+            // Override — notify reviewer to grade existing
+            $this->sendNotificationToReviewers(
+                $project,
+                $user,
+                "{$reportLabel} Rejection Overridden",
+                "The admin has reviewed your rejection of the {$reportLabel} for: {$project->title}\n\n" .
+                "Admin decision: Please grade the existing report.\n" .
+                "Admin message: {$validated['message']}\n\n" .
+                "Please proceed with grading the previously uploaded report."
+            );
+
+            return response()->json(['success' => true, 'message' => "Rejection overridden. Reviewer will grade existing {$reportLabel}."]);
+        }
+    }
+
+    /**
+     * AJAX: Admin un-assigns a reviewer from a project.
+     * Only allowed if reviewer hasn't claimed the project yet.
+     */
+    public function unassignReviewer(Request $request)
+    {
+        $validated = $request->validate([
+            'project_id' => 'required|exists:projects,id',
+            'reason'     => 'nullable|string|max:2000',
+        ]);
+
+        $project = Project::findOrFail($validated['project_id']);
+        $user = auth()->user();
+
+        if (!$user->isAdmin()) {
+            return response()->json(['error' => 'Only administrators can un-assign reviewers.'], 403);
+        }
+
+        if (!$project->programIsActive()) {
+            return response()->json(['error' => 'This program is no longer active.'], 422);
+        }
+
+        // Check if reviewer exists
+        $hasReviewerEntry = DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->exists();
+
+        if (!$hasReviewerEntry) {
+            return response()->json(['error' => 'No reviewer is currently assigned to this project.'], 422);
+        }
+
+        // Check if reviewer has claimed
+        $hasClaimed = $project->hasStatus(Project::STATUS_CLAIMED);
+        if ($hasClaimed) {
+            return response()->json(['error' => 'Cannot un-assign. The reviewer has already claimed this project.'], 422);
+        }
+
+        // Get reviewer info before deleting for notification
+        $reviewer = DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->first();
+        $reviewerUser = User::find($reviewer->user_id ?? null);
+
+        DB::transaction(function () use ($project, $reviewer) {
+            // Remove the reviewer assignment
+            DB::table('projects_reviewers')
+                ->where('project_id', $project->id)
+                ->delete();
+
+            // Record the un-assign status
+            $project->recordStatus(Project::STATUS_REVIEWER_UNASSIGNED, [
+                'triggered_by' => 'unassign-reviewer',
+                'reviewer_id'  => $reviewer->user_id ?? null,
+            ], auth()->id());
+        });
+
+        // Notify the un-assigned reviewer
+        if ($reviewerUser) {
+            $this->sendNotificationToReviewers(
+                $project,
+                $user,
+                'Reviewer Un-assignment',
+                "You have been un-assigned from project: {$project->title} (ID: {$project->old_project_id}).\n\n" .
+                ($validated['reason'] ? "Reason: {$validated['reason']}\n\n" : '') .
+                "Please contact the admin if you have any questions."
+            );
+        }
+
+        return response()->json(['success' => true, 'message' => 'Reviewer un-assigned successfully. You can now assign a new reviewer.']);
+    }
+
+    /**
+     * Send notification email to all active admins.
+     */
+    private function sendNotificationToAdmins(Project $project, User $sender, string $subject, string $body): void
+    {
+        $admins = User::where('type', 'Admin')->where('is_active', true)->get();
+        $subject = "{$subject} - {$project->title}";
+
+        foreach ($admins as $admin) {
+            try {
+                Mail::to($admin->email)->queue(new GenericEmailMail(
+                    $subject,
+                    $body,
+                    'Research Tracking System',
+                    $admin->name
+                ));
+
+                EmailSendLog::create([
+                    'sent_by' => $sender->id,
+                    'recipient_email' => $admin->email,
+                    'recipient_name' => $admin->name,
+                    'subject' => $subject,
+                    'body' => $body,
+                    'status' => 'queued',
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Failed to send notification to admin {$admin->email}: " . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Send notification email to the project's LPI.
+     */
+    private function sendNotificationToLpi(Project $project, User $sender, string $subject, string $body): void
+    {
+        $lpi = $project->lpi;
+        if (!$lpi) return;
+
+        $subject = "{$subject} - {$project->title}";
+
+        try {
+            Mail::to($lpi->email)->queue(new GenericEmailMail(
+                $subject,
+                $body,
+                'Research Tracking System',
+                $lpi->name
+            ));
+
+            EmailSendLog::create([
+                'sent_by' => $sender->id,
+                'recipient_email' => $lpi->email,
+                'recipient_name' => $lpi->name,
+                'subject' => $subject,
+                'body' => $body,
+                'status' => 'queued',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Failed to send notification to LPI {$lpi->email}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Send notification email to all reviewers assigned to the project.
+     */
+    private function sendNotificationToReviewers(Project $project, User $sender, string $subject, string $body): void
+    {
+        $reviewers = $project->reviewers;
+        $subject = "{$subject} - {$project->title}";
+
+        foreach ($reviewers as $reviewer) {
+            try {
+                Mail::to($reviewer->email)->queue(new GenericEmailMail(
+                    $subject,
+                    $body,
+                    'Research Tracking System',
+                    $reviewer->name
+                ));
+
+                EmailSendLog::create([
+                    'sent_by' => $sender->id,
+                    'recipient_email' => $reviewer->email,
+                    'recipient_name' => $reviewer->name,
+                    'subject' => $subject,
+                    'body' => $body,
+                    'status' => 'queued',
+                ]);
+            } catch (\Exception $e) {
+                \Log::error("Failed to send notification to reviewer {$reviewer->email}: " . $e->getMessage());
+            }
+        }
+    }
+
 }

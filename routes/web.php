@@ -300,6 +300,10 @@ Route::prefix('workflow')->name('workflow.')->group(function () {
     Route::post('/submit-progress-review', [\App\Http\Controllers\WorkflowController::class, 'submitProgressReview'])->name('submit-progress-review');
     Route::get('/view-grade/{projectId}', [\App\Http\Controllers\WorkflowController::class, 'viewGrade'])->name('view-grade');
     Route::post('/toggle-extended/{id}', [\App\Http\Controllers\WorkflowController::class, 'toggleExtendedProgress'])->name('toggle-extended');
+    Route::post('/request-extended/{id}', [\App\Http\Controllers\WorkflowController::class, 'requestExtendedProgress'])->name('request-extended');
+    Route::post('/approve-extended/{id}', [\App\Http\Controllers\WorkflowController::class, 'approveExtendedProgress'])->name('approve-extended');
+    Route::post('/review-rejection/{id}', [\App\Http\Controllers\WorkflowController::class, 'reviewProgressRejection'])->name('review-rejection');
+    Route::post('/unassign-reviewer', [\App\Http\Controllers\WorkflowController::class, 'unassignReviewer'])->name('unassign-reviewer');
 });
 
 // ─── Progress Reports (Full Page) ──────────────────────────────────────────

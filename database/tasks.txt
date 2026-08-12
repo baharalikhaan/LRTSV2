@@ -1,0 +1,7 @@
+check student API online
+reviewer un-assign option
+registration final page contents
+change the mode for reviewer assignment to bulk assignment.
+change the label of the claim button
+change the look n feel of the reviewer proposal accept/reject modal window (change colors of the accept/reject options)
+cycle summary report (column names problem, mimics the original one.)(student grants and regular grants should have different summary parameters)

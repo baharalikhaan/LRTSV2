@@ -80,6 +80,21 @@
 </div>
 @endif
 
+@if($project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_REQUEST_REJECTED))
+<div style="background:linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); border:1px solid var(--danger); border-radius:8px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:flex-start; gap:12px;">
+    <div style="width:36px; height:36px; border-radius:50%; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; margin-top:2px;">
+        <i class="fas fa-exclamation-triangle"></i>
+    </div>
+    <div>
+        <strong style="color:#991b1b; font-size:14px;">Extended Progress Request Not Approved</strong>
+        <p style="margin:4px 0 0 0; color:#7f1d1d; font-size:13px;">
+            Your request to upload an extended progress report was not approved by the admin.
+            Please contact the admin for more information.
+        </p>
+    </div>
+</div>
+@endif
+
 {{-- Research Call Inactive Banner --}}
 @if($project && $project->program && !$project->programIsActive())
 <div style="background:linear-gradient(135deg, #fbeef1 0%, #f3d2da 100%); border:1px solid var(--brand-200); border-radius:8px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:center; gap:12px;">
@@ -922,6 +937,68 @@
                     </div>
                     @endforeach
                 </div>
+
+                {{-- Extended Progress Request Section --}}
+                @php
+                    $hasProgressReviewed = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REVIEWED);
+                    $hasExtRequested = $project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_REQUESTED);
+                    $hasExtApproved = $project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_APPROVED);
+                    $hasExtRequestRejected = $project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_REQUEST_REJECTED);
+                    $hasProgressExtended = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_EXTENDED);
+                    $hasFinalAdded = $project->hasStatus(\App\Models\Project::STATUS_FINAL_ADDED);
+                    $hasGraded = $project->hasStatus(\App\Models\Project::STATUS_GRADED);
+
+                    $canRequestExtended = $hasProgressReviewed && !$hasExtRequested && !$hasExtApproved && !$hasExtRequestRejected
+                                          && !$hasProgressExtended && !$hasFinalAdded && !$hasGraded;
+                    $isPendingApproval = $hasExtRequested && !$hasExtApproved && !$hasExtRequestRejected
+                                         && !$hasProgressExtended;
+                    $wasRejected = $hasExtRequestRejected && !$hasExtApproved && !$hasProgressExtended;
+                @endphp
+
+                @if($canRequestExtended || $isPendingApproval || $wasRejected)
+                <div style="margin-top:16px;border-top:1px solid var(--ink-100);padding-top:16px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                        <span style="font-size:11px;font-weight:700;color:var(--brand-600);text-transform:uppercase;letter-spacing:.04em;">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M12 8v4"/><path d="M12 16h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                            Extended Progress Report (Optional)
+                        </span>
+                    </div>
+
+                    @if($canRequestExtended)
+                        <div style="padding:16px;background:var(--sand-50);border-radius:8px;border:1px dashed var(--ink-200);">
+                            <p style="margin:0 0 12px 0;color:var(--ink-500);font-size:13px;">
+                                Need more time to complete your progress report? You can request an extended progress report. This will require admin approval before you can upload.
+                            </p>
+                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm"
+                                    onclick="requestExtendedProgress({{ $project->id }})"
+                                    style="display:inline-flex;align-items:center;gap:6px;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                Request Extended Progress
+                            </button>
+                        </div>
+                    @elseif($isPendingApproval)
+                        <div style="padding:16px;background:#fff8e1;border-radius:8px;border:1px solid #ffc107;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f57c00" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                <p style="margin:0;color:#e65100;font-size:13px;">
+                                    <strong>Extended progress request is pending admin approval.</strong><br>
+                                    <span style="font-size:12px;">You will be notified once the admin reviews your request.</span>
+                                </p>
+                            </div>
+                        </div>
+                    @elseif($wasRejected)
+                        <div style="padding:16px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                <p style="margin:0;color:var(--danger);font-size:13px;">
+                                    <strong>Your extended progress request was not approved.</strong><br>
+                                    <span style="font-size:12px;">Please contact the admin for more information.</span>
+                                </p>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+                @endif
 
                 {{-- Extended Progress Report Upload --}}
                 @if($project->is_extended && !$progressLocked)
@@ -2722,6 +2799,31 @@ document.addEventListener('DOMContentLoaded', function() {
     attachDeleteHandlers();
 
 });
+
+function requestExtendedProgress(projectId) {
+    if (!confirm('Are you sure you want to request an extended progress report? This will require admin approval.')) return;
+
+    fetch('/workflow/request-extended/' + projectId, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        },
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            showToast('success', data.message || 'Request submitted successfully.');
+            setTimeout(function() { location.reload(); }, 1000);
+        } else {
+            showToast('error', data.error || 'Failed to submit request.');
+        }
+    })
+    .catch(function(error) {
+        showToast('error', 'An error occurred. Please try again.');
+    });
+}
 </script>
 <style>
 /* Toast notification */
