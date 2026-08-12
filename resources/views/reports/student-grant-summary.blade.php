@@ -10,11 +10,13 @@
                 <label for="program_id" style="font-size:11px;font-weight:500;color:var(--ink-600,#4c4553);white-space:nowrap;">Research Call:</label>
                 <select name="program_id" id="program_id" onchange="this.form.submit()" style="padding:4px 8px;border:1px solid var(--ink-200,#d8d6dc);border-radius:4px;font-size:11px;font-family:inherit;color:var(--ink-700,#38333e);background:#fff;min-width:220px;">
                     <option value="">Select a Research Call</option>
+                    @if(isset($programs))
                     @foreach($programs as $p)
                     <option value="{{ $p->id }}" {{ request('program_id') == $p->id ? 'selected' : '' }}>
                         {{ $p->program_title }} @if($p->grant)({{ $p->grant->grant_code }}) @endif
                     </option>
                     @endforeach
+                    @endif
                 </select>
             </div>
             @if($programId)
