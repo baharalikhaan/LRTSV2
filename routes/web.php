@@ -368,6 +368,7 @@ Route::prefix('reports')->name('reports.')->group(function () {
     Route::get('/projects', [\App\Http\Controllers\ReportController::class, 'projectReport'])->name('project-status');
     Route::get('/pillars', [\App\Http\Controllers\ReportController::class, 'pillarReport'])->name('pillar-summary');
     Route::get('/cycle-progress', [\App\Http\Controllers\ReportController::class, 'cycleProgressReport'])->name('cycle-progress');
+    Route::get('/student-grant-summary', [\App\Http\Controllers\ReportController::class, 'studentGrantSummary'])->name('student-grant-summary');
     Route::post('/cycle-progress/send-reminder', [\App\Http\Controllers\ReportController::class, 'sendCycleReportReminder'])->name('cycle-progress.send-reminder');
     Route::get('/budget-utilization', [\App\Http\Controllers\ReportController::class, 'budgetUtilizationReport'])->name('budget-utilization');
 });

@@ -34,7 +34,7 @@ class CycleProgressReportService
         ],
         'contributions' => [
             'key' => 'contributions',
-            'label' => 'Contributions',
+            'label' => 'Contribution',
             'group' => 'LPI',
             'type' => 'count',
         ],
@@ -191,6 +191,7 @@ class CycleProgressReportService
 
             return [
                 'id'                      => $id,
+                'old_project_id'          => $project->old_project_id ?? $id,
                 'title'                   => $project->title,
                 'program'                 => $project->program ? $project->program->program_title : '—',
                 'lpi_name'                => $project->lpi ? $project->lpi->name : '—',
@@ -216,6 +217,133 @@ class CycleProgressReportService
             'footer'        => $footer,
             'totalProjects' => $totalProjects,
             'cycle'         => $cycle,
+        ];
+    }
+
+    /**
+     * Build the report for a given program (research call). One row per project.
+     *
+     * @return array{rows: Collection, footer: array, totalProjects: int, program: Program|null}
+     */
+    public function buildReportByProgram(int $programId): array
+    {
+        $program = Program::with('grant', 'cycle')->find($programId);
+
+        // Get all projects in this program
+        $projects = Project::query()
+            ->where('program_id', $programId)
+            ->with(['lpi', 'program'])
+            ->get();
+
+        $projectIds = $projects->pluck('id')->toArray();
+
+        if (empty($projectIds)) {
+            return [
+                'rows'           => collect(),
+                'footer'         => $this->buildFooter(collect()),
+                'totalProjects'  => 0,
+                'program'        => $program,
+            ];
+        }
+
+        // Pre-fetch all child counts in bulk (no N+1)
+        $outcomesCounts = DB::table('project_outcomes')
+            ->whereIn('project_id', $projectIds)
+            ->select('project_id', DB::raw('COUNT(*) as total'))
+            ->groupBy('project_id')
+            ->pluck('total', 'project_id');
+
+        $studentsCounts = DB::table('project_students')
+            ->whereIn('project_id', $projectIds)
+            ->select('project_id', DB::raw('COUNT(*) as total'))
+            ->groupBy('project_id')
+            ->pluck('total', 'project_id');
+
+        $contributionsCounts = DB::table('project_contributions')
+            ->whereIn('project_id', $projectIds)
+            ->select('project_id', DB::raw('COUNT(*) as total'))
+            ->groupBy('project_id')
+            ->pluck('total', 'project_id');
+
+        $progressReportProjects = DB::table('project_submissions')
+            ->whereIn('project_id', $projectIds)
+            ->where('type', 'progress')
+            ->distinct()
+            ->pluck('project_id');
+
+        $finalReportProjects = DB::table('project_submissions')
+            ->whereIn('project_id', $projectIds)
+            ->where('type', 'final')
+            ->distinct()
+            ->pluck('project_id');
+
+        $readinessReportProjects = DB::table('project_submissions')
+            ->whereIn('project_id', $projectIds)
+            ->where('type', 'readiness')
+            ->distinct()
+            ->pluck('project_id');
+
+        $reviewerCounts = DB::table('projects_reviewers')
+            ->whereIn('project_id', $projectIds)
+            ->select('project_id', DB::raw('COUNT(*) as total'))
+            ->groupBy('project_id')
+            ->pluck('total', 'project_id');
+
+        $progressGradingProjects = DB::table('progress_report_grading')
+            ->whereIn('project_id', $projectIds)
+            ->where('publish', '!=', 'pending')
+            ->distinct()
+            ->pluck('project_id');
+
+        $finalGradingProjects = DB::table('final_report_grading')
+            ->whereIn('project_id', $projectIds)
+            ->where('publish', '!=', 'pending')
+            ->distinct()
+            ->pluck('project_id');
+
+        $registeredProjects = DB::table('status_histories')
+            ->whereIn('project_id', $projectIds)
+            ->where('status', Project::STATUS_REGISTERED)
+            ->distinct()
+            ->pluck('project_id');
+
+        // Build rows
+        $rows = $projects->map(function ($project) use (
+            $outcomesCounts, $studentsCounts, $contributionsCounts,
+            $progressReportProjects, $finalReportProjects, $readinessReportProjects,
+            $reviewerCounts, $progressGradingProjects, $finalGradingProjects,
+            $registeredProjects
+        ) {
+            $id = $project->id;
+
+            return [
+                'id'                      => $id,
+                'old_project_id'          => $project->old_project_id ?? $id,
+                'title'                   => $project->title,
+                'program'                 => $project->program ? $project->program->program_title : '—',
+                'lpi_name'                => $project->lpi ? $project->lpi->name : '—',
+                'lpi_email'               => $project->lpi ? $project->lpi->email : null,
+                'registration'            => $registeredProjects->contains($id),
+                'outcomes_count'          => $outcomesCounts[$id] ?? 0,
+                'students_count'          => $studentsCounts[$id] ?? 0,
+                'contributions_count'     => $contributionsCounts[$id] ?? 0,
+                'has_progress_report'     => $progressReportProjects->contains($id),
+                'has_final_report'        => $finalReportProjects->contains($id),
+                'has_readiness_report'    => $readinessReportProjects->contains($id),
+                'reviewer_count'          => $reviewerCounts[$id] ?? 0,
+                'progress_grading_count'  => $progressGradingProjects->contains($id) ? 1 : 0,
+                'final_grading_count'     => $finalGradingProjects->contains($id) ? 1 : 0,
+            ];
+        });
+
+        $totalProjects = $rows->count();
+        $footer = $this->buildFooter($rows);
+
+        return [
+            'rows'          => $rows,
+            'footer'        => $footer,
+            'totalProjects' => $totalProjects,
+            'program'       => $program,
         ];
     }
 

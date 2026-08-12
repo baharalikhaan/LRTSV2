@@ -7,21 +7,21 @@
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <form method="GET" action="{{ route('reports.cycle-progress') }}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:4px;">
-                <label for="cycle_id" style="font-size:11px;font-weight:500;color:var(--ink-600,#4c4553);white-space:nowrap;">Cycle:</label>
-                <select name="cycle_id" id="cycle_id" onchange="this.form.submit()" style="padding:4px 8px;border:1px solid var(--ink-200,#d8d6dc);border-radius:4px;font-size:11px;font-family:inherit;color:var(--ink-700,#38333e);background:#fff;min-width:180px;">
-                    <option value="">Select a Cycle</option>
-                    @foreach($cycles as $c)
-                    <option value="{{ $c->id }}" {{ request('cycle_id') == $c->id ? 'selected' : '' }}>
-                        {{ $c->title }} ({{ $c->year }})
+                <label for="program_id" style="font-size:11px;font-weight:500;color:var(--ink-600,#4c4553);white-space:nowrap;">Research Call:</label>
+                <select name="program_id" id="program_id" onchange="this.form.submit()" style="padding:4px 8px;border:1px solid var(--ink-200,#d8d6dc);border-radius:4px;font-size:11px;font-family:inherit;color:var(--ink-700,#38333e);background:#fff;min-width:220px;">
+                    <option value="">Select a Research Call</option>
+                    @foreach($programs as $p)
+                    <option value="{{ $p->id }}" {{ request('program_id') == $p->id ? 'selected' : '' }}>
+                        {{ $p->program_title }} @if($p->grant)({{ $p->grant->grant_code }}) @endif
                     </option>
                     @endforeach
                 </select>
             </div>
-            @if(request('cycle_id'))
+            @if(request('program_id'))
             <a href="{{ route('reports.cycle-progress') }}" style="font-size:10px;color:var(--ink-400,#8b8592);text-decoration:none;">&times; Clear</a>
             @endif
         </form>
-        @if($cycleId)
+        @if($programId)
         <button onclick="window.print()" style="display:inline-flex;align-items:center;gap:4px;background:var(--brand-500,#8d1b3d);color:#fff;border:none;border-radius:4px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;">
             <i class="fas fa-print" style="font-size:11px;"></i> Print / PDF
         </button>
@@ -29,11 +29,11 @@
     </div>
 </div>
 
-@if(!$cycleId)
+@if(!$programId)
 <div class="a4-report-page" style="text-align:center;padding:40px 20px;">
     <i class="fas fa-chart-bar" style="font-size:36px;color:var(--ink-200,#d8d6dc);margin-bottom:12px;"></i>
-    <div style="font-size:14px;font-weight:600;color:var(--ink-700,#38333e);margin-bottom:4px;">Select a Cycle</div>
-    <div style="font-size:11px;color:var(--ink-400,#8b8592);">Choose a research cycle from the dropdown above to view project progress.</div>
+    <div style="font-size:14px;font-weight:600;color:var(--ink-700,#38333e);margin-bottom:4px;">Select a Research Call</div>
+    <div style="font-size:11px;color:var(--ink-400,#8b8592);">Choose a research call from the dropdown above to view project progress.</div>
 </div>
 @else
 <div class="a4-report-page">
@@ -50,8 +50,8 @@
         <div class="a4-header-title-block">
             <div class="a4-report-title">Research Call Summary</div>
             <div class="a4-report-desc">
-                @if($cycle){{ $cycle->title }} ({{ $cycle->year }}) — @endif
-                {{ $totalProjects }} project{{ $totalProjects !== 1 ? 's' : '' }} across all research calls
+                @if($program){{ $program->program_title }} — @endif
+                {{ $totalProjects }} project{{ $totalProjects !== 1 ? 's' : '' }}
             </div>
         </div>
         <div class="a4-header-meta">
@@ -66,23 +66,21 @@
         <table class="a4-data-table" id="reportTable">
             <thead>
                 <tr class="a4-group-header">
-                    <th colspan="3" class="a4-group-project">Project Info</th>
-                    <th colspan="4" class="a4-group-lpi">LPI</th>
-                    <th colspan="3" class="a4-group-admin">Admin</th>
-                    <th colspan="3" class="a4-group-reviewer">Reviewer</th>
+                    <th colspan="1" class="a4-group-project">Project Info</th>
+                    <th colspan="7" class="a4-group-lpi">LPI</th>
+                    <th colspan="1" class="a4-group-admin">Admin</th>
+                    <th colspan="2" class="a4-group-reviewer">Reviewer</th>
                 </tr>
                 <tr>
-                    <th class="a4-col-id">#</th>
-                    <th class="a4-col-title">Project Title</th>
-                    <th>LPI Name</th>
+                    <th class="a4-col-id">Project ID</th>
                     <th class="a4-col-center">Registration</th>
                     <th class="a4-col-center">Outcomes</th>
                     <th class="a4-col-center">Students</th>
-                    <th class="a4-col-center">Contributions</th>
+                    <th class="a4-col-center">Contribution</th>
                     <th class="a4-col-center">Progress Report</th>
                     <th class="a4-col-center">Final Report</th>
                     <th class="a4-col-center">Readiness Report</th>
-                    <th class="a4-col-center">Reviewers Assigned</th>
+                    <th class="a4-col-center">Reviewers Assignment</th>
                     <th class="a4-col-center">Progress Grading</th>
                     <th class="a4-col-center">Final Grading</th>
                 </tr>
@@ -90,9 +88,10 @@
             <tbody>
                 @forelse($rows as $row)
                 <tr>
-                    <td class="a4-cell-num">{{ $row['id'] }}</td>
-                    <td class="a4-cell-title">{{ $row['title'] }}</td>
-                    <td class="a4-cell-lpi">{{ $row['lpi_name'] }}</td>
+                    <td class="a4-cell-id">
+                        <div style="font-weight:600;">{{ $row['old_project_id'] ?? $row['id'] }}</div>
+                        <div style="font-size:8px;color:teal;font-style:italic;margin-top:1px;">{{ $row['lpi_email'] ?? '—' }}</div>
+                    </td>
                     <td class="a4-cell-center">
                         @if($row['registration'])
                             <i class="fas fa-check-circle a4-icon-yes"></i>
@@ -130,14 +129,14 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="13" class="a4-cell-empty">No projects found in this cycle.</td>
+                    <td colspan="11" class="a4-cell-empty">No projects found in this cycle.</td>
                 </tr>
                 @endforelse
             </tbody>
             @if($totalProjects > 0)
             <tfoot>
                 <tr class="a4-foot-summary">
-                    <td colspan="3" class="a4-foot-label">Summary — Total: {{ $totalProjects }}</td>
+                    <td colspan="1" class="a4-foot-label">Summary — Total: {{ $totalProjects }}</td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['registration']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['registration']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['outcomes']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['outcomes']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['students']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['students']['pending'] }}</div></td>
@@ -150,7 +149,7 @@
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['final_grading']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['final_grading']['pending'] }}</div></td>
                 </tr>
                 <tr class="a4-foot-email no-print-col">
-                    <td colspan="3" class="a4-foot-label">Send Email Reminders</td>
+                    <td colspan="1" class="a4-foot-label">Send Email Reminders</td>
                     <td class="a4-foot-cell">@if($footer['registration']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('registration')" data-column="registration"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['outcomes']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('outcomes')" data-column="outcomes"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['students']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('students')" data-column="students"><i class="fas fa-envelope"></i> Send</button>@endif</td>
@@ -158,7 +157,7 @@
                     <td class="a4-foot-cell">@if($footer['progress_report']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('progress_report')" data-column="progress_report"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['final_report']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('final_report')" data-column="final_report"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['readiness_report']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('readiness_report')" data-column="readiness_report"><i class="fas fa-envelope"></i> Send</button>@endif</td>
-                    <td class="a4-foot-cell">@if($footer['reviewer_count']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('reviewer_count')" data-column="reviewer_count"><i class="fas fa-envelope"></i> Send</button>@endif</td>
+                    <td class="a4-foot-cell"></td>
                     <td class="a4-foot-cell">@if($footer['progress_grading']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('progress_grading')" data-column="progress_grading"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['final_grading']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('final_grading')" data-column="final_grading"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                 </tr>
@@ -206,8 +205,10 @@
 .a4-data-table th{background:var(--sand-50,#faf7f0);color:var(--ink-600,#4c4553);font-weight:600;font-size:8.5px;text-transform:uppercase;letter-spacing:0.04em;padding:4px 4px;text-align:left;white-space:nowrap;border:0.25px solid var(--ink-200,#d8d6dc)}
 .a4-data-table td{padding:3px 4px;vertical-align:middle;border:0.25px solid var(--ink-100,#eeedf0)}
 .a4-data-table tbody tr:nth-child(even){background:#fafafa}
-.a4-col-id{width:32px;text-align:center}
+.a4-col-id{width:120px;text-align:left}
 .a4-col-title{width:auto}
+.a4-cell-id{text-align:left;font-size:9px;line-height:1.3}
+.a4-cell-id div:first-child{font-weight:600;color:var(--color-ink-800);}
 .a4-col-center{width:80px;text-align:center}
 .a4-cell-num{text-align:center;font-variant-numeric:tabular-nums}
 .a4-cell-title{font-weight:500;color:var(--ink-800,#241f2a)}
@@ -376,11 +377,11 @@
 @push('scripts')
 <script>
 const CSRF_TOKEN = '{{ csrf_token() }}';
-const CYCLE_ID = {{ $cycleId ?: 'null' }};
+const PROGRAM_ID = {{ $programId ?: 'null' }};
 const SEND_URL = '{{ route("reports.cycle-progress.send-reminder") }}';
 
 function sendReminder(columnKey) {
-    if (!CYCLE_ID) return;
+    if (!PROGRAM_ID) return;
     const btn = document.querySelector(`.btn-send-email[data-column="${columnKey}"]`);
     if (!btn || btn.disabled) return;
 
@@ -394,7 +395,7 @@ function sendReminder(columnKey) {
             'X-CSRF-TOKEN': CSRF_TOKEN,
             'Accept': 'application/json',
         },
-        body: JSON.stringify({ cycle_id: CYCLE_ID, column_key: columnKey }),
+        body: JSON.stringify({ program_id: PROGRAM_ID, column_key: columnKey }),
     })
     .then(r => r.json())
     .then(data => {

@@ -6,6 +6,7 @@ use App\Models\Program;
 use App\Models\Grant;
 use App\Models\Pillar;
 use App\Models\Project;
+use App\Models\ProjectBudget;
 use App\Models\CycleConfig;
 use App\Models\College;
 use App\Models\User;
@@ -274,19 +275,169 @@ class ReportController extends Controller
     public function cycleProgressReport(Request $request)
     {
         $service = new CycleProgressReportService();
-        $cycles = CycleConfig::orderBy('year', 'desc')->orderBy('title')->get();
+        $programs = Program::with('grant')->orderBy('program_title')->get();
 
-        $cycleId = $request->input('cycle_id') ? (int) $request->input('cycle_id') : null;
-        $report = $cycleId ? $service->buildReport($cycleId) : null;
+        $programId = $request->input('program_id') ? (int) $request->input('program_id') : null;
+        $report = $programId ? $service->buildReportByProgram($programId) : null;
 
         return view('reports.cycle-progress-report', [
             'rows'           => $report ? $report['rows'] : collect(),
             'footer'         => $report ? $report['footer'] : [],
             'totalProjects'  => $report ? $report['totalProjects'] : 0,
-            'cycle'          => $report ? $report['cycle'] : null,
-            'cycles'         => $cycles,
-            'cycleId'        => $cycleId,
+            'program'        => $report ? $report['program'] : null,
+            'programs'       => $programs,
+            'programId'      => $programId,
             'columns'        => CycleProgressReportService::COLUMNS,
+        ]);
+    }
+
+    /**
+     * Student Grant Summary Report — shows student-specific project data.
+     */
+    public function studentGrantSummary(Request $request)
+    {
+        $programs = Program::with('grant')->whereHas('grant', function ($q) {
+            $q->where('category', 'student');
+        })->orderBy('program_title')->get();
+
+        $programId = $request->input('program_id') ? (int) $request->input('program_id') : null;
+
+        $rows = collect();
+        $footer = [];
+        $totalProjects = 0;
+        $program = null;
+
+        if ($programId) {
+            $program = Program::find($programId);
+
+            // Get all student grant projects in this program
+            $projects = Project::query()
+                ->where('program_id', $programId)
+                ->with(['lpi', 'program'])
+                ->get();
+
+            $projectIds = $projects->pluck('id')->toArray();
+            $totalProjects = $projects->count();
+
+            if ($totalProjects > 0) {
+                // Get student counts per project (Qatari vs Non-Qatari)
+                $studentCounts = DB::table('project_students')
+                    ->whereIn('project_id', $projectIds)
+                    ->select(
+                        'project_id',
+                        DB::raw("SUM(CASE WHEN LOWER(nationality) LIKE '%qatar%' THEN 1 ELSE 0 END) as qatari_count"),
+                        DB::raw("SUM(CASE WHEN LOWER(nationality) NOT LIKE '%qatar%' OR nationality IS NULL THEN 1 ELSE 0 END) as non_qatari_count")
+                    )
+                    ->groupBy('project_id')
+                    ->pluck('qatari_count', 'project_id');
+
+                $nonQatariCounts = DB::table('project_students')
+                    ->whereIn('project_id', $projectIds)
+                    ->select('project_id', DB::raw('COUNT(*) as total'))
+                    ->groupBy('project_id')
+                    ->pluck('total', 'project_id');
+
+                // Get budget data from ProjectBudget
+                $budgetData = ProjectBudget::whereIn('project_id', $projectIds)
+                    ->pluck('actual_exp_amount', 'project_id');
+
+                $budgetAmounts = ProjectBudget::whereIn('project_id', $projectIds)
+                    ->pluck('budget_amount', 'project_id');
+
+                // Build rows
+                $rows = $projects->map(function ($project) use ($studentCounts, $nonQatariCounts, $budgetData, $budgetAmounts) {
+                    $id = $project->id;
+                    $qatari = $studentCounts[$id] ?? 0;
+                    $nonQatari = ($nonQatariCounts[$id] ?? 0) - $qatari;
+                    if ($nonQatari < 0) $nonQatari = 0;
+
+                    // Check form saved (registration status)
+                    $formSaved = $project->hasStatus(Project::STATUS_REGISTERED);
+
+                    // Check engagement (column may not exist in new system)
+                    $hasEngagement = false;
+                    if (in_array('student_engagement', $project->getFillable()) || \Illuminate\Support\Facades\Schema::hasColumn('projects', 'student_engagement')) {
+                        $hasEngagement = !empty($project->student_engagement);
+                    }
+
+                    // Check publications - first check if column exists, then check outcomes table
+                    $hasPublications = false;
+                    if (\Illuminate\Support\Facades\Schema::hasColumn('projects', 'publications')) {
+                        $hasPublications = !empty($project->publications);
+                    }
+                    // Also check outcomes table for publications
+                    if (!$hasPublications) {
+                        $hasPublications = $project->outcomes()->whereIn('type', [
+                            'journal_q1', 'journal_q2', 'journal_q3', 'journal_q4',
+                            'conference', 'book', 'edited_book', 'book_chapter'
+                        ])->count() > 0;
+                    }
+
+                    // Check ethical approval (submission exists)
+                    $hasEthicalApproval = $project->submissions()
+                        ->where('type', 'readiness')
+                        ->count() > 0;
+
+                    // Calculate spending from ProjectBudget
+                    $budget = $budgetAmounts[$id] ?? $project->budget ?? $project->requested_budget_qar ?? 0;
+                    $spending = $budgetData[$id] ?? 0;
+                    $utilization = $budget > 0 ? round(($spending / $budget) * 100, 2) : 0;
+
+                    if ($budget > 0 && $spending > 0) {
+                        if ($utilization > 100) {
+                            $spendingStatus = 'exceeded';
+                        } elseif ($utilization < 100) {
+                            $spendingStatus = 'under';
+                        } else {
+                            $spendingStatus = 'full';
+                        }
+                    } elseif ($spending == 0 && $formSaved) {
+                        $spendingStatus = 'no_spending';
+                    } else {
+                        $spendingStatus = 'na';
+                    }
+
+                    return [
+                        'old_project_id'      => $project->old_project_id ?? $id,
+                        'lpi_email'           => $project->lpi ? $project->lpi->email : null,
+                        'form_saved'          => $formSaved,
+                        'qatari_count'        => $qatari,
+                        'non_qatari_count'    => $nonQatari,
+                        'has_engagement'      => $hasEngagement,
+                        'has_publications'    => $hasPublications,
+                        'has_ethical_approval'=> $hasEthicalApproval,
+                        'utilization_pct'     => $utilization,
+                        'spending_status'     => $spendingStatus,
+                    ];
+                });
+
+                // Build footer
+                $footer = [
+                    'form_saved' => [
+                        'completed' => $rows->where('form_saved', true)->count(),
+                        'pending'   => $totalProjects - $rows->where('form_saved', true)->count(),
+                    ],
+                    'qatari_total'     => $rows->sum('qatari_count'),
+                    'non_qatari_total' => $rows->sum('non_qatari_count'),
+                    'engagement' => [
+                        'completed' => $rows->where('has_engagement', true)->count(),
+                        'pending'   => $totalProjects - $rows->where('has_engagement', true)->count(),
+                    ],
+                    'publications' => [
+                        'completed' => $rows->where('has_publications', true)->count(),
+                        'pending'   => $totalProjects - $rows->where('has_publications', true)->count(),
+                    ],
+                ];
+            }
+        }
+
+        return view('reports.student-grant-summary', [
+            'rows'           => $rows,
+            'footer'         => $footer,
+            'totalProjects'  => $totalProjects,
+            'program'        => $program,
+            'programs'       => $programs,
+            'programId'      => $programId,
         ]);
     }
 
@@ -298,15 +449,15 @@ class ReportController extends Controller
     public function sendCycleReportReminder(Request $request)
     {
         $request->validate([
-            'cycle_id'   => 'required|integer|exists:cycle_configs,id',
+            'program_id' => 'required|integer|exists:programs,id',
             'column_key' => 'required|string|in:' . implode(',', array_keys(CycleProgressReportService::COLUMNS)),
         ]);
 
         $service = new CycleProgressReportService();
-        $cycleId = (int) $request->input('cycle_id');
+        $programId = (int) $request->input('program_id');
         $columnKey = $request->input('column_key');
 
-        $report = $service->buildReport($cycleId);
+        $report = $service->buildReportByProgram($programId);
         $pendingProjects = $service->getPendingProjects($report['rows'], $columnKey);
 
         if ($pendingProjects->isEmpty()) {
@@ -317,7 +468,7 @@ class ReportController extends Controller
             ]);
         }
 
-        $cycleTitle = $report['cycle'] ? $report['cycle']->title . ' (' . $report['cycle']->year . ')' : 'Unknown Cycle';
+        $programTitle = $report['program'] ? $report['program']->program_title : 'Unknown Research Call';
         $recipientType = $service->getRecipientType($columnKey);
         $emailCount = 0;
 
@@ -336,7 +487,7 @@ class ReportController extends Controller
 
                 foreach ($projects as $project) {
                     Mail::to($email)->queue(
-                        new ProjectReminderMail($columnKey, $project->title, $cycleTitle, $lpiName)
+                        new ProjectReminderMail($columnKey, $project->title, $programTitle, $lpiName)
                     );
 
                     ReportReminderSent::create([
@@ -368,7 +519,7 @@ class ReportController extends Controller
                 }
 
                 Mail::to($reviewerUser->email)->queue(
-                    new ProjectReminderMail($columnKey, $project->title, $cycleTitle, $reviewerUser->name)
+                    new ProjectReminderMail($columnKey, $project->title, $programTitle, $reviewerUser->name)
                 );
 
                 ReportReminderSent::create([
@@ -392,7 +543,7 @@ class ReportController extends Controller
 
             foreach ($admins as $admin) {
                 Mail::to($admin->email)->queue(
-                    new ProjectReminderMail($columnKey, $pendingTitles, $cycleTitle, $admin->name)
+                    new ProjectReminderMail($columnKey, $pendingTitles, $programTitle, $admin->name)
                 );
 
                 foreach ($pendingProjects as $project) {

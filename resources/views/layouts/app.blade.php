@@ -168,6 +168,7 @@
         ],
         'Reports' => [
             'cycle-progress' => ['route' => 'reports.cycle-progress', 'icon' => 'fa-solid fa-chart-bar', 'label' => 'Research Call Summary', 'can' => $isAdmin],
+            'student-grant-summary' => ['route' => 'reports.student-grant-summary', 'icon' => 'fa-solid fa-user-graduate', 'label' => 'Student Grant Summary', 'can' => $isAdmin],
             'budget-utilization' => ['route' => 'reports.budget-utilization', 'icon' => 'fa-solid fa-coins', 'label' => 'Budget Utilization', 'can' => $isAdmin],
         ],
         'Configuration' => [
