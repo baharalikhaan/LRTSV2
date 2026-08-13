@@ -125,9 +125,27 @@
                             <i class="fas fa-times-circle a4-icon-no"></i>
                         @endif
                     </td>
-                    <td class="a4-cell-center">{{ $row['reviewer_count'] }}</td>
-                    <td class="a4-cell-center">{{ $row['progress_grading_count'] }}</td>
-                    <td class="a4-cell-center">{{ $row['final_grading_count'] }}</td>
+                    <td class="a4-cell-center">
+                        @if($row['reviewer_count'] > 0)
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <i class="fas fa-times-circle a4-icon-no"></i>
+                        @endif
+                    </td>
+                    <td class="a4-cell-center">
+                        @if($row['progress_grading_count'] > 0)
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <i class="fas fa-times-circle a4-icon-no"></i>
+                        @endif
+                    </td>
+                    <td class="a4-cell-center">
+                        @if($row['final_grading_count'] > 0)
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <i class="fas fa-times-circle a4-icon-no"></i>
+                        @endif
+                    </td>
                 </tr>
                 @empty
                 <tr>
@@ -146,9 +164,9 @@
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['progress_report']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['progress_report']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['final_report']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['final_report']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['readiness_report']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['readiness_report']['pending'] }}</div></td>
-                    <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['reviewer_count']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['reviewer_count']['pending'] }}</div></td>
-                    <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['progress_grading']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['progress_grading']['pending'] }}</div></td>
-                    <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['final_grading']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['final_grading']['pending'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c">Assigned: {{ $footer['reviewer_count']['completed'] }}</div><div class="a4-foot-p">Unassigned: {{ $footer['reviewer_count']['pending'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c">Graded: {{ $footer['progress_grading']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['progress_grading']['pending'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c">Graded: {{ $footer['final_grading']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['final_grading']['pending'] }}</div></td>
                 </tr>
                 <tr class="a4-foot-email no-print-col">
                     <td colspan="1" class="a4-foot-label">Send Email Reminders</td>

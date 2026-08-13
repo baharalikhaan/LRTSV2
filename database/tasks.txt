@@ -1,3 +1,34 @@
+WorkFlow: 
+1. after import student grant doesn't need registration and commitments
+2. after registration all options (progress report entry, outcomes entry and final report submission will be open)
+3. admin can assign as well as unassign a reviewer for a project.
+4. the progress reports are optional, an LPI can directly upload final report. also he may or may not enter the outcomes.
+5. there should be a bulk assignment page.
+6. reviewer can accept/reject proposal, after rejection the admin can re-assign to someone else. (rename the claim button to accept/reject proposal)
+7. the admin should have control to show hide research call
+8. the admin should have control to allow progress report for certain projects
+9. LPI should have progress report 2 upload control for the projects for which the admin allowed extended reports
+10. the reviewer should see all the outcomes, progress reports, final report, readiness reports as the admin assign project to her/him.
+11. LPI can add/update reports and outcomes until the LPI doesn't grade it.
+12. reviewer can reject any of the report (progress report1, progress report2, final report) with come comment which appears to the admin, the admin either send it back to the reviewer or can ask LPI to submit version2 of the said report.
+13. in can of absence of LPI from the system, the admin can submit all of her/his reports
+
+Other changes:
+1. make the registration more elegant in terms of content placement in all tabs. separate ethical approval section
+2. change the look and feel of the reviewer accept/reject proposal modal window
+3. cycle summary should mimic the original summary report in old RTS.
+4. there should be separate summary reports for student and regular grants
+5. remove un-wanted statistics from the dashboards
+6. in the reviewer review page, there should be word count options for all the comment textboxes.
+7. A major change: that the LPI have a single Progress Update button which displays a single page
+showing all the options related to progress report 1&2, readiness & final reports, outcomes, not dependent on each other.
+
+
+Questions: 
+1. as we keep open the options for LPI to enter progress anytime. do we need to lock it just before reviewer review it. for example if a reviewer review a progress report and then the LPI change his outcomes or progress reports, then what will happen?
+
+
+
 check student API online
 reviewer un-assign option
 registration final page contents
