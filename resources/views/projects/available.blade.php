@@ -59,9 +59,8 @@
             <table class="fluent-table w-100" id="projectsTable">
                 <thead>
                     <tr>
-                        <th>Project ID</th>
+                        <th style="min-width:180px;">Project ID</th>
                         <th>Title</th>
-                        <th>Research Call</th>
                         <th>Grant</th>
                         <th>Category</th>
                         <th>Budget (QAR)</th>
@@ -81,7 +80,7 @@
                         $canRegister = $activeRole === 'LPI';
                         $programInactive = $cp->program && !$cp->programIsActive();
                         $availActions = $cp->availableActions($user);
-                        $hasProgressExtended = $cp->hasStatus(\App\Models\Project::STATUS_PROGRESS_EXTENDED) ?? false;
+
 
                         // Determine "Next Step" info (what happens next & who is responsible)
                         $nextStepLabel = '';
@@ -92,107 +91,57 @@
                             $nextStepIcon = 'fa-lock';
                             $nextStepColor = 'var(--color-danger)';
                         } else {
-                            // Check if extended progress is enabled
-                            $isExtended = $cp->is_extended ?? false;
-
                             switch ($flowStatus) {
                                 case 'imported':
-                                    $nextStepLabel = 'Register by LPI / Admin';
+                                    $nextStepLabel = 'Register by LPI';
                                     $nextStepIcon = 'fa-user-plus';
                                     $nextStepColor = 'var(--color-brand-500)';
                                     break;
                                 case 'registered':
-                                    $nextStepLabel = 'Assign Reviewer by Admin + Add Progress by LPI';
+                                    $nextStepLabel = 'Assign Reviewer';
                                     $nextStepIcon = 'fa-user-tag';
                                     $nextStepColor = 'var(--color-gold-500)';
                                     break;
                                 case 'Assigned':
                                 case 'assigned':
-                                    $nextStepLabel = 'Reviewer has to Accept/Reject proposal / Add Progress by LPI';
+                                    $nextStepLabel = 'Accept/Reject by Reviewer';
                                     $nextStepIcon = 'fa-check-circle';
                                     $nextStepColor = 'var(--color-brand-500)';
                                     break;
                                 case 'Claimed':
                                 case 'claimed':
-                                    $nextStepLabel = 'Review Progress by Reviewer';
+                                    $nextStepLabel = 'Grade by Reviewer';
                                     $nextStepIcon = 'fa-clipboard-check';
                                     $nextStepColor = 'var(--color-brand-500)';
                                     break;
-                                case 'progress':
-                                case 'progress_add':
                                 case 'progress_added':
-                                    $hasReviewer = DB::table('projects_reviewers')->where('project_id', $cp->id)->exists();
-                                    $nextStepLabel = $hasReviewer ? 'Review Progress by Reviewer' : 'Assign Reviewer by Admin';
-                                    $nextStepIcon = $hasReviewer ? 'fa-clipboard-check' : 'fa-user-tag';
+                                    $nextStepLabel = 'Review by Reviewer';
+                                    $nextStepIcon = 'fa-clipboard-check';
                                     $nextStepColor = 'var(--color-brand-500)';
-                                    // Debug: uncomment to see values
-                                    // dd($flowStatus, $hasReviewer, $nextStepLabel);
                                     break;
                                 case 'progress_reviewed':
-                                    $nextStepLabel = $isExtended ? 'Add Extended Progress by LPI' : 'Add Final Report by LPI';
-                                    $nextStepIcon = $isExtended ? 'fa-sync-alt' : 'fa-paper-plane';
-                                    $nextStepColor = 'var(--color-brand-500)';
-                                    break;
-                                case 'progress_rejected':
-                                    $nextStepLabel = 'Resubmit Progress by LPI';
-                                    $nextStepIcon = 'fa-chart-line';
-                                    $nextStepColor = 'var(--color-danger)';
-                                    break;
-                                case 'rejected':
-                                case 'proposal_rejected':
-                                    $nextStepLabel = 'Assign Reviewer by Admin + Add Progress by LPI';
-                                    $nextStepIcon = 'fa-user-tag';
-                                    $nextStepColor = 'var(--color-gold-500)';
-                                    break;
-                                case 'progress_extended':
-                                    $nextStepLabel = 'Review Extended Progress by Reviewer';
-                                    $nextStepIcon = 'fa-clipboard-check';
-                                    $nextStepColor = 'var(--color-brand-500)';
-                                    break;
-                                case 'progress_ext_reviewed':
                                     $nextStepLabel = 'Add Final Report by LPI';
                                     $nextStepIcon = 'fa-paper-plane';
                                     $nextStepColor = 'var(--color-brand-500)';
                                     break;
-                                case 'progress_ext_rejected':
-                                    $nextStepLabel = 'Resubmit Extended Progress by LPI';
-                                    $nextStepIcon = 'fa-sync-alt';
+                                case 'progress_rejected':
+                                    $nextStepLabel = 'Admin Review Pending';
+                                    $nextStepIcon = 'fa-balance-scale';
                                     $nextStepColor = 'var(--color-danger)';
                                     break;
                                 case 'final_added':
-                                    $nextStepLabel = 'Grade Final by Reviewer';
+                                    $nextStepLabel = 'Grade by Reviewer';
                                     $nextStepIcon = 'fa-flag-checkered';
                                     $nextStepColor = 'var(--color-brand-500)';
                                     break;
-                                case \App\Models\Project::STATUS_CLAIM1:
-                                    $nextStepLabel = 'Reviewer-2 has to Accept/Reject Proposal';
-                                    $nextStepIcon = 'fa-check-circle';
-                                    $nextStepColor = 'var(--color-brand-500)';
-                                    break;
-                                case \App\Models\Project::STATUS_CLAIM2:
-                                    $nextStepLabel = 'Reviewer-1 has to Accept/Reject Proposal';
-                                    $nextStepIcon = 'fa-check-circle';
-                                    $nextStepColor = 'var(--color-brand-500)';
-                                    break;
-                                case \App\Models\Project::STATUS_CLAIMED:
-                                    $nextStepLabel = 'Reviewers have to grade the progress report';
-                                    $nextStepIcon = 'fa-star';
-                                    $nextStepColor = 'var(--color-brand-500)';
-                                    break;
-                                case \App\Models\Project::STATUS_GRADE1:
-                                    $nextStepLabel = 'Reviewer-2 has to grade the project';
-                                    $nextStepIcon = 'fa-star';
-                                    $nextStepColor = 'var(--color-brand-500)';
-                                    break;
-                                case \App\Models\Project::STATUS_GRADE2:
-                                    $nextStepLabel = 'Reviewer-1 has to grade the project';
-                                    $nextStepIcon = 'fa-star';
-                                    $nextStepColor = 'var(--color-brand-500)';
+                                case 'final_rejected':
+                                    $nextStepLabel = 'Admin Review Pending';
+                                    $nextStepIcon = 'fa-balance-scale';
+                                    $nextStepColor = 'var(--color-danger)';
                                     break;
                                 case 'graded':
-                                case 'report':
-                                case \App\Models\Project::STATUS_GRADED:
-                                    $nextStepLabel = 'All Done';
+                                case 'Graded':
+                                    $nextStepLabel = 'Completed';
                                     $nextStepIcon = 'fa-check-double';
                                     $nextStepColor = 'var(--color-success)';
                                     break;
@@ -206,7 +155,6 @@
                     <tr>
                         <td><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
                         <td><span style="font-weight:500;">{{ $cp->title }}</span></td>
-                        <td>{{ $cp->program->program_title ?? '—' }}</td>
                         <td><span class="pill info" style="font-size:11px;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></td>
                         <td><span class="pill info" style="font-size:11px;">{{ ucfirst($cp->program->grant->category ?? 'N/A') }}</span></td>
                         <td>
@@ -241,18 +189,24 @@
                                 switch($flowStatus) {
                                     case 'imported': $statusPillClass = 'warning'; break;
                                     case 'registered': $statusPillClass = 'accepted'; break;
-                                    case 'assigned': $statusPillClass = 'review'; break;
-                                    case 'claimed': $statusPillClass = 'accepted'; break;
+                                    case 'assigned':
+                                    case 'Assigned': $statusPillClass = 'review'; break;
+                                    case 'claimed':
+                                    case 'Claimed': $statusPillClass = 'accepted'; break;
                                     case 'progress':
                                     case 'progress_add':
                                     case 'progress_added':
                                     case 'progress_reviewed': $statusPillClass = 'info'; break;
                                     case 'progress_rejected':
+                                    case 'final_rejected':
                                     case 'rejected': $statusPillClass = 'danger'; break;
+                                    case 'progress_rejection_reviewed':
+                                    case 'final_rejection_reviewed': $statusPillClass = 'warning'; break;
                                     case 'final_added': $statusPillClass = 'info'; break;
                                     case 'accepted': $statusPillClass = 'accepted'; break;
                                     case 'reviewed': $statusPillClass = 'info'; break;
-                                    case 'graded': $statusPillClass = 'accepted'; break;
+                                    case 'graded':
+                                    case 'Graded': $statusPillClass = 'accepted'; break;
                                     case 'report': $statusPillClass = 'info'; break;
                                     default: $statusPillClass = 'ink'; break;
                                 }
@@ -267,38 +221,79 @@
                             </span>
                         </td>
                         <td class="text-center">
-                            <div style="display:flex;gap:4px;justify-content:center;align-items:center;flex-wrap:wrap;">
-                                @if(!$isRegistered && $canRegister)
-                                    @if($programInactive)
-                                        <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-danger);"></i> Inactive Research Call</span>
-                                    @else
-                                        <a href="{{ route('projects.register-wizard', $cp->id) }}" class="btn-primary btn-sm" title="Register" style="display:inline-flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;">
-                                            <i class="fas fa-plus"></i> Register
+                            @if(!$isRegistered && !$canRegister)
+                                <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock"></i> No Access</span>
+                            @else
+                                <div class="dropdown" style="position:relative;display:inline-block;">
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleProjectMenu(this)" style="font-size:11px;">Actions ▾</button>
+                                    <div class="action-menu" style="display:none;position:fixed;z-index:10000;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:180px;padding:4px 0;">
+                                        @if(!$isRegistered && $canRegister)
+                                        <a class="dropdown-item" href="{{ route('projects.register-wizard', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                            <i class="fas fa-plus" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Register
                                         </a>
-                                    @endif
-                                @elseif(count($availActions) > 0)
-                                    {{-- Workflow action buttons for LPIs, reviewers, and admins --}}
-                                    @include('projects.partials.workflow-actions', ['project' => $cp, 'actions' => $availActions])
-                                @elseif($user->isReviewer() && $flowStatus === 'Claimed' && $isRegistered && DB::table('projects_reviewers')->where('project_id', $cp->id)->where('user_id', $user->id)->where('proposalstatus', 'accepted')->exists())
-                                    <a href="{{ route('projects.grading', $cp->id) }}" class="btn-primary btn-sm" style="font-size:11px;padding:4px 10px;text-decoration:none;">
-                                        <i class="fas fa-star" style="font-size:11px;"></i> Grade Project
-                                    </a>
-                                @elseif(!$isRegistered && !$canRegister)
-                                    @if($programInactive)
-                                        <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-danger);"></i> Inactive Research Call</span>
-                                    @else
-                                        <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-ink-400);"></i> No Access</span>
-                                    @endif
-                                @else
-                                    @if($programInactive)
-                                        <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-danger);"></i> Inactive Research Call</span>
-                                    @elseif($user->isReviewer() && DB::table('projects_reviewers')->where('project_id', $cp->id)->where('user_id', $user->id)->exists())
-                                        <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-ink-400);"></i> Unavailable</span>
-                                    @else
-                                        <span class="text-muted" style="font-size:12px;"><i class="fas fa-lock" style="color:var(--color-ink-400);"></i> Unavailable</span>
-                                    @endif
-                                @endif
-                            </div>
+                                        @else
+                                        <a class="dropdown-item" href="{{ route('projects.show', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                            <i class="fas fa-eye" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> View Details
+                                        </a>
+                                        @if(!$cp->proposal_filename && $user->isAdmin())
+                                        <a class="dropdown-item" href="#" onclick="closeProjectMenus();openSingleUploadModal({{ $cp->id }}, '{{ addslashes($cp->old_project_id) }}')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                            <i class="fas fa-file-pdf" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Upload Proposal
+                                        </a>
+                                        @elseif($cp->proposal_filename && $user->isAdmin())
+                                        <a class="dropdown-item" href="#" onclick="closeProjectMenus();openSingleUploadModal({{ $cp->id }}, '{{ addslashes($cp->old_project_id) }}')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                            <i class="fas fa-sync-alt" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Replace Proposal
+                                        </a>
+                                        @endif
+                                        @if(count($availActions) > 0)
+                                        <div style="border-top:1px solid #eee;margin:4px 0;"></div>
+                                        @php $updateProgressShown = false; @endphp
+                                        @foreach($availActions as $act)
+                                            @if(in_array($act['action'], ['progress', 'final-report']) && !$updateProgressShown)
+                                                @php $updateProgressShown = true; @endphp
+                                                <a class="dropdown-item" href="{{ route('progress.update', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-chart-line" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Update Progress
+                                                </a>
+                                            @elseif($act['action'] === 'progress-grade' || $act['action'] === 'final-grade')
+                                                <a class="dropdown-item" href="{{ route('projects.grading', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-star" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+                                            @elseif($act['action'] === 'open-grading')
+                                                <a class="dropdown-item" href="{{ route('projects.grading', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-clipboard-check" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+                                            @elseif($act['action'] === 'report-card')
+                                                <a class="dropdown-item" href="{{ route('projects.report-card', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-file-alt" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+                                            @elseif($act['action'] === 'claim')
+                                                <a class="dropdown-item" href="#" onclick="closeProjectMenus();openWorkflowModal({{ $cp->id }}, 'accept-proposal')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-handshake" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+                                            @elseif($act['action'] === 'assign')
+                                                <a class="dropdown-item" href="#" onclick="closeProjectMenus();openWorkflowModal({{ $cp->id }}, 'assign')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-user-tag" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+                                            @elseif($act['action'] === 'unassign-reviewer')
+                                                <a class="dropdown-item" href="#" onclick="closeProjectMenus();confirmUnassignReviewer({{ $cp->id }})" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#dc3545;">
+                                                    <i class="fas fa-user-minus" style="width:16px;text-align:center;font-size:11px;"></i> {{ $act['label'] }}
+                                                </a>
+
+                                            @elseif($act['action'] === 'review-progress-rejection')
+                                                <a class="dropdown-item" href="#" onclick="closeProjectMenus();openWorkflowModal({{ $cp->id }}, 'review-rejection', 'lg', 'report_type=progress')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-balance-scale" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+                                            @elseif($act['action'] === 'review-final-rejection')
+                                                <a class="dropdown-item" href="#" onclick="closeProjectMenus();openWorkflowModal({{ $cp->id }}, 'review-rejection', 'lg', 'report_type=final')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-balance-scale" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+
+                                            @endif
+                                        @endforeach
+                                        @endif
+                                        @endif
+                                    </div>
+                                </div>
+                            @endif
                         </td>
                     </tr>
                     @endforeach
@@ -308,6 +303,53 @@
     </div>
 </div>
 @endsection
+
+{{-- Single PDF Upload Modal --}}
+<div class="modal fade" id="singleUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:480px;">
+        <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 20px 60px rgba(0,0,0,.15);">
+            <div class="modal-header" style="border-bottom:1px solid #e2e8f0;padding:16px 24px;">
+                <h5 style="margin:0;font-weight:700;font-size:16px;color:#1e1b4b;">
+                    <i class="fas fa-file-pdf" style="color:#dc2626;margin-right:8px;"></i>
+                    Upload Proposal PDF
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="padding:20px 24px;">
+                <p style="font-size:13px;color:#64748b;margin:0 0 12px;">
+                    Upload proposal for project: <strong id="singleUploadProjectId"></strong>
+                </p>
+                <div id="singleDropZone" style="border:2px dashed #d1d5db;border-radius:10px;padding:30px 20px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa;"
+                    onclick="document.getElementById('singlePdfInput').click();"
+                    ondragover="event.preventDefault();this.style.borderColor='#6366f1'"
+                    ondragleave="this.style.borderColor='#d1d5db'"
+                    ondrop="event.preventDefault();handleSingleFileDrop(event);">
+                    <i class="fas fa-cloud-upload-alt" style="font-size:28px;color:#9ca3b8;margin-bottom:6px;display:block;"></i>
+                    <p style="margin:0;font-size:12px;font-weight:600;color:#374151;">Click or drag PDF here</p>
+                    <input type="file" id="singlePdfInput" accept=".pdf" style="display:none;" onchange="handleSingleFileSelect(this.files)">
+                </div>
+                <div id="singleFilePreview" style="margin-top:12px;display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;align-items:center;gap:8px;font-size:12px;">
+                    <i class="fas fa-file-pdf" style="color:#dc2626;font-size:14px;"></i>
+                    <span id="singleFileName" style="flex:1;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                    <span id="singleFileSize" style="color:#9ca3b8;font-size:10px;"></span>
+                    <button type="button" onclick="removeSingleFile()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="singleUploadProgress" style="display:none;margin-top:12px;">
+                    <div style="height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;">
+                        <div id="singleProgressBar" style="height:100%;background:linear-gradient(135deg,#6366f1,#8b5cf6);width:0%;transition:width .3s;border-radius:2px;"></div>
+                    </div>
+                </div>
+                <div id="singleUploadResult" style="display:none;margin-top:12px;"></div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #e2e8f0;padding:12px 24px;display:flex;justify-content:flex-end;gap:8px;">
+                <button type="button" class="btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn-primary btn-sm" id="singleUploadBtn" onclick="submitSingleUpload()" disabled>
+                    <i class="fas fa-upload" style="margin-right:4px;"></i> Upload
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @push('scripts')
 @if($confProjects->count() > 0)
@@ -327,6 +369,122 @@
             table.search(this.value).draw();
         });
     });
+
+    function toggleProjectMenu(btn) {
+        var menu = btn.nextElementSibling;
+        var wasOpen = menu.style.display === 'block';
+        closeProjectMenus();
+        if (!wasOpen) {
+            var rect = btn.getBoundingClientRect();
+            menu.style.left = (rect.right - 180) + 'px';
+            menu.style.top = (rect.bottom + 2) + 'px';
+            menu.style.display = 'block';
+        }
+    }
+
+    function closeProjectMenus() {
+        document.querySelectorAll('.action-menu').forEach(function(m) { m.style.display = 'none'; });
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown')) {
+            closeProjectMenus();
+        }
+    });
+
+    var singleFile = null;
+    var singleProjectId = null;
+
+    function openSingleUploadModal(projectId, projectTitle) {
+        singleFile = null;
+        singleProjectId = projectId;
+        $('#singleUploadProjectId').text(projectTitle);
+        $('#singlePdfInput').val('');
+        $('#singleFilePreview').hide();
+        $('#singleUploadProgress').hide();
+        $('#singleUploadResult').hide();
+        $('#singleUploadBtn').prop('disabled', true);
+        var modal = new bootstrap.Modal(document.getElementById('singleUploadModal'));
+        modal.show();
+    }
+
+    function handleSingleFileDrop(event) {
+        event.preventDefault();
+        handleSingleFileSelect(event.dataTransfer.files);
+    }
+
+    function handleSingleFileSelect(files) {
+        if (files.length === 0) return;
+        var file = files[0];
+        if (file.type !== 'application/pdf') {
+            showToast('error', 'Please select a PDF file.');
+            return;
+        }
+        singleFile = file;
+        $('#singleFileName').text(file.name);
+        $('#singleFileSize').text((file.size / 1024).toFixed(1) + ' KB');
+        $('#singleFilePreview').css('display', 'flex').show();
+        $('#singleUploadBtn').prop('disabled', false);
+    }
+
+    function removeSingleFile() {
+        singleFile = null;
+        $('#singlePdfInput').val('');
+        $('#singleFilePreview').hide();
+        $('#singleUploadBtn').prop('disabled', true);
+    }
+
+    function submitSingleUpload() {
+        if (!singleFile || !singleProjectId) return;
+        var btn = $('#singleUploadBtn');
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Uploading...');
+        $('#singleUploadProgress').show();
+        $('#singleUploadResult').hide();
+        var formData = new FormData();
+        formData.append('_token', '{{ csrf_token() }}');
+        formData.append('pdf', singleFile);
+        $.ajax({
+            url: '/programs/' + singleProjectId + '/upload-proposal',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            xhr: function() {
+                var xhr = new window.XMLHttpRequest();
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        var pct = Math.round((e.loaded / e.total) * 100);
+                        $('#singleProgressBar').css('width', pct + '%');
+                    }
+                });
+                return xhr;
+            },
+            success: function(resp) {
+                $('#singleProgressBar').css('width', '100%');
+                $('#singleUploadResult').html('<div style="background:#d1fae5;border:1px solid #a8e6b8;border-radius:8px;padding:10px 14px;font-size:13px;color:#065f46;"><i class="fas fa-check-circle" style="margin-right:6px;"></i>Proposal uploaded successfully.</div>').show();
+                btn.html('<i class="fas fa-check"></i> Done');
+                setTimeout(function() { location.reload(); }, 1500);
+            },
+            error: function(xhr) {
+                var msg = 'Upload failed.';
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.error) {
+                        msg = xhr.responseJSON.error;
+                    } else if (xhr.responseJSON.errors) {
+                        var errors = xhr.responseJSON.errors;
+                        var firstKey = Object.keys(errors)[0];
+                        if (firstKey && errors[firstKey]) {
+                            msg = Array.isArray(errors[firstKey]) ? errors[firstKey][0] : errors[firstKey];
+                        }
+                    } else if (xhr.responseJSON.message) {
+                        msg = xhr.responseJSON.message;
+                    }
+                }
+                $('#singleUploadResult').html('<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;"><i class="fas fa-exclamation-circle" style="margin-right:6px;"></i>' + msg + '</div>').show();
+                btn.prop('disabled', false).html('<i class="fas fa-upload"></i> Upload');
+            }
+        });
+    }
 
     // ─── Registration Wizard ────────────────────────────────────────────
     function openRegisterWizard(projectId) {

@@ -22,9 +22,7 @@ class CycleController extends Controller
             'grant_id' => 'required|exists:grants,id',
             'program_title' => 'required|string|max:255|unique:programs,program_title',
             'prog_rpt_deadline' => 'nullable|date',
-            'extended_prog_rpt_deadline' => 'nullable|date|after_or_equal:prog_rpt_deadline',
             'final_rpt_deadline' => 'nullable|date',
-            'extended_final_rpt_deadline' => 'nullable|date|after_or_equal:final_rpt_deadline',
             'description' => 'nullable|string',
             'excel' => 'required|file|mimes:xlsx,xls,csv',
             'proposals_zip' => 'nullable|file|mimes:zip',
@@ -35,9 +33,7 @@ class CycleController extends Controller
             'grant_id' => $validated['grant_id'],
             'program_title' => $validated['program_title'],
             'prog_rpt_deadline' => $validated['prog_rpt_deadline'] ?? null,
-            'extended_prog_rpt_deadline' => $validated['extended_prog_rpt_deadline'] ?? null,
             'final_rpt_deadline' => $validated['final_rpt_deadline'] ?? null,
-            'extended_final_rpt_deadline' => $validated['extended_final_rpt_deadline'] ?? null,
             'description' => $validated['description'] ?? null,
         ]);
 
@@ -174,9 +170,7 @@ class CycleController extends Controller
         $validated = $request->validate([
             'program_title' => 'required|string|max:255|unique:programs,program_title,' . $cycle->id,
             'prog_rpt_deadline' => 'nullable|date',
-            'extended_prog_rpt_deadline' => 'nullable|date|after_or_equal:prog_rpt_deadline',
             'final_rpt_deadline' => 'nullable|date',
-            'extended_final_rpt_deadline' => 'nullable|date|after_or_equal:final_rpt_deadline',
             'description' => 'nullable|string',
         ]);
 

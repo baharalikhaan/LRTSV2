@@ -334,13 +334,13 @@ class ProjectController extends Controller
             })
             ->get();
 
-        // Get available reviewers with their pillars
+        // Get available reviewers with their pillars (from the users.pillars column)
         $reviewers = User::whereIn('type', ['Reviewer', 'LPI+Reviewer'])
             ->where('is_active', true)
-            ->with('pillars')
+            ->orderBy('name')
             ->get()
             ->map(function ($reviewer) {
-                $reviewer->pillar_names = $reviewer->pillars->pluck('name')->implode(', ');
+                $reviewer->pillar_names = implode(', ', $this->reviewerPillarNames($reviewer->pillars));
                 return $reviewer;
             });
 
@@ -356,7 +356,7 @@ class ProjectController extends Controller
         DB::transaction(function () use ($assignments) {
             foreach ($assignments as $assignment) {
                 $projectId = $assignment['project_id'] ?? null;
-                $reviewerIds = $assignment['reviewers'] ?? [];
+                $reviewerIds = array_filter($assignment['reviewers'] ?? []);
 
                 foreach ($reviewerIds as $reviewerId) {
                     if ($projectId && $reviewerId) {
@@ -367,8 +367,9 @@ class ProjectController extends Controller
                     }
                 }
 
-                // Record the assigned status for this project
-                if ($projectId) {
+                // Record the assigned status for this project only when at least
+                // one reviewer was actually selected.
+                if ($projectId && count($reviewerIds) > 0) {
                     $project = Project::find($projectId);
                     if ($project && !$project->hasStatus(Project::STATUS_ASSIGNED)) {
                         $project->recordStatus(Project::STATUS_ASSIGNED);
@@ -378,6 +379,154 @@ class ProjectController extends Controller
         });
 
         return redirect()->back()->with('success', 'Reviewers assigned successfully.');
+    }
+
+    // ─── ADMIN: Reviewer Assignment page (bulk assign, projects-page style) ──
+
+    public function reviewerAssignment(Request $request)
+    {
+        $cycleId = $request->input('cycle_id');
+        $programId = $request->input('program_id');
+        $status = $request->input('status');
+
+        // Only projects that have NO reviewers assigned yet
+        $query = Project::with('program.grant')
+            ->whereNotIn('id', function ($q) {
+                $q->select('project_id')->from('projects_reviewers');
+            });
+
+        if ($cycleId) {
+            $query->whereHas('program', function ($q) use ($cycleId) {
+                $q->where('cycle_id', $cycleId);
+            });
+        }
+
+        if ($programId) {
+            $query->where('program_id', $programId);
+        }
+
+        $confProjects = $query->orderBy('created_at', 'desc')->get();
+
+        // Apply status filter client-side (status is derived from relationships)
+        if ($status === 'unregistered') {
+            $confProjects = $confProjects->filter(function ($cp) {
+                return !$cp->hasStatus(Project::STATUS_REGISTERED) || !$cp->lpi_id;
+            });
+        } elseif ($status === 'registered') {
+            $confProjects = $confProjects->filter(function ($cp) {
+                return $cp->hasStatus(Project::STATUS_REGISTERED);
+            });
+        } elseif ($status === 'claimed') {
+            $confProjects = $confProjects->filter(function ($cp) {
+                return $cp->hasStatus(Project::STATUS_REGISTERED) && $cp->lpi_id;
+            });
+        }
+
+        $programs = Program::with('grant')->active()->get();
+        $cycleConfigs = CycleConfig::orderBy('year', 'desc')->get();
+
+        // Available reviewers for the dropdowns, grouped by their research pillar
+        // (pillars come from the `users.pillars` string column).
+        $reviewers = User::whereIn('type', ['Reviewer', 'LPI+Reviewer'])
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+
+        $reviewerGroups = [];
+        foreach ($reviewers as $reviewer) {
+            $pillarNames = $this->reviewerPillarNames($reviewer->pillars);
+            if (empty($pillarNames)) {
+                $reviewerGroups['Unassigned'][] = $reviewer;
+            } else {
+                foreach ($pillarNames as $pillarName) {
+                    $reviewerGroups[$pillarName][] = $reviewer;
+                }
+            }
+        }
+        ksort($reviewerGroups);
+
+        return view('projects.reviewer-assignment', compact(
+            'confProjects', 'programs', 'programId', 'cycleConfigs', 'cycleId', 'reviewerGroups', 'status'
+        ));
+    }
+
+    /**
+     * Parse the `users.pillars` string column into a list of pillar names.
+     */
+    private function reviewerPillarNames(?string $pillars): array
+    {
+        if (!$pillars || trim($pillars) === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[;,|\n\r]+/', $pillars);
+        return array_values(array_filter(array_map('trim', $parts)));
+    }
+
+    // ─── ADMIN: Extend Progress Report page ──────────────────────────────────
+
+    public function extendProgressIndex(Request $request)
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+
+        $cycleId = $request->input('cycle_id');
+        $programId = $request->input('program_id');
+        $status = $request->input('status');
+
+        $query = Project::with('program.grant');
+
+        if ($cycleId) {
+            $query->whereHas('program', function ($q) use ($cycleId) {
+                $q->where('cycle_id', $cycleId);
+            });
+        }
+
+        if ($programId) {
+            $query->where('program_id', $programId);
+        }
+
+        $confProjects = $query->orderBy('created_at', 'desc')->get();
+
+        // Apply status filter client-side (status is derived from relationships)
+        if ($status === 'unregistered') {
+            $confProjects = $confProjects->filter(function ($cp) {
+                return !$cp->hasStatus(Project::STATUS_REGISTERED) || !$cp->lpi_id;
+            });
+        } elseif ($status === 'registered') {
+            $confProjects = $confProjects->filter(function ($cp) {
+                return $cp->hasStatus(Project::STATUS_REGISTERED);
+            });
+        } elseif ($status === 'claimed') {
+            $confProjects = $confProjects->filter(function ($cp) {
+                return $cp->hasStatus(Project::STATUS_REGISTERED) && $cp->lpi_id;
+            });
+        }
+
+        $programs = Program::with('grant')->active()->get();
+        $cycleConfigs = CycleConfig::orderBy('year', 'desc')->get();
+
+        return view('projects.extend-progress', compact(
+            'confProjects', 'programs', 'programId', 'cycleConfigs', 'cycleId', 'status'
+        ));
+    }
+
+    // ─── ADMIN: Toggle the extended progress report flag ───────────────────
+
+    public function toggleExtendedProgress(Request $request)
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+
+        $request->validate([
+            'project_id' => 'required|exists:projects,id',
+        ]);
+
+        $project = Project::findOrFail($request->input('project_id'));
+        $project->update(['extended_progress' => !$project->extended_progress]);
+
+        $state = $project->extended_progress ? 'enabled' : 'revoked';
+
+        return redirect()->back()
+            ->with('success', "Progress report extension {$state} for project {$project->old_project_id}.");
     }
 
     // ─── REVIEWER: View assignments & accept/reject ─────────────────────────

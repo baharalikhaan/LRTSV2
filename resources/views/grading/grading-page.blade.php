@@ -11,10 +11,17 @@
 
     $cycleTitle = $project->cycle_title ?? ($project->program->cycle->title ?? '');
     $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
-    $hasPR2 = $project->has_progress_report2 ?? false;
 
-    $isProgressStep = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_ADDED) && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REVIEWED);
-    $isFinalStep    = $project->hasStatus(\App\Models\Project::STATUS_FINAL_ADDED) && !$project->hasStatus(\App\Models\Project::STATUS_GRADED);
+    // Check file existence instead of status (buttons removed, files uploaded directly)
+    $progressSubmitted = $submissions->where('type', 'progress')->count() > 0;
+    $finalSubmitted = $submissions->where('type', 'final')->count() > 0;
+
+    $isProgressStep = $progressSubmitted && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REVIEWED);
+    $isFinalStep    = $finalSubmitted && !$project->hasStatus(\App\Models\Project::STATUS_GRADED);
+
+    // Deadline-gated: only show progress/final tabs when deadlines have passed
+    $showProgressTab = $progressDeadlinePassed;
+    $showFinalTab = $finalDeadlinePassed;
 
     $progressVersions = $submissions->where('type', 'progress')->sortByDesc('version');
     $finalVersions = $submissions->where('type', 'final')->sortByDesc('version');
@@ -43,20 +50,6 @@
     </div>
 </div>
 
-@if($project && $project->program && !$project->programIsActive())
-<div style="background:linear-gradient(135deg,#fbeef1 0%,#f3d2da 100%);border:1px solid var(--brand-200);border-radius:8px;padding:14px 18px;margin-bottom:22px;display:flex;align-items:center;gap:12px;">
-    <div style="width:36px;height:36px;border-radius:50%;background:var(--brand-500);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
-        <i class="fas fa-lock"></i>
-    </div>
-    <div>
-        <strong style="color:var(--brand-800);font-size:14px;">Research Call Inactive</strong>
-        <p style="margin:2px 0 0 0;color:var(--brand-700);font-size:13px;">
-            The research call <strong>{{ $project->program->program_title }}</strong> is no longer active. Grading cannot be submitted.
-        </p>
-    </div>
-</div>
-@endif
-
 {{-- ═══════════════════════════════════════════════════════════════════
      UNIFIED SPLIT LAYOUT — Left: PDF/Data tabs | Right: Grading form
      ═══════════════════════════════════════════════════════════════════ --}}
@@ -68,22 +61,24 @@
             <button type="button" class="ws-tab active" role="tab" data-tab="ltab-proposal" onclick="switchLeftTab('ltab-proposal', this)">
                 <i class="fas fa-file-pdf"></i> Proposal
             </button>
+            <button type="button" class="ws-tab" role="tab" data-tab="ltab-commitments" onclick="switchLeftTab('ltab-commitments', this)">
+                <i class="fas fa-handshake"></i> Commitments
+            </button>
+            @if($showProgressTab)
             <button type="button" class="ws-tab" role="tab" data-tab="ltab-progress" onclick="switchLeftTab('ltab-progress', this)">
                 <i class="fas fa-chart-line"></i> Progress Report
             </button>
-            @if(!$isProgressStep)
+            @endif
+            @if($showFinalTab)
             <button type="button" class="ws-tab" role="tab" data-tab="ltab-final" onclick="switchLeftTab('ltab-final', this)">
                 <i class="fas fa-check-circle"></i> Final Report
             </button>
             @endif
-            @if(!$isProgressStep)
+            @if($showFinalTab)
             <button type="button" class="ws-tab" role="tab" data-tab="ltab-readiness" onclick="switchLeftTab('ltab-readiness', this)">
                 <i class="fas fa-map"></i> Readiness Report
             </button>
             @endif
-            <button type="button" class="ws-tab" role="tab" data-tab="ltab-commitments" onclick="switchLeftTab('ltab-commitments', this)">
-                <i class="fas fa-handshake"></i> Commitments
-            </button>
             <button type="button" class="ws-tab" role="tab" data-tab="ltab-outcomes" onclick="switchLeftTab('ltab-outcomes', this)">
                 <i class="fas fa-trophy"></i> Outcomes
             </button>
@@ -101,114 +96,6 @@
                 <iframe class="ws-iframe" src="{{ route('serveFile2', ['type' => 'proposal', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
             </div>
         </div>
-
-        {{-- Tab: Progress Report --}}
-        <div class="ws-left-tab-panel" id="ltab-progress" style="display:none;">
-            @if(empty($progressSubmitted) || !$progressSubmitted)
-            <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
-                <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-                    <i class="fas fa-lock" style="font-size:24px;"></i>
-                </div>
-                <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Progress Report Not Available Yet</h3>
-                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
-                    The LPI has not officially submitted the progress report for this project.
-                    Grading will be unlocked once the report is submitted.
-                </p>
-            </div>
-            @else
-            <div class="ws-card">
-                <div class="ws-section-title">
-                    <span><i class="fas fa-file-pdf"></i> Progress Report</span>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        @if($progressVersions->count() > 1)
-                        <select class="ws-version-select" data-iframe="progress-iframe" onchange="switchVersion(this, 'progress-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
-                            @foreach($progressVersions as $pv)
-                            <option value="{{ $pv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $pv->version }} — {{ $pv->stored_filename }}</option>
-                            @endforeach
-                        </select>
-                        @elseif($progressVersions->count() === 1)
-                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $progressVersions->first()->stored_filename }}</span>
-                        @else
-                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
-                        @endif
-                        <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
-                            <i class="fas fa-external-link-alt"></i> Open
-                        </a>
-                    </div>
-                </div>
-                <iframe id="progress-iframe" class="ws-iframe" src="{{ $progressVersions->count() > 0 ? route('serveFile2', ['submission_id' => $progressVersions->first()->id]) : route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
-            </div>
-            @endif
-        </div>
-
-        {{-- Tab: Final Report --}}
-        @if(!$isProgressStep)
-        <div class="ws-left-tab-panel" id="ltab-final" style="display:none;">
-            @if(empty($finalSubmitted) || !$finalSubmitted)
-            <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
-                <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-                    <i class="fas fa-lock" style="font-size:24px;"></i>
-                </div>
-                <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Final Report Not Available Yet</h3>
-                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
-                    The LPI has not officially submitted the final report for this project.
-                    Grading will be unlocked once the report is submitted.
-                </p>
-            </div>
-            @else
-            <div class="ws-card">
-                <div class="ws-section-title">
-                    <span><i class="fas fa-file-pdf"></i> Final Report</span>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        @if($finalVersions->count() > 1)
-                        <select class="ws-version-select" data-iframe="final-iframe" onchange="switchVersion(this, 'final-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
-                            @foreach($finalVersions as $fv)
-                            <option value="{{ $fv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $fv->version }} — {{ $fv->stored_filename }}</option>
-                            @endforeach
-                        </select>
-                        @elseif($finalVersions->count() === 1)
-                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $finalVersions->first()->stored_filename }}</span>
-                        @else
-                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
-                        @endif
-                        <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
-                            <i class="fas fa-external-link-alt"></i> Open
-                        </a>
-                    </div>
-                </div>
-                <iframe id="final-iframe" class="ws-iframe" src="{{ $finalVersions->count() > 0 ? route('serveFile2', ['submission_id' => $finalVersions->first()->id]) : route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
-            </div>
-            @endif
-        </div>
-        @endif
-
-        {{-- Tab: QU Readiness Map --}}
-        @if(!$isProgressStep)
-        <div class="ws-left-tab-panel" id="ltab-readiness" style="display:none;">
-            <div class="ws-card">
-                <div class="ws-section-title">
-                    <span><i class="fas fa-file-pdf"></i> QU Readiness Map</span>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        @if($readinessVersions->count() > 1)
-                        <select class="ws-version-select" data-iframe="readiness-iframe" onchange="switchVersion(this, 'readiness-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
-                            @foreach($readinessVersions as $rv)
-                            <option value="{{ $rv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $rv->version }} — {{ $rv->stored_filename }}</option>
-                            @endforeach
-                        </select>
-                        @elseif($readinessVersions->count() === 1)
-                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $readinessVersions->first()->stored_filename }}</span>
-                        @else
-                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
-                        @endif
-                        <a href="{{ route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
-                            <i class="fas fa-external-link-alt"></i> Open
-                        </a>
-                    </div>
-                </div>
-                <iframe id="readiness-iframe" class="ws-iframe" src="{{ $readinessVersions->count() > 0 ? route('serveFile2', ['submission_id' => $readinessVersions->first()->id]) : route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
-            </div>
-        </div>
-        @endif
 
         {{-- Tab: Commitments --}}
         <div class="ws-left-tab-panel" id="ltab-commitments" style="display:none;">
@@ -340,6 +227,116 @@
                 @endif
             </div>
         </div>
+
+        {{-- Tab: Progress Report --}}
+        @if($showProgressTab)
+        <div class="ws-left-tab-panel" id="ltab-progress" style="display:none;">
+            @if(empty($progressSubmitted) || !$progressSubmitted)
+            <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                    <i class="fas fa-lock" style="font-size:24px;"></i>
+                </div>
+                <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Progress Report Not Available Yet</h3>
+                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+                    The LPI has not officially submitted the progress report for this project.
+                    Grading will be unlocked once the report is submitted.
+                </p>
+            </div>
+            @else
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-file-pdf"></i> Progress Report</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($progressVersions->count() > 1)
+                        <select class="ws-version-select" data-iframe="progress-iframe" onchange="switchVersion(this, 'progress-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($progressVersions as $pv)
+                            <option value="{{ $pv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $pv->version }} — {{ $pv->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @elseif($progressVersions->count() === 1)
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $progressVersions->first()->stored_filename }}</span>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
+                </div>
+                <iframe id="progress-iframe" class="ws-iframe" src="{{ $progressVersions->count() > 0 ? route('serveFile2', ['submission_id' => $progressVersions->first()->id]) : route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+            </div>
+            @endif
+        </div>
+        @endif
+
+        {{-- Tab: Final Report --}}
+        @if($showFinalTab)
+        <div class="ws-left-tab-panel" id="ltab-final" style="display:none;">
+            @if(empty($finalSubmitted) || !$finalSubmitted)
+            <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                    <i class="fas fa-lock" style="font-size:24px;"></i>
+                </div>
+                <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Final Report Not Available Yet</h3>
+                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+                    The LPI has not officially submitted the final report for this project.
+                    Grading will be unlocked once the report is submitted.
+                </p>
+            </div>
+            @else
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-file-pdf"></i> Final Report</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($finalVersions->count() > 1)
+                        <select class="ws-version-select" data-iframe="final-iframe" onchange="switchVersion(this, 'final-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($finalVersions as $fv)
+                            <option value="{{ $fv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $fv->version }} — {{ $fv->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @elseif($finalVersions->count() === 1)
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $finalVersions->first()->stored_filename }}</span>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
+                </div>
+                <iframe id="final-iframe" class="ws-iframe" src="{{ $finalVersions->count() > 0 ? route('serveFile2', ['submission_id' => $finalVersions->first()->id]) : route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+            </div>
+            @endif
+        </div>
+        @endif
+
+        {{-- Tab: QU Readiness Map --}}
+        @if($showFinalTab)
+        <div class="ws-left-tab-panel" id="ltab-readiness" style="display:none;">
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-file-pdf"></i> QU Readiness Map</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($readinessVersions->count() > 1)
+                        <select class="ws-version-select" data-iframe="readiness-iframe" onchange="switchVersion(this, 'readiness-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($readinessVersions as $rv)
+                            <option value="{{ $rv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $rv->version }} — {{ $rv->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @elseif($readinessVersions->count() === 1)
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $readinessVersions->first()->stored_filename }}</span>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
+                </div>
+                <iframe id="readiness-iframe" class="ws-iframe" src="{{ $readinessVersions->count() > 0 ? route('serveFile2', ['submission_id' => $readinessVersions->first()->id]) : route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+            </div>
+        </div>
+        @endif
 
         {{-- Tab: Outcomes --}}
         <div class="ws-left-tab-panel" id="ltab-outcomes" style="display:none;">
@@ -580,46 +577,48 @@
     {{-- ─── RIGHT COLUMN: Grading Forms ─── --}}
     <div class="ws-form-col">
 
-        {{-- PROGRESS GRADING MODE --}}
-        @if($isProgressStep)
-            @include('grading.partials.progress-grade', [
-                'report' => null,
-                'grading' => $progressGrading ?? null,
-                'index' => 1,
-                'project' => $project,
-                'showSubmitGrade' => $progressGrading && $progressGrading->isAccepted !== null && !$project->hasStatus(\App\Models\Project::STATUS_GRADED),
-                'showAsSummary' => false
-            ])
+        {{-- Any grading forms to show? --}}
+        @if(($isProgressStep && $progressDeadlinePassed) || ($isFinalStep && $finalDeadlinePassed))
 
-        {{-- FINAL GRADING MODE --}}
-        @elseif($isFinalStep)
+            {{-- Tab buttons --}}
             <div class="ws-right-tabs" role="tablist">
-                @if($progressGrading)
-                <button type="button" class="ws-tab active" role="tab" data-tab="rtab-progress-ro" onclick="switchRightTab('rtab-progress-ro', this)">
+                @if($isProgressStep && $progressDeadlinePassed)
+                <button type="button" class="ws-tab active" role="tab" data-tab="rtab-progress" onclick="switchRightTab('rtab-progress', this)">
                     <i class="fas fa-chart-line"></i> Progress Grading
                 </button>
                 @endif
-                <button type="button" class="ws-tab {{ !$progressGrading ? 'active' : '' }}" role="tab" data-tab="rtab-final" onclick="switchRightTab('rtab-final', this)">
+                @if($isFinalStep && $finalDeadlinePassed)
+                <button type="button" class="ws-tab {{ !($isProgressStep && $progressDeadlinePassed) ? 'active' : '' }}" role="tab" data-tab="rtab-final" onclick="switchRightTab('rtab-final', this)">
                     <i class="fas fa-star"></i> Final Grade
                 </button>
+                @endif
             </div>
 
-            @if($progressGrading)
-            <div class="ws-right-tab-panel" id="rtab-progress-ro" style="display:block;">
+            {{-- Progress Grading Tab --}}
+            @if($isProgressStep && $progressDeadlinePassed)
+            <div class="ws-right-tab-panel" id="rtab-progress" style="display:block;">
                 @include('grading.partials.progress-grade', [
-                    'grading' => $progressGrading,
+                    'report' => null,
+                    'grading' => $progressGrading ?? null,
+                    'index' => 1,
                     'project' => $project,
-                    'showAsSummary' => true
+                    'showSubmitGrade' => $progressGrading && $progressGrading->isAccepted !== null && !$project->hasStatus(\App\Models\Project::STATUS_GRADED),
+                    'showAsSummary' => false,
+                    'latestRejectionReason' => $progressRejectionReason ?? null,
                 ])
             </div>
             @endif
 
-            <div class="ws-right-tab-panel" id="rtab-final" style="display:{{ $progressGrading ? 'none' : 'block' }};">
+            {{-- Final Grading Tab --}}
+            @if($isFinalStep && $finalDeadlinePassed)
+            <div class="ws-right-tab-panel" id="rtab-final" style="display:{{ !($isProgressStep && $progressDeadlinePassed) ? 'block' : 'none' }};">
                 @include('grading.partials.final-grades', [
                     'grading' => $finalGrading,
-                    'project' => $project
+                    'project' => $project,
+                    'latestRejectionReason' => $finalRejectionReason ?? null,
                 ])
             </div>
+            @endif
 
         {{-- NO ACTIVE STEP --}}
         @else
@@ -664,6 +663,57 @@
                         'showAsSummary' => true
                     ])
                 @endif
+
+            {{-- Check if there's a pending rejection the admin needs to review --}}
+            @elseif(
+                ($project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED) && (!$progressGrading || $progressGrading->publish === 'pending'))
+                ||
+                ($project->hasStatus(\App\Models\Project::STATUS_FINAL_REJECTED) && (!$finalGrading || $finalGrading->publish === 'pending'))
+            )
+                @php
+                    $hasProgressRejection = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED) && (!$progressGrading || $progressGrading->publish === 'pending');
+                    $hasFinalRejection = $project->hasStatus(\App\Models\Project::STATUS_FINAL_REJECTED) && (!$finalGrading || $finalGrading->publish === 'pending');
+                @endphp
+
+                @if($hasProgressRejection && $hasFinalRejection)
+                <div class="ws-right-tabs" role="tablist">
+                    <button type="button" class="ws-tab active" role="tab" data-tab="rtab-progress-rej" onclick="switchRightTab('rtab-progress-rej', this)">
+                        <i class="fas fa-chart-line"></i> Progress Rejection Review
+                    </button>
+                    <button type="button" class="ws-tab" role="tab" data-tab="rtab-final-rej" onclick="switchRightTab('rtab-final-rej', this)">
+                        <i class="fas fa-star"></i> Final Rejection Review
+                    </button>
+                </div>
+
+                <div class="ws-right-tab-panel" id="rtab-progress-rej" style="display:block;">
+                    @include('grading.partials.progress-grade', [
+                        'grading' => $progressGrading,
+                        'project' => $project,
+                        'showAsSummary' => true
+                    ])
+                </div>
+
+                <div class="ws-right-tab-panel" id="rtab-final-rej" style="display:none;">
+                    @include('grading.partials.final-grades', [
+                        'grading' => $finalGrading,
+                        'project' => $project
+                    ])
+                </div>
+
+                @elseif($hasProgressRejection)
+                    @include('grading.partials.progress-grade', [
+                        'grading' => $progressGrading,
+                        'project' => $project,
+                        'showAsSummary' => true
+                    ])
+
+                @elseif($hasFinalRejection)
+                    @include('grading.partials.final-grades', [
+                        'grading' => $finalGrading,
+                        'project' => $project
+                    ])
+                @endif
+
             @else
                 <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
                     <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
@@ -687,6 +737,17 @@
 
 @push('styles')
 <style>
+/* ─── Character counter ─── */
+.ws-char-count {
+    position: absolute;
+    bottom: 6px;
+    right: 8px;
+    font-size: 10px;
+    color: var(--ink-400);
+    pointer-events: none;
+    font-weight: 500;
+}
+
 /* ─── Page head ─── */
 .page-head {
     display: flex;
@@ -1005,6 +1066,20 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // ─── Character counter for textareas ───
+    window.updateCharCount = function(textarea) {
+        var counter = textarea.parentElement.querySelector('.ws-char-count');
+        if (counter) {
+            var len = textarea.value.length;
+            counter.textContent = len + '/500';
+            counter.style.color = len > 450 ? 'var(--danger)' : len > 400 ? '#d97706' : 'var(--ink-400)';
+        }
+    };
+    // Initialize counters on page load
+    document.querySelectorAll('textarea[maxlength="500"]').forEach(function(ta) {
+        updateCharCount(ta);
+    });
+
     // ─── Left-side tab switching ───
     window.switchLeftTab = function(tabId, btn) {
         var col = btn.closest('.ws-pdf-col');
@@ -1044,6 +1119,36 @@ document.addEventListener('DOMContentLoaded', function() {
         toggle.addEventListener('change', updateLabel);
         updateLabel();
     });
+
+    // ─── Rejection reason visibility + validation ───
+    function wireRejectionReason(formSelector, boxId, inputId) {
+        var form = document.querySelector(formSelector);
+        if (!form) return;
+        var box = document.getElementById(boxId);
+        var input = document.getElementById(inputId);
+        var rejectedRadio = form.querySelector('input[name="publish"][value="rejected"]');
+
+        function update() {
+            if (!box || !input) return;
+            if (rejectedRadio && rejectedRadio.checked) {
+                box.style.display = 'block';
+                input.required = true;
+            } else {
+                box.style.display = 'none';
+                input.required = false;
+            }
+        }
+
+        if (rejectedRadio) {
+            rejectedRadio.addEventListener('change', update);
+        }
+        form.querySelectorAll('input[name="publish"]').forEach(function(r) {
+            r.addEventListener('change', update);
+        });
+        update();
+    }
+    wireRejectionReason('form[data-progress-grade]', 'progressRejectionReason', 'progressRejectionReasonInput');
+    wireRejectionReason('form[data-final-grade]', 'finalRejectionReason', 'finalRejectionReasonInput');
 
     // ─── Auto-grade diff detection ───
     document.querySelectorAll('.ws-grade-row input[type="radio"]').forEach(function(radio) {

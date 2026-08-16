@@ -43,6 +43,7 @@
                     <th>Project ID</th>
                     <th>Title</th>
                     <th>LPI</th>
+                    <th>LPI Email</th>
                     <th>Research Call</th>
                     <th class="text-center">Progress Report</th>
                     <th class="text-center">Final Report</th>
@@ -91,6 +92,7 @@ $(document).ready(function() {
             { data: 'old_project_id', name: 'old_project_id', title: 'Project ID', width: '110px' },
             { data: 'title', name: 'title', title: 'Title', orderable: false, searchable: true },
             { data: 'lpi', name: 'lpi', title: 'LPI', orderable: false, searchable: false, width: '150px' },
+            { data: 'lpi_email', name: 'lpi_email', title: 'LPI Email', orderable: false, searchable: false, width: '150px' },
             { data: 'program', name: 'program', title: 'Research Call', orderable: false, searchable: false, width: '160px' },
             { data: 'progress', name: 'progress', title: 'Progress Report', orderable: false, searchable: false, className: 'text-center', width: '90px' },
             { data: 'final', name: 'final', title: 'Final Report', orderable: false, searchable: false, className: 'text-center', width: '90px' },

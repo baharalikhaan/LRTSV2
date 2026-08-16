@@ -9,7 +9,6 @@ use App\Models\FinalReportGrading;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class GradingController extends Controller
 {
@@ -77,6 +76,11 @@ class GradingController extends Controller
             'researchers',
         ])->findOrFail($id);
 
+        // Gate: admins may grade any project; reviewers must be assigned.
+        if (!$user->isAdmin() && !$this->isAssignedReviewer($project, $user)) {
+            abort(403, 'You are not assigned to review this project.');
+        }
+
         $finalGrading = FinalReportGrading::where('project_id', $id)->first();
         $progressGrading = ProgressReportGrading::where('project_id', $id)->first();
 
@@ -90,10 +94,10 @@ class GradingController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // LPI submission gates — reviewers cannot grade a report the LPI has not
-        // added yet. These flags drive per-tab lock UI on the grading page.
-        $progressSubmitted = $project->hasStatus(Project::STATUS_PROGRESS_ADDED);
-        $finalSubmitted    = $project->hasStatus(Project::STATUS_FINAL_ADDED);
+        // LPI submission gates — check file existence instead of status
+        // (buttons removed, files uploaded directly)
+        $progressSubmitted = $submissions->where('type', 'progress')->count() > 0;
+        $finalSubmitted    = $submissions->where('type', 'final')->count() > 0;
 
         // Whether progress was rejected (show rejection info)
         $progressRejected = $project->hasStatus(Project::STATUS_PROGRESS_REJECTED);
@@ -175,6 +179,24 @@ class GradingController extends Controller
         // Grade D: no auto-calculation
         $autoGradeD = null;
 
+        // Deadline info — show/hide grading forms based on deadlines
+        $program = $project->program;
+        $progressDeadline = $program ? ($program->prog_rpt_deadline ?? null) : null;
+        $finalDeadline = $program ? ($program->final_rpt_deadline ?? null) : null;
+        $now = now();
+        $progressDeadlinePassed = $progressDeadline ? $now->greaterThan($progressDeadline) : true;
+        $finalDeadlinePassed = $finalDeadline ? $now->greaterThan($finalDeadline) : true;
+
+        // Latest rejection reason for pre-filling the re-grade form after resubmission
+        $progressRejection = $project->statusHistories()
+            ->where('status', Project::STATUS_PROGRESS_REJECTED)
+            ->latest()->first();
+        $finalRejection = $project->statusHistories()
+            ->where('status', Project::STATUS_FINAL_REJECTED)
+            ->latest()->first();
+        $progressRejectionReason = $progressRejection->metadata['comment'] ?? $progressRejection->metadata['reason'] ?? null;
+        $finalRejectionReason = $finalRejection->metadata['comment'] ?? $finalRejection->metadata['reason'] ?? null;
+
         return view('grading.grading-page', compact(
             'project',
             'finalGrading',
@@ -195,7 +217,13 @@ class GradingController extends Controller
             'autoGradeC',
             'autoGradeD',
             'expectedSumA',
-            'scoreMap'
+            'scoreMap',
+            'progressDeadline',
+            'finalDeadline',
+            'progressDeadlinePassed',
+            'finalDeadlinePassed',
+            'progressRejectionReason',
+            'finalRejectionReason'
         ));
     }
 
@@ -233,13 +261,16 @@ class GradingController extends Controller
             'comments'           => 'nullable|string|max:255',
             'recommendation'     => 'nullable|string|max:255',
             'report_type'        => 'nullable|string|max:50',
+            'rejection_reason'   => 'nullable|string|max:2000',
         ];
 
         // For "draft", publish is optional; for "submit", it's required
         if ($saveAction === 'draft') {
             $rules['publish'] = 'nullable|in:accepted,rejected,reserved,pending';
+            $rules['rejection_reason'] = 'nullable|string|max:2000';
         } else {
             $rules['publish'] = 'required|in:accepted,rejected,reserved,pending';
+            $rules['rejection_reason'] = 'required_if:publish,rejected|nullable|string|max:2000';
         }
 
         $request->validate($rules);
@@ -247,15 +278,29 @@ class GradingController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
-        // Determine which version is being graded based on project status
-        $hasProgressAdded = $project->hasStatus(Project::STATUS_PROGRESS_ADDED);
-        $hasProgressExtended = $project->hasStatus(Project::STATUS_PROGRESS_EXTENDED);
+        // Gate: admins may grade any project; reviewers must be assigned.
+        if (!$user->isAdmin() && !$this->isAssignedReviewer($project, $user)) {
+            return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
+        }
+
+        // Check file existence instead of status (buttons removed, files uploaded directly)
+        $hasProgressAdded = $project->submissions()->where('type', 'progress')->count() > 0;
 
         // Gate: reviewer can only grade if progress has been submitted
-        if (!$hasProgressAdded && !$hasProgressExtended) {
+        if (!$hasProgressAdded) {
             return response()->json([
                 'success' => false,
                 'error'   => 'The LPI has not submitted the progress report yet. Grading is locked until then.',
+            ], 403);
+        }
+
+        // Gate: grading opens once the progress deadline passes (null = always open).
+        $program = $project->program;
+        $progressDeadline = $program ? ($program->prog_rpt_deadline ?? null) : null;
+        if ($progressDeadline && !now()->greaterThan($progressDeadline)) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Grading opens after the progress report deadline.',
             ], 403);
         }
 
@@ -266,8 +311,8 @@ class GradingController extends Controller
         $userSelection = $request->publish;
         $isAcceptedValue = $userSelection === 'accepted' ? 1 : ($userSelection === 'rejected' ? 0 : 0);
 
-        // Determine report type: extended progress takes priority
-        $reportType = $hasProgressExtended ? 'progress_extended' : 'progress';
+        // Report type is always progress
+        $reportType = 'progress';
 
         // Use updateOrCreate with report_type to handle v1 and v2 separately
         $grading = \App\Models\ProgressReportGrading::updateOrCreate(
@@ -293,48 +338,23 @@ class GradingController extends Controller
 
         // On submit, record the workflow status
         if ($saveAction === 'submit') {
-            if ($hasProgressExtended) {
-                // Extended progress v2 grading
-                if ($userSelection === 'accepted' && !$project->hasStatus(Project::STATUS_PROGRESS_EXT_REVIEWED)) {
-                    $project->recordStatus(Project::STATUS_PROGRESS_EXT_REVIEWED, [
-                        'triggered_by' => 'progress-ext-grade-accept',
-                    ], $user->id);
-                } elseif ($userSelection === 'rejected') {
-                    // Record rejection in reviewer_rejections table
-                    if (Schema::hasTable('reviewer_rejections')) {
-                        \App\Models\ReviewerRejection::create([
-                            'project_id' => $project->id,
-                            'user_id'    => $user->id,
-                            'reason'     => $request->comments ?? null,
-                        ]);
-                    }
+            if ($userSelection === 'accepted') {
+                $project->recordStatus(Project::STATUS_PROGRESS_REVIEWED, [
+                    'triggered_by' => 'progress-grade-accept',
+                ], $user->id);
+            } elseif ($userSelection === 'rejected') {
+                $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
+                    'triggered_by' => 'progress-grade-reject',
+                    'comment'      => $request->rejection_reason ?? $request->comments ?? null,
+                ], $user->id);
 
-                    $project->recordStatus(Project::STATUS_PROGRESS_EXT_REJECTED, [
-                        'triggered_by' => 'progress-ext-grade-reject',
-                        'comment'      => $request->comments ?? null,
-                    ], $user->id);
-                }
-            } else {
-                // Progress v1 grading
-                if ($userSelection === 'accepted' && !$project->hasStatus(Project::STATUS_PROGRESS_REVIEWED)) {
-                    $project->recordStatus(Project::STATUS_PROGRESS_REVIEWED, [
-                        'triggered_by' => 'progress-grade-accept',
-                    ], $user->id);
-                } elseif ($userSelection === 'rejected') {
-                    // Record rejection in reviewer_rejections table
-                    if (Schema::hasTable('reviewer_rejections')) {
-                        \App\Models\ReviewerRejection::create([
-                            'project_id' => $project->id,
-                            'user_id'    => $user->id,
-                            'reason'     => $request->comments ?? null,
-                        ]);
-                    }
-
-                    $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
-                        'triggered_by' => 'progress-grade-reject',
-                        'comment'      => $request->comments ?? null,
-                    ], $user->id);
-                }
+                // A rejected grade must not persist: remove the grading record
+                // entirely so the reviewer's form re-opens fresh after the LPI
+                // resubmits (v2). The rejection reason lives in status history.
+                \App\Models\ProgressReportGrading::where('project_id', $project->id)
+                    ->where('user_id', $user->id)
+                    ->where('report_type', $reportType)
+                    ->delete();
             }
         }
 
@@ -367,13 +387,15 @@ class GradingController extends Controller
             'autoGradeA'=> 'nullable|numeric',
             'autoGradeB'=> 'nullable|numeric',
             'autoGradeC'=> 'nullable|numeric',
+            'rejection_reason' => 'nullable|string|max:2000',
         ];
 
-        // Grade-only: final report has no rejection — only 'accepted' or 'pending' (draft).
         if ($saveAction === 'draft') {
-            $rules['publish'] = 'nullable|in:accepted,pending';
+            $rules['publish'] = 'nullable|in:accepted,rejected,pending';
+            $rules['rejection_reason'] = 'nullable|string|max:2000';
         } else {
-            $rules['publish'] = 'required|in:accepted,pending';
+            $rules['publish'] = 'required|in:accepted,rejected,pending';
+            $rules['rejection_reason'] = 'required_if:publish,rejected|nullable|string|max:2000';
         }
 
         $request->validate($rules);
@@ -381,11 +403,27 @@ class GradingController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
+        // Gate: admins may grade any project; reviewers must be assigned.
+        if (!$user->isAdmin() && !$this->isAssignedReviewer($project, $user)) {
+            return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
+        }
+
         // Gate: reviewer can only grade the final report once the LPI has added it.
-        if (!$project->hasStatus(Project::STATUS_FINAL_ADDED)) {
+        // Check file existence instead of status (buttons removed, files uploaded directly)
+        if ($project->submissions()->where('type', 'final')->count() === 0) {
             return response()->json([
                 'success' => false,
                 'error'   => 'The LPI has not submitted the final report yet. Grading is locked until then.',
+            ], 403);
+        }
+
+        // Gate: grading opens once the final deadline passes (null = always open).
+        $program = $project->program;
+        $finalDeadline = $program ? ($program->final_rpt_deadline ?? null) : null;
+        if ($finalDeadline && !now()->greaterThan($finalDeadline)) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Grading opens after the final report deadline.',
             ], 403);
         }
 
@@ -423,12 +461,24 @@ class GradingController extends Controller
             ]
         );
 
-        // On submit with accepted, record the Graded status
-        if ($saveAction === 'submit' && $userSelection === 'accepted') {
-            if (!$project->hasStatus(Project::STATUS_GRADED)) {
+        // On submit, record the workflow status
+        if ($saveAction === 'submit') {
+            if ($userSelection === 'accepted') {
                 $project->recordStatus(Project::STATUS_GRADED, [
                     'triggered_by' => 'final-grade',
                 ], $user->id);
+            } elseif ($userSelection === 'rejected') {
+                $project->recordStatus(Project::STATUS_FINAL_REJECTED, [
+                    'triggered_by' => 'final-grade-reject',
+                    'comment'      => $request->rejection_reason ?? $request->comments ?? null,
+                ], $user->id);
+
+                // A rejected grade must not persist: remove the grading record
+                // entirely so the reviewer's form re-opens fresh after the LPI
+                // resubmits (v2). The rejection reason lives in status history.
+                FinalReportGrading::where('project_id', $project->id)
+                    ->where('user_id', $user->id)
+                    ->delete();
             }
         }
 
@@ -481,6 +531,17 @@ class GradingController extends Controller
     }
 
     /**
+     * True when the given user is one of the assigned reviewers for a project.
+     */
+    protected function isAssignedReviewer(Project $project, User $user): bool
+    {
+        return DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->where('user_id', $user->id)
+            ->exists();
+    }
+
+    /**
      * Submit the grade — marks the project as Graded in the workflow.
      */
     public function submitGrade(Request $request, $id)
@@ -488,17 +549,14 @@ class GradingController extends Controller
         $project = Project::findOrFail($id);
         $user = Auth::user();
 
-        $isAssigned = DB::table('projects_reviewers')
-            ->where('project_id', $project->id)
-            ->where('user_id', $user->id)
-            ->exists();
-
-        if (!$isAssigned) {
+        // Admins may finalize any project; reviewers must be assigned.
+        if (!$user->isAdmin() && !$this->isAssignedReviewer($project, $user)) {
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
         }
 
         // Gate: cannot finalize the grade until the LPI has added the final report.
-        if (!$project->hasStatus(Project::STATUS_FINAL_ADDED)) {
+        // Check file existence instead of status (buttons removed, files uploaded directly)
+        if ($project->submissions()->where('type', 'final')->count() === 0) {
             return response()->json([
                 'success' => false,
                 'error'   => 'The LPI has not submitted the final report yet. You cannot finalize the grade until then.',

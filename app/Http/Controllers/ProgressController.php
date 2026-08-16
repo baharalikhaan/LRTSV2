@@ -20,6 +20,15 @@ class ProgressController extends Controller
      */
     public function add($id)
     {
+        return $this->updateProgress($id);
+    }
+
+    /**
+     * Show the unified Update Progress page.
+     * Combines progress and final report functionality into a single page.
+     */
+    public function updateProgress($id)
+    {
         $project = Project::with([
             'program', 'grant', 'lpi', 'latestStatus',
             'commitments', 'pillars', 'colleges',
@@ -27,19 +36,16 @@ class ProgressController extends Controller
 
         // Only allow LPI / admin to add progress
         $user = Auth::user();
+        if (!$user) {
+            abort(401, 'Please login to continue.');
+        }
         $role = $user->activeRole();
         if (!in_array($role, ['LPI', 'Admin'])) {
             abort(403, 'You are not authorized to add progress reports.');
         }
 
-        // Check if program is active
-        if (!$project->programIsActive()) {
-            return redirect()->route('projects.show', $id)
-                ->with('error', 'This program is no longer active. Progress cannot be added.');
-        }
-
         $data = $this->loadFormData($project);
-        $data['mode'] = 'progress';
+        $data['mode'] = 'update';
 
         return view('projects.add-progress', $data);
     }
@@ -96,17 +102,14 @@ class ProgressController extends Controller
         $deadlines = [
             'progress' => [
                 'original' => $program ? $program->prog_rpt_deadline : null,
-                'extended' => $program ? $program->extended_prog_rpt_deadline : null,
                 'label' => 'Progress Report',
             ],
             'readiness' => [
                 'original' => $program ? $program->prog_rpt2_deadline : null,
-                'extended' => $program ? $program->extended_prog_rpt2_deadline : null,
                 'label' => 'Readiness Report',
             ],
             'final' => [
                 'original' => $program ? $program->final_rpt_deadline : null,
-                'extended' => $program ? $program->extended_final_rpt_deadline : null,
                 'label' => 'Final Report',
             ],
         ];
@@ -130,15 +133,16 @@ class ProgressController extends Controller
     public function save(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
 
         $user = Auth::user();
-        $role = $user->activeRole();
-        if (!in_array($role, ['LPI', 'Admin'])) {
-            return response()->json(['success' => false, 'error' => 'Unauthorized.'], 403);
-        }
 
-        if (!$project->programIsActive()) {
-            return response()->json(['success' => false, 'error' => 'Program is no longer active.'], 422);
+        // The progress form is gated by the progress report window.
+        if ($user->activeRole() === 'LPI' && $this->isTypeLocked($project, 'progress')) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'The progress report editing window has closed.',
+            ], 423);
         }
 
         // Validate
@@ -230,7 +234,7 @@ class ProgressController extends Controller
                 ->where('publish', '!=', 'pending')
                 ->first();
             if ($existingGrading) {
-                $existingGrading->update(['publish' => 'pending']);
+                $existingGrading->update(['publish' => 'pending', 'isAccepted' => 0]);
             }
         });
 
@@ -263,22 +267,23 @@ class ProgressController extends Controller
     public function uploadFile(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
         $user = auth()->user();
 
         $request->validate([
             'file' => 'required|file|mimes:pdf|max:10240',
-            'type' => 'required|in:progress,progress_extended,readiness,final',
+            'type' => 'required|in:progress,readiness,final',
         ]);
 
         $file = $request->file('file');
         $type = $request->input('type');
 
-        // For extended progress, check if enabled
-        if ($type === 'progress_extended' && !$project->is_extended) {
+        // Server-side deadline/lock enforcement: LPI cannot bypass the UI.
+        if ($user->activeRole() === 'LPI' && $this->isTypeLocked($project, $type)) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Extended progress report is not enabled for this project.',
-            ], 422);
+                'error'   => 'The upload window for this report has closed. Please contact the admin if you need to resubmit.',
+            ], 423);
         }
 
         // Map to submission type and version
@@ -298,17 +303,8 @@ class ProgressController extends Controller
             $dir = $project->getStorageDir('progress_reports');
         }
 
-        if ($type === 'progress_extended') {
-            $submissionType = 'progress';
-            $typeLabel = 'progress';
-            $dir = $project->getStorageDir('progress_reports');
-            // Extended progress = version 2
-            $maxVersion = $project->submissions()->where('type', 'progress')->max('version') ?? 1;
-            $newVersion = max($maxVersion, 2);
-            $storedFilename = $oldId . '_progress_v' . $newVersion . '.pdf';
-            $version = $newVersion;
-        } elseif ($type === 'readiness' || $type === 'final') {
-            // Final and readiness: replace existing (single file per type)
+        if ($type === 'readiness') {
+            // Readiness: replace existing (single file per type)
             $existing = $project->submissions()->where('type', $submissionType)->first();
             if ($existing) {
                 $oldPath = storage_path('app/' . $existing->file_path);
@@ -319,13 +315,44 @@ class ProgressController extends Controller
             }
             $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
             $version = 1;
-        } elseif ($project->hasStatus(Project::STATUS_PROGRESS_REJECTED) || $project->hasStatus(Project::STATUS_PROGRESS_EXT_REJECTED)
+        } elseif ($type === 'final' && ($project->hasStatus(Project::STATUS_FINAL_REJECTED) || $project->hasStatus(Project::STATUS_FINAL_REJ_REVIEWED))) {
+            // Admin resubmission: keep v1, write/overwrite v2 only
+            $existingV2 = $project->submissions()->where('type', $submissionType)->where('version', 2)->first();
+            if ($existingV2) {
+                $oldPath = storage_path('app/' . $existingV2->file_path);
+                if (file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+                $existingV2->delete();
+            }
+            $storedFilename = $oldId . '_' . $typeLabel . '_v2.pdf';
+            $version = 2;
+        } elseif ($type === 'final') {
+            // Final: replace existing (single file per type)
+            $existing = $project->submissions()->where('type', $submissionType)->first();
+            if ($existing) {
+                $oldPath = storage_path('app/' . $existing->file_path);
+                if (file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+                $existing->delete();
+            }
+            $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
+            $version = 1;
+        } elseif ($project->hasStatus(Project::STATUS_PROGRESS_REJECTED)
+                   || $project->hasStatus(Project::STATUS_PROGRESS_REJ_REVIEWED)
                    || \App\Models\ProgressReportGrading::where('project_id', $project->id)->where('publish', 'rejected')->exists()) {
-            // After rejection: create a new version while keeping old
-            $maxVersion = $project->submissions()->where('type', $submissionType)->max('version') ?? 1;
-            $newVersion = $maxVersion + 1;
-            $storedFilename = $oldId . '_' . $typeLabel . '_v' . $newVersion . '.pdf';
-            $version = $newVersion;
+            // Admin resubmission: keep v1, write/overwrite v2 only
+            $existingV2 = $project->submissions()->where('type', $submissionType)->where('version', 2)->first();
+            if ($existingV2) {
+                $oldPath = storage_path('app/' . $existingV2->file_path);
+                if (file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+                $existingV2->delete();
+            }
+            $storedFilename = $oldId . '_' . $typeLabel . '_v2.pdf';
+            $version = 2;
         } else {
             // Normal upload: replace existing (single file per type)
             $existing = $project->submissions()->where('type', $submissionType)->first();
@@ -352,6 +379,18 @@ class ProgressController extends Controller
             'notes'             => $request->input('notes'),
             'user_id'           => $user->id,
         ]);
+
+        // Resubmission (v2): re-open the reviewer's grading for the new version.
+        // A rejected grade would otherwise keep the form read-only forever.
+        if ($version === 2) {
+            if ($submissionType === 'final') {
+                \App\Models\FinalReportGrading::where('project_id', $project->id)
+                    ->update(['publish' => 'pending', 'isAccepted' => 0]);
+            } elseif ($submissionType === 'progress') {
+                \App\Models\ProgressReportGrading::where('project_id', $project->id)
+                    ->update(['publish' => 'pending', 'isAccepted' => 0]);
+            }
+        }
 
         // Render the download link HTML snippet
         $downloadUrl = route('serveFile2', ['type' => $submissionType, 'id' => $project->id]);
@@ -386,6 +425,7 @@ class ProgressController extends Controller
     public function deleteFile(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
 
         $request->validate([
             'submission_id' => 'required|exists:project_submissions,id',
@@ -394,6 +434,26 @@ class ProgressController extends Controller
         $submission = $project->submissions()
             ->where('id', $request->input('submission_id'))
             ->firstOrFail();
+
+        // Server-side delete rules: v2 only while a resubmission is open;
+        // v1 only before the deadline passes. Otherwise the file is locked.
+        $type = $submission->type;
+        $canDelete = false;
+        if ($type === 'readiness') {
+            $canDelete = true; // readiness is freely re-uploaded
+        } elseif ($submission->version == 2 && $this->isResubmitRequested($project, $type)) {
+            $canDelete = true;
+        } elseif ($submission->version == 1) {
+            $deadline = $this->effectiveDeadline($project, $type);
+            // Null deadline = treated as passed → v1 not deletable.
+            $canDelete = $deadline !== null && now()->lessThan($deadline);
+        }
+        if (!$canDelete) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'This file can no longer be deleted.',
+            ], 423);
+        }
 
         // Delete the physical file
         $fullPath = storage_path('app/' . $submission->file_path);
@@ -413,7 +473,7 @@ class ProgressController extends Controller
     /**
      * Resolve the EFFECTIVE deadline for a report type.
      * Extended deadline wins if set; otherwise original deadline.
-     * Returns null when no deadline is configured (treated as "no constraint").
+     * Returns null when no deadline is configured (treated as already passed).
      */
     protected function effectiveDeadline(Project $project, string $type)
     {
@@ -423,16 +483,114 @@ class ProgressController extends Controller
         }
 
         if ($type === 'progress') {
-            return $program->extended_prog_rpt_deadline ?? $program->prog_rpt_deadline;
+            return $program->prog_rpt_deadline;
         }
         if ($type === 'readiness') {
-            return $program->extended_prog_rpt2_deadline ?? $program->prog_rpt2_deadline;
+            return $program->prog_rpt2_deadline;
         }
         if ($type === 'final') {
-            return $program->extended_final_rpt_deadline ?? $program->final_rpt_deadline;
+            return $program->final_rpt_deadline;
         }
 
         return null;
+    }
+
+    /**
+     * True when the LPI has an active resubmission request for a report type
+     * (admin reviewed a rejection and sent it back — stays open until graded).
+     */
+    protected function isResubmitRequested(Project $project, string $type): bool
+    {
+        if ($type === 'final') {
+            $last = $project->statusHistories()->where('status', Project::STATUS_FINAL_REJ_REVIEWED)->latest()->first();
+            return $last
+                && ($last->metadata['action'] ?? null) === 'send_to_lpi'
+                && !$project->statusHistories()
+                    ->whereIn('status', [Project::STATUS_GRADED, Project::STATUS_FINAL_REJECTED])
+                    ->where('created_at', '>', $last->created_at)
+                    ->exists();
+        }
+
+        $last = $project->statusHistories()->where('status', Project::STATUS_PROGRESS_REJ_REVIEWED)->latest()->first();
+        return $last
+            && ($last->metadata['action'] ?? null) === 'send_to_lpi'
+            && !$project->statusHistories()
+                ->whereIn('status', [Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED])
+                ->where('created_at', '>', $last->created_at)
+                ->exists();
+    }
+
+    /**
+     * True when a report type is locked server-side.
+     * A null deadline is treated as already passed (always locked).
+     */
+    protected function isTypeLocked(Project $project, string $type): bool
+    {
+        $deadline = $this->effectiveDeadline($project, $type);
+        // Null deadline is treated as already passed (always locked).
+        $deadlinePassed = $deadline ? now()->greaterThan($deadline) : true;
+
+        if ($type === 'final' || $type === 'readiness') {
+            return !$this->isResubmitRequested($project, 'final') && $deadlinePassed;
+        }
+
+        // progress: gated ONLY by the deadline — the LPI may submit and overwrite
+        // freely until the deadline arrives, then the reviewer takes over.
+        return !$this->isResubmitRequested($project, 'progress') && $deadlinePassed;
+    }
+
+    /**
+     * True when the "project data" (outcomes, students, researchers, contributions)
+     * is frozen. Per the workflow, these are coupled with the FINAL report deadline,
+     * not the progress deadline. A final resubmission re-opens ONLY the final-report
+     * upload, never the project data, so this ignores resubmission requests.
+     */
+    protected function isDataLocked(Project $project): bool
+    {
+        $deadline = $this->effectiveDeadline($project, 'final');
+        // Null deadline is treated as already passed (always locked).
+        $deadlinePassed = $deadline ? now()->greaterThan($deadline) : true;
+        return $deadlinePassed;
+    }
+
+    /**
+     * Abort with a 423 (locked) JSON response when the LPI tries to edit
+     * project data after the final report window has closed.
+     * Admins are always allowed.
+     */
+    protected function enforceDataOpen(Project $project)
+    {
+        $user = Auth::user();
+        if ($user->activeRole() !== 'LPI') {
+            return;
+        }
+        if ($this->isDataLocked($project)) {
+            abort(423, 'The editing window for project data has closed. Please contact the admin if you need to make changes.');
+        }
+    }
+
+    /**
+     * Abort unless the current user is an admin or the project's own LPI.
+     */
+    protected function authorizeLpi(Project $project): void
+    {
+        $user = Auth::user();
+        if (!$user) {
+            abort(401, 'Please login to continue.');
+        }
+
+        $role = $user->activeRole();
+        if (!in_array($role, ['LPI', 'Admin'], true)) {
+            abort(403, 'You are not authorized to perform this action.');
+        }
+
+        if ($role === 'Admin') {
+            return;
+        }
+
+        if ($project->lpi_id !== null && $project->lpi_id !== $user->id) {
+            abort(403, 'You are not the LPI for this project.');
+        }
     }
 
     /**
@@ -442,26 +600,7 @@ class ProgressController extends Controller
      */
     public function addFinalReport($id)
     {
-        $project = Project::with([
-            'program', 'grant', 'lpi', 'latestStatus',
-            'commitments', 'pillars', 'colleges',
-        ])->findOrFail($id);
-
-        $user = Auth::user();
-        $role = $user->activeRole();
-        if (!in_array($role, ['LPI', 'Admin'])) {
-            abort(403, 'You are not authorized to submit final reports.');
-        }
-
-        if (!$project->programIsActive()) {
-            return redirect()->route('projects.show', $id)
-                ->with('error', 'This program is no longer active. Reports cannot be submitted.');
-        }
-
-        $data = $this->loadFormData($project);
-        $data['mode'] = 'final';
-
-        return view('projects.add-progress', $data);
+        return $this->updateProgress($id);
     }
 
     /**
@@ -471,15 +610,16 @@ class ProgressController extends Controller
     public function saveFinalReport(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
 
         $user = Auth::user();
-        $role = $user->activeRole();
-        if (!in_array($role, ['LPI', 'Admin'])) {
-            return response()->json(['success' => false, 'error' => 'Unauthorized.'], 403);
-        }
 
-        if (!$project->programIsActive()) {
-            return response()->json(['success' => false, 'error' => 'Program is no longer active.'], 422);
+        // The final form is gated by the final report window.
+        if ($user->activeRole() === 'LPI' && $this->isTypeLocked($project, 'final')) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'The final report editing window has closed.',
+            ], 423);
         }
 
         $validated = $request->validate([
@@ -529,11 +669,16 @@ class ProgressController extends Controller
                 }
             }
 
-            // Record the final_added status
-            if (!$project->hasStatus(Project::STATUS_FINAL_ADDED)) {
-                $project->recordStatus(Project::STATUS_FINAL_ADDED, [
-                    'triggered_by' => 'final-report',
-                ], $user->id);
+            // Record the final_added status (always record on save, even if files already uploaded)
+            $project->recordStatus(Project::STATUS_FINAL_ADDED, [
+                'triggered_by' => 'final-report',
+            ], $user->id);
+
+            // Re-open the reviewer's grading for a resubmitted final report
+            // (keeps a rejected grade from locking the form read-only forever).
+            if ($project->hasStatus(Project::STATUS_FINAL_REJECTED) || $project->hasStatus(Project::STATUS_FINAL_REJ_REVIEWED)) {
+                \App\Models\FinalReportGrading::where('project_id', $project->id)
+                    ->update(['publish' => 'pending', 'isAccepted' => 0]);
             }
         });
 
@@ -560,6 +705,8 @@ class ProgressController extends Controller
     public function saveOutcomes(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -627,6 +774,8 @@ class ProgressController extends Controller
     public function saveSingleOutcome(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -686,6 +835,8 @@ class ProgressController extends Controller
     public function verifyOutcome(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
 
         $validated = $request->validate([
             'outcome_id' => 'required|integer|exists:project_outcomes,id',
@@ -813,6 +964,8 @@ class ProgressController extends Controller
     public function deleteOutcome(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -838,6 +991,8 @@ class ProgressController extends Controller
     public function saveSingleStudent(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -887,6 +1042,8 @@ class ProgressController extends Controller
     public function deleteStudent(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -908,6 +1065,8 @@ class ProgressController extends Controller
     public function retryStudentVerification(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
 
         $validated = $request->validate([
             'student_id' => 'required|integer|exists:project_students,id',
@@ -952,6 +1111,8 @@ class ProgressController extends Controller
     public function saveSingleResearcher(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -979,6 +1140,8 @@ class ProgressController extends Controller
     public function deleteResearcher(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -1000,6 +1163,8 @@ class ProgressController extends Controller
     public function saveToggle(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -1036,6 +1201,8 @@ class ProgressController extends Controller
     public function saveStudents(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([
@@ -1129,6 +1296,8 @@ class ProgressController extends Controller
     public function saveContributions(Request $request, $id)
     {
         $project = Project::findOrFail($id);
+        $this->authorizeLpi($project);
+        $this->enforceDataOpen($project);
         $user = Auth::user();
 
         $validated = $request->validate([

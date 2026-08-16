@@ -194,7 +194,10 @@
                     </div>
                 </div>
 
-                <textarea name="achievementsComments" rows="2" class="ws-input" style="font-size:12px;" placeholder="progress report 1">{{ old('achievementsComments', $d->achievementsComments ?? '') }}</textarea>
+                <div style="position:relative;">
+                    <textarea name="achievementsComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="progress report 1" oninput="updateCharCount(this)">{{ old('achievementsComments', $d->achievementsComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/500</span>
+                </div>
             </div>
 
             {{-- Section 2: Progress in Publications --}}
@@ -213,7 +216,10 @@
                     </div>
                 </div>
 
-                <textarea name="publicationsComments" rows="2" class="ws-input" style="font-size:12px;" placeholder="comments upto 500 characters (optional)">{{ old('publicationsComments', $d->publicationsComments ?? '') }}</textarea>
+                <div style="position:relative;">
+                    <textarea name="publicationsComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('publicationsComments', $d->publicationsComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/500</span>
+                </div>
             </div>
 
             {{-- Section 3: Engagement in Student Involvement and Capacity Building --}}
@@ -232,7 +238,10 @@
                     </div>
                 </div>
 
-                <textarea name="studentsComments" rows="2" class="ws-input" style="font-size:12px;" placeholder="comments upto 500 characters (optional)">{{ old('studentsComments', $d->studentsComments ?? '') }}</textarea>
+                <div style="position:relative;">
+                    <textarea name="studentsComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('studentsComments', $d->studentsComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/500</span>
+                </div>
             </div>
 
             {{-- Section 4: Ethical Approvals --}}
@@ -269,7 +278,10 @@
                     </div>
                 </div>
 
-                <textarea name="budgetComments" rows="2" class="ws-input" style="font-size:12px;" placeholder="comments upto 500 characters (optional)">{{ old('budgetComments', $d->budgetComments ?? '') }}</textarea>
+                <div style="position:relative;">
+                    <textarea name="budgetComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('budgetComments', $d->budgetComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/500</span>
+                </div>
             </div>
 
             {{-- Section 6: Recommendation for Continuation --}}
@@ -286,13 +298,22 @@
                     </label>
                     <label style="flex:1;min-width:180px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;border:2px solid var(--ink-200);border-radius:8px;transition:all .15s;background:#fff;"
                            onmouseover="this.style.borderColor='var(--danger)'" onmouseout="this.style.borderColor=this.querySelector('input').checked?'var(--danger)':'var(--ink-200)'">
-                        <input type="radio" name="publish" value="rejected" {{ (old('publish', $d->publish ?? '') == 'rejected' || (old('publish', $d->publish ?? '') == 'pending' && old('isAccepted', $d->isAccepted ?? '') == '0')) ? 'checked' : '' }} style="accent-color:var(--danger);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
+                        <input type="radio" name="publish" value="rejected" {{ old('publish', $d->publish ?? '') == 'rejected' ? 'checked' : '' }} style="accent-color:var(--danger);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
                         <div>
                             <div style="font-weight:600;color:var(--ink-800);font-size:13px;">Reject</div>
                             <div style="font-size:12px;color:var(--ink-500);margin-top:2px;">The progress report does not meet expectations for continuation of the project at this stage.</div>
                         </div>
                     </label>
                 </div>
+            </div>
+
+            {{-- Rejection Reason (required when rejecting) --}}
+            <div id="progressRejectionReason" style="margin-bottom:20px;display:none;">
+                <label style="font-size:13px;font-weight:600;color:var(--ink-800);display:block;margin-bottom:6px;">
+                    Rejection Reason <span style="color:var(--danger);">*</span>
+                </label>
+                <textarea name="rejection_reason" id="progressRejectionReasonInput" rows="3" maxlength="2000" class="ws-input"
+                    placeholder="Explain to the admin and LPI why this report is being rejected...">{{ old('rejection_reason', $d->rejection_reason ?? ($latestRejectionReason ?? '')) }}</textarea>
             </div>
 
             <div class="ws-form-actions" style="display:flex;justify-content:flex-end;gap:8px;padding-top:12px;border-top:1px solid var(--ink-100);">

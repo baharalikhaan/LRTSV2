@@ -115,11 +115,8 @@ class ReportController extends Controller
                     $program->cycleConfig ? $program->cycleConfig->title : 'N/A',
                     $program->isActive() ? 'Active' : 'Inactive',
                     $program->prog_rpt_deadline ? $program->prog_rpt_deadline->format('Y-m-d') : '',
-                    $program->extended_prog_rpt_deadline ? $program->extended_prog_rpt_deadline->format('Y-m-d') : '',
                     $program->prog_rpt2_deadline ? $program->prog_rpt2_deadline->format('Y-m-d') : '',
-                    $program->extended_prog_rpt2_deadline ? $program->extended_prog_rpt2_deadline->format('Y-m-d') : '',
                     $program->final_rpt_deadline ? $program->final_rpt_deadline->format('Y-m-d') : '',
-                    $program->extended_final_rpt_deadline ? $program->extended_final_rpt_deadline->format('Y-m-d') : '',
                     $totalProjects,
                     $registeredProjects,
                     $pendingProjects,
@@ -278,7 +275,19 @@ class ReportController extends Controller
         $programs = Program::with('grant')->orderBy('program_title')->get();
 
         $programId = $request->input('program_id') ? (int) $request->input('program_id') : null;
-        $report = $programId ? $service->buildReportByProgram($programId) : null;
+        $report = null;
+        $isStudentGrant = false;
+
+        if ($programId) {
+            $program = Program::with('grant')->find($programId);
+            $isStudentGrant = $program && $program->grant && $program->grant->category === 'student';
+
+            if ($isStudentGrant) {
+                $report = $service->buildStudentGrantReport($programId);
+            } else {
+                $report = $service->buildReportByProgram($programId);
+            }
+        }
 
         return view('reports.cycle-progress-report', [
             'rows'           => $report ? $report['rows'] : collect(),
@@ -287,6 +296,7 @@ class ReportController extends Controller
             'program'        => $report ? $report['program'] : null,
             'programs'       => $programs,
             'programId'      => $programId,
+            'isStudentGrant' => $isStudentGrant,
             'columns'        => CycleProgressReportService::COLUMNS,
         ]);
     }
@@ -320,18 +330,8 @@ class ReportController extends Controller
             $totalProjects = $projects->count();
 
             if ($totalProjects > 0) {
-                // Get student counts per project (Qatari vs Non-Qatari)
+                // Get total student counts per project
                 $studentCounts = DB::table('project_students')
-                    ->whereIn('project_id', $projectIds)
-                    ->select(
-                        'project_id',
-                        DB::raw("SUM(CASE WHEN LOWER(nationality) LIKE '%qatar%' THEN 1 ELSE 0 END) as qatari_count"),
-                        DB::raw("SUM(CASE WHEN LOWER(nationality) NOT LIKE '%qatar%' OR nationality IS NULL THEN 1 ELSE 0 END) as non_qatari_count")
-                    )
-                    ->groupBy('project_id')
-                    ->pluck('qatari_count', 'project_id');
-
-                $nonQatariCounts = DB::table('project_students')
                     ->whereIn('project_id', $projectIds)
                     ->select('project_id', DB::raw('COUNT(*) as total'))
                     ->groupBy('project_id')
@@ -345,11 +345,9 @@ class ReportController extends Controller
                     ->pluck('budget_amount', 'project_id');
 
                 // Build rows
-                $rows = $projects->map(function ($project) use ($studentCounts, $nonQatariCounts, $budgetData, $budgetAmounts) {
+                $rows = $projects->map(function ($project) use ($studentCounts, $budgetData, $budgetAmounts) {
                     $id = $project->id;
-                    $qatari = $studentCounts[$id] ?? 0;
-                    $nonQatari = ($nonQatariCounts[$id] ?? 0) - $qatari;
-                    if ($nonQatari < 0) $nonQatari = 0;
+                    $totalStudents = $studentCounts[$id] ?? 0;
 
                     // Check form saved (registration status)
                     $formSaved = $project->hasStatus(Project::STATUS_REGISTERED);
@@ -401,8 +399,7 @@ class ReportController extends Controller
                         'old_project_id'      => $project->old_project_id ?? $id,
                         'lpi_email'           => $project->lpi ? $project->lpi->email : null,
                         'form_saved'          => $formSaved,
-                        'qatari_count'        => $qatari,
-                        'non_qatari_count'    => $nonQatari,
+                        'total_students'      => $totalStudents,
                         'has_engagement'      => $hasEngagement,
                         'has_publications'    => $hasPublications,
                         'has_ethical_approval'=> $hasEthicalApproval,
@@ -417,8 +414,7 @@ class ReportController extends Controller
                         'completed' => $rows->where('form_saved', true)->count(),
                         'pending'   => $totalProjects - $rows->where('form_saved', true)->count(),
                     ],
-                    'qatari_total'     => $rows->sum('qatari_count'),
-                    'non_qatari_total' => $rows->sum('non_qatari_count'),
+                    'total_students' => $rows->sum('total_students'),
                     'engagement' => [
                         'completed' => $rows->where('has_engagement', true)->count(),
                         'pending'   => $totalProjects - $rows->where('has_engagement', true)->count(),

@@ -64,11 +64,14 @@ Route::prefix('programs')->name('programs.')->group(function () {
     Route::put('/{id}', [ProgramController::class, 'update'])->name('update');
     Route::delete('/{id}', [ProgramController::class, 'destroy'])->name('destroy');
     Route::post('toggle/{id}', [ProgramController::class, 'toggle'])->name('toggle');
+    Route::post('/upload-proposals', [ProgramController::class, 'uploadProposals'])->name('upload-proposals');
+    Route::post('/{id}/upload-proposal', [ProgramController::class, 'uploadSingleProposal'])->name('upload-single-proposal');
 });
 
 // ─── Projects ────────────────────────────────────────────────────────────────
 Route::prefix('projects')->name('projects.')->group(function () {
-    Route::get('/available', [ProjectController::class, 'availableProjects'])->name('available');
+    Route::get('/', [ProjectController::class, 'availableProjects'])->name('available');
+    Route::get('/available', [ProjectController::class, 'availableProjects'])->name('available.alias');
     Route::get('/register/{id}', [ProjectController::class, 'register'])->name('register');
     Route::post('/register', [ProjectController::class, 'storeRegistration'])->name('store-registration');
     Route::get('/my', function () {
@@ -76,8 +79,12 @@ Route::prefix('projects')->name('projects.')->group(function () {
     })->name('my');
     Route::get('/assign-review/{cycleId}', [ProjectController::class, 'assignView'])->name('assign-review');
     Route::post('/bulk-assign', [ProjectController::class, 'bulkAssign'])->name('bulk-assign');
+    Route::get('/reviewer-assignment', [ProjectController::class, 'reviewerAssignment'])->name('reviewer-assignment');
+    Route::get('/extend-progress-report', [ProjectController::class, 'extendProgressIndex'])->name('extend-progress');
+    Route::post('/toggle-extended-progress', [ProjectController::class, 'toggleExtendedProgress'])->name('toggle-extended-progress');
     Route::get('/{id}', [ProjectController::class, 'show'])->name('show');
     Route::get('/{id}/report-card', [ProjectController::class, 'reportCard'])->name('report-card');
+    Route::post('/{id}/upload-proposal', [ProgramController::class, 'uploadSingleProposal'])->name('upload-proposal');
     Route::get('/my-assignments', [ProjectController::class, 'myAssignments'])->name('my-assignments');
 });
 
@@ -299,16 +306,14 @@ Route::prefix('workflow')->name('workflow.')->group(function () {
     Route::post('/submit-decision', [\App\Http\Controllers\WorkflowController::class, 'submitProposalDecision'])->name('submit-decision');
     Route::post('/submit-progress-review', [\App\Http\Controllers\WorkflowController::class, 'submitProgressReview'])->name('submit-progress-review');
     Route::get('/view-grade/{projectId}', [\App\Http\Controllers\WorkflowController::class, 'viewGrade'])->name('view-grade');
-    Route::post('/toggle-extended/{id}', [\App\Http\Controllers\WorkflowController::class, 'toggleExtendedProgress'])->name('toggle-extended');
-    Route::post('/request-extended/{id}', [\App\Http\Controllers\WorkflowController::class, 'requestExtendedProgress'])->name('request-extended');
-    Route::post('/approve-extended/{id}', [\App\Http\Controllers\WorkflowController::class, 'approveExtendedProgress'])->name('approve-extended');
     Route::post('/review-rejection/{id}', [\App\Http\Controllers\WorkflowController::class, 'reviewProgressRejection'])->name('review-rejection');
     Route::post('/unassign-reviewer', [\App\Http\Controllers\WorkflowController::class, 'unassignReviewer'])->name('unassign-reviewer');
 });
 
 // ─── Progress Reports (Full Page) ──────────────────────────────────────────
-Route::prefix('progress')->name('progress.')->group(function () {
+Route::prefix('progress')->name('progress.')->middleware('auth')->group(function () {
     Route::get('/add/{id}', [\App\Http\Controllers\ProgressController::class, 'add'])->name('add');
+    Route::get('/update/{id}', [\App\Http\Controllers\ProgressController::class, 'updateProgress'])->name('update');
     Route::post('/save/{id}', [\App\Http\Controllers\ProgressController::class, 'save'])->name('save');
     Route::post('/save-outcomes/{id}', [\App\Http\Controllers\ProgressController::class, 'saveOutcomes'])->name('save-outcomes');
     Route::post('/save-single-outcome/{id}', [\App\Http\Controllers\ProgressController::class, 'saveSingleOutcome'])->name('save-single-outcome');
@@ -368,7 +373,6 @@ Route::prefix('reports')->name('reports.')->group(function () {
     Route::get('/projects', [\App\Http\Controllers\ReportController::class, 'projectReport'])->name('project-status');
     Route::get('/pillars', [\App\Http\Controllers\ReportController::class, 'pillarReport'])->name('pillar-summary');
     Route::get('/cycle-progress', [\App\Http\Controllers\ReportController::class, 'cycleProgressReport'])->name('cycle-progress');
-    Route::get('/student-grant-summary', [\App\Http\Controllers\ReportController::class, 'studentGrantSummary'])->name('student-grant-summary');
     Route::post('/cycle-progress/send-reminder', [\App\Http\Controllers\ReportController::class, 'sendCycleReportReminder'])->name('cycle-progress.send-reminder');
     Route::get('/budget-utilization', [\App\Http\Controllers\ReportController::class, 'budgetUtilizationReport'])->name('budget-utilization');
 });

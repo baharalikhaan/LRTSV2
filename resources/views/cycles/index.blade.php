@@ -103,9 +103,7 @@
                                 data-field-program_title="{{ $cycle->program_title }}"
                                 data-field-grant_id="{{ $cycle->grant_id }}"
                                 data-field-prog_rpt_deadline="{{ $cycle->prog_rpt_deadline ? $cycle->prog_rpt_deadline->format('Y-m-d') : '' }}"
-                                data-field-extended_prog_rpt_deadline="{{ $cycle->extended_prog_rpt_deadline ? $cycle->extended_prog_rpt_deadline->format('Y-m-d') : '' }}"
                                 data-field-final_rpt_deadline="{{ $cycle->final_rpt_deadline ? $cycle->final_rpt_deadline->format('Y-m-d') : '' }}"
-                                data-field-extended_final_rpt_deadline="{{ $cycle->extended_final_rpt_deadline ? $cycle->extended_final_rpt_deadline->format('Y-m-d') : '' }}"
                                 data-field-description="{{ $cycle->description }}">
                                 <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                             </button>
@@ -184,12 +182,6 @@
                                 <input type="date" name="prog_rpt_deadline" id="cycleModal_prog_rpt_deadline" class="form-control">
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="form-group mb-3">
-                                <label for="cycleModal_extended_prog_rpt_deadline" class="form-label">Extended Prog. Report Deadline</label>
-                                <input type="date" name="extended_prog_rpt_deadline" id="cycleModal_extended_prog_rpt_deadline" class="form-control">
-                            </div>
-                        </div>
                     </div>
 
                     <div class="row">
@@ -197,12 +189,6 @@
                             <div class="form-group mb-3">
                                 <label for="cycleModal_final_rpt_deadline" class="form-label">Final Report Deadline</label>
                                 <input type="date" name="final_rpt_deadline" id="cycleModal_final_rpt_deadline" class="form-control">
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-group mb-3">
-                                <label for="cycleModal_extended_final_rpt_deadline" class="form-label">Extended Final Report Deadline</label>
-                                <input type="date" name="extended_final_rpt_deadline" id="cycleModal_extended_final_rpt_deadline" class="form-control">
                             </div>
                         </div>
                     </div>
@@ -313,9 +299,7 @@ $(document).ready(function() {
         $('#cycleModal_grant_id').val(data.fieldGrantId || '');
         $('#cycleModal_program_title').val(data.fieldProgramTitle || '');
         $('#cycleModal_prog_rpt_deadline').val(data.fieldProgRptDeadline || '');
-        $('#cycleModal_extended_prog_rpt_deadline').val(data.fieldExtendedProgRptDeadline || '');
         $('#cycleModal_final_rpt_deadline').val(data.fieldFinalRptDeadline || '');
-        $('#cycleModal_extended_final_rpt_deadline').val(data.fieldExtendedFinalRptDeadline || '');
         $('#cycleModal_description').val(data.fieldDescription || '');
         $('.is-invalid').removeClass('is-invalid');
         $('.invalid-feedback').remove();

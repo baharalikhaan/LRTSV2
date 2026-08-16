@@ -392,8 +392,37 @@
                 <textarea name="commentD" rows="2" class="ws-input" style="font-size:11px;" placeholder="comments upto 500 characters (optional)">{{ old('commentD', $fg->commentD ?? '') }}</textarea>
             </div>
 
-            {{-- Grade-only: no rejection for final report --}}
-            <input type="hidden" name="publish" value="accepted">
+            {{-- Section: Recommendation --}}
+            <div style="margin-bottom:20px;">
+                <label style="font-size:13px;font-weight:600;color:var(--ink-800);display:block;margin-bottom:10px;">Recommendation:</label>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                    <label style="flex:1;min-width:180px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;border:2px solid var(--ink-200);border-radius:8px;transition:all .15s;background:#fff;"
+                           onmouseover="this.style.borderColor='var(--success)'" onmouseout="this.style.borderColor=this.querySelector('input').checked?'var(--success)':'var(--ink-200)'">
+                        <input type="radio" name="publish" value="accepted" {{ (old('publish', $fg->publish ?? '') == 'accepted' || old('publish', $fg->publish ?? '') == '') ? 'checked' : '' }} style="accent-color:var(--success);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
+                        <div>
+                            <div style="font-weight:600;color:var(--ink-800);font-size:13px;">Accept</div>
+                            <div style="font-size:12px;color:var(--ink-500);margin-top:2px;">The final report meets expectations and the project is complete.</div>
+                        </div>
+                    </label>
+                    <label style="flex:1;min-width:180px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;border:2px solid var(--ink-200);border-radius:8px;transition:all .15s;background:#fff;"
+                           onmouseover="this.style.borderColor='var(--danger)'" onmouseout="this.style.borderColor=this.querySelector('input').checked?'var(--danger)':'var(--ink-200)'">
+                        <input type="radio" name="publish" value="rejected" {{ old('publish', $fg->publish ?? '') == 'rejected' ? 'checked' : '' }} style="accent-color:var(--danger);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
+                        <div>
+                            <div style="font-weight:600;color:var(--ink-800);font-size:13px;">Reject</div>
+                            <div style="font-size:12px;color:var(--ink-500);margin-top:2px;">The final report does not meet expectations and requires admin review.</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            {{-- Rejection Reason (required when rejecting) --}}
+            <div id="finalRejectionReason" style="margin-bottom:20px;display:none;">
+                <label style="font-size:13px;font-weight:600;color:var(--ink-800);display:block;margin-bottom:6px;">
+                    Rejection Reason <span style="color:var(--danger);">*</span>
+                </label>
+                <textarea name="rejection_reason" id="finalRejectionReasonInput" rows="3" maxlength="2000" class="ws-input"
+                    placeholder="Explain to the admin and LPI why this report is being rejected...">{{ old('rejection_reason', $fg->rejection_reason ?? ($latestRejectionReason ?? '')) }}</textarea>
+            </div>
 
             {{-- Hidden fields for score data --}}
             <input type="hidden" name="scoreA" class="ws-score-a" value="0">

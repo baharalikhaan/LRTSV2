@@ -151,7 +151,10 @@
         'Overview' => $overviewItems,
         $isAdmin ? 'Research Calls & Projects' : 'Projects' => [
             'programs'  => ['route' => 'programs.index', 'icon' => 'fa-solid fa-arrows-rotate', 'label' => 'Research Calls', 'can' => $isAdmin],
-            'projects' => ['route' => 'projects.available', 'icon' => 'fa-solid fa-diagram-project', 'label' => 'Projects', 'can' => true],
+            'projects-list' => ['route' => 'projects.available', 'icon' => 'fa-solid fa-diagram-project', 'label' => 'Projects', 'can' => true],
+            'reviewer-assignment' => ['route' => 'projects.reviewer-assignment', 'icon' => 'fa-solid fa-user-check', 'label' => 'Reviewer Assignment', 'can' => $isAdmin],
+            'extend-progress' => ['route' => 'projects.extend-progress', 'icon' => 'fa-solid fa-calendar-plus', 'label' => 'Extend Progress Report', 'can' => $isAdmin],
+            'admin-upload' => ['route' => 'admin-upload.index', 'icon' => 'fa-solid fa-cloud-arrow-up', 'label' => 'Upload Reports', 'can' => $isAdmin],
             'my-assignments' => ['route' => 'projects.my-assignments', 'icon' => 'fa-solid fa-check-double', 'label' => 'My Assignments', 'can' => false],
             'graded-projects' => ['route' => 'gradedProjects', 'icon' => 'fa-solid fa-star', 'label' => 'Graded Projects', 'can' => false],
         ],
@@ -159,7 +162,6 @@
             'users' => ['route' => 'users.index', 'icon' => 'fa-solid fa-users', 'label' => 'Users', 'can' => $isAdmin],
             'teams' => ['route' => 'teams.index', 'icon' => 'fa-solid fa-users-gear', 'label' => 'Team', 'can' => $isAdmin],
             'announcements' => ['route' => 'announcements.index', 'icon' => 'fa-solid fa-bullhorn', 'label' => 'Announcements', 'can' => $isAdmin],
-            'admin-upload' => ['route' => 'admin-upload.index', 'icon' => 'fa-solid fa-cloud-arrow-up', 'label' => 'Upload Reports', 'can' => $isAdmin],
             'budget-utilization' => ['route' => 'budget-utilization.index', 'icon' => 'fa-solid fa-coins', 'label' => 'Budget Utilization', 'can' => $isAdmin],
             'reviewer-grading' => ['route' => 'reviewer-grading.index', 'icon' => 'fa-solid fa-star', 'label' => 'Reviewer Grading', 'can' => $isAdmin],
             'send-email' => ['route' => 'admin.send-email', 'icon' => 'fa-solid fa-envelope', 'label' => 'Send Email', 'can' => $isAdmin],
@@ -168,7 +170,6 @@
         ],
         'Reports' => [
             'cycle-progress' => ['route' => 'reports.cycle-progress', 'icon' => 'fa-solid fa-chart-bar', 'label' => 'Research Call Summary', 'can' => $isAdmin],
-            'student-grant-summary' => ['route' => 'reports.student-grant-summary', 'icon' => 'fa-solid fa-user-graduate', 'label' => 'Student Grant Summary', 'can' => $isAdmin],
             'budget-utilization' => ['route' => 'reports.budget-utilization', 'icon' => 'fa-solid fa-coins', 'label' => 'Budget Utilization', 'can' => $isAdmin],
         ],
         'Configuration' => [

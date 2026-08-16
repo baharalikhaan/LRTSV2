@@ -69,13 +69,12 @@
             <thead>
                 <tr class="a4-group-header">
                     <th colspan="1" class="a4-group-project">Project Info</th>
-                    <th colspan="7" class="a4-group-lpi">LPI Student Project Form</th>
+                    <th colspan="6" class="a4-group-lpi">LPI Student Project Form</th>
                 </tr>
                 <tr>
                     <th class="a4-col-id">Project ID</th>
                     <th class="a4-col-center">Form Saved</th>
-                    <th class="a4-col-center">Qatari Students</th>
-                    <th class="a4-col-center">Non-Qatari Students</th>
+                    <th class="a4-col-center">Students</th>
                     <th class="a4-col-center">Engagement</th>
                     <th class="a4-col-center">Publications</th>
                     <th class="a4-col-center">Ethical Approval</th>
@@ -96,8 +95,7 @@
                             <i class="fas fa-times-circle a4-icon-no"></i>
                         @endif
                     </td>
-                    <td class="a4-cell-center">{{ $row['qatari_count'] }}</td>
-                    <td class="a4-cell-center">{{ $row['non_qatari_count'] }}</td>
+                    <td class="a4-cell-center">{{ $row['total_students'] }}</td>
                     <td class="a4-cell-center">
                         @if($row['has_engagement'])
                             <i class="fas fa-check-circle a4-icon-yes"></i>
@@ -135,7 +133,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="8" class="a4-cell-empty">No student grant projects found in this cycle.</td>
+                    <td colspan="7" class="a4-cell-empty">No student grant projects found in this research call.</td>
                 </tr>
                 @endforelse
             </tbody>
@@ -144,8 +142,7 @@
                 <tr class="a4-foot-summary">
                     <td class="a4-foot-label">Summary — Total: {{ $totalProjects }}</td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['form_saved']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['form_saved']['pending'] }}</div></td>
-                    <td class="a4-foot-cell"><div class="a4-foot-c" style="font-size:9px;">Total: {{ $footer['qatari_total'] }}</div></td>
-                    <td class="a4-foot-cell"><div class="a4-foot-c" style="font-size:9px;">Total: {{ $footer['non_qatari_total'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c" style="font-size:9px;">Total: {{ $footer['total_students'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['engagement']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['engagement']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['publications']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['publications']['pending'] }}</div></td>
                     <td class="a4-foot-cell"></td>
@@ -154,7 +151,7 @@
                 <tr class="a4-foot-email no-print-col">
                     <td class="a4-foot-label">Send Email Reminders</td>
                     <td class="a4-foot-cell">@if($footer['form_saved']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('form_saved')" data-column="form_saved"><i class="fas fa-envelope"></i> Send</button>@endif</td>
-                    <td class="a4-foot-cell" colspan="2">@if($footer['qatari_total'] == 0 && $footer['non_qatari_total'] == 0)<button class="btn-send-email" onclick="sendReminder('students')" data-column="students"><i class="fas fa-envelope"></i> Send</button>@endif</td>
+                    <td class="a4-foot-cell">@if($footer['total_students'] == 0)<button class="btn-send-email" onclick="sendReminder('students')" data-column="students"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['engagement']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('engagement')" data-column="engagement"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['publications']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('publications')" data-column="publications"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell"></td>
@@ -205,7 +202,7 @@
 .a4-data-table td{padding:3px 4px;vertical-align:middle;border:0.25px solid var(--ink-100,#eeedf0)}
 .a4-data-table tbody tr:nth-child(even){background:#fafafa}
 .a4-col-id{width:120px;text-align:left}
-.a4-col-center{width:100px;text-align:center}
+.a4-col-center{width:110px;text-align:center}
 .a4-cell-id{text-align:left;font-size:9px;line-height:1.3}
 .a4-cell-center{text-align:center;font-variant-numeric:tabular-nums}
 .a4-cell-empty{text-align:center;padding:16px;color:var(--ink-400,#8b8592)}

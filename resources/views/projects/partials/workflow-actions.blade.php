@@ -7,8 +7,6 @@
         @php
         $iconMap = [
             'progress'                  => 'fas fa-chart-line',
-            'progress-v2'               => 'fas fa-sync-alt',
-            'progress-ext-grade'        => 'fas fa-clipboard-check',
             'assign'                    => 'fas fa-user-tag',
             'unassign-reviewer'         => 'fas fa-user-minus',
             'accept-proposal'           => 'fas fa-check-circle',
@@ -17,12 +15,8 @@
             'graded'                    => 'fas fa-star',
             'report-card'               => 'fas fa-file-alt',
             'final-report'              => 'fas fa-paper-plane',
-            'enable-extended-progress'  => 'fas fa-clock',
-            'disable-extended-progress' => 'fas fa-ban',
-            'request-extended-progress' => 'fas fa-clock',
-            'approve-extended-progress' => 'fas fa-check-circle',
             'review-rejection'          => 'fas fa-balance-scale',
-            'review-ext-rejection'      => 'fas fa-balance-scale',
+            'open-grading'              => 'fas fa-clipboard-check',
         ];
             $actIcon = $iconMap[$act['action']] ?? 'fas fa-arrow-right';
             $actLabel = $act['label'] ?? ucfirst($act['action']);
@@ -48,7 +42,7 @@
             $hasUrl = !empty($act['url']);
         @endphp
 
-        @if(in_array($act['action'], ['progress', 'progress-v2']))
+        @if(in_array($act['action'], ['progress']))
             <a href="{{ route('progress.add', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}">
                 <i class="{{ $actIcon }}"></i> {{ $actLabel }}
             </a>
@@ -70,7 +64,7 @@
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'report-card', 'lg')">
                 <i class="{{ $actIcon }}"></i> {{ $actLabel }}
             </button>
-        @elseif(in_array($act['action'], ['progress-grade', 'progress-ext-grade', 'final-grade']))
+        @elseif(in_array($act['action'], ['progress-grade', 'final-grade']))
             <a href="{{ route('projects.grading', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" style="text-decoration:none;">
                 @if($act['action'] === 'progress-grade')
                     <i class="fas fa-star"></i>
@@ -78,6 +72,10 @@
                     <i class="fas fa-flag-checkered"></i>
                 @endif
                 {{ $actLabel }}
+            </a>
+        @elseif($act['action'] === 'open-grading')
+            <a href="{{ route('projects.grading', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" style="text-decoration:none;">
+                <i class="fas fa-clipboard-check"></i> {{ $actLabel }}
             </a>
         @elseif($act['action'] === 'final-report')
             <a href="{{ route('progress.final', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" style="text-decoration:none;">
@@ -87,30 +85,18 @@
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'accept-proposal')">
                 <i class="fas fa-check-circle"></i> {{ $actLabel }}
             </button>
-        @elseif($act['action'] === 'approve-extended-progress')
-            <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'approve-extended-progress')">
-                <i class="fas fa-check-circle"></i> {{ $actLabel }}
-            </button>
         @elseif($act['action'] === 'unassign-reviewer')
             <button type="button" class="btn-danger btn-sm" title="{{ $tooltip }}" onclick="confirmUnassignReviewer({{ $project->id ?? '' }})">
                 <i class="fas fa-user-minus"></i> {{ $actLabel }}
             </button>
-        @elseif($act['action'] === 'review-rejection')
+        @elseif($act['action'] === 'review-progress-rejection')
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'review-rejection', 'lg', 'report_type=progress')">
                 <i class="fas fa-balance-scale"></i> {{ $actLabel }}
             </button>
-        @elseif($act['action'] === 'review-ext-rejection')
-            <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'review-ext-rejection', 'lg', 'report_type=extended_progress')">
+        @elseif($act['action'] === 'review-final-rejection')
+            <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'review-rejection', 'lg', 'report_type=final')">
                 <i class="fas fa-balance-scale"></i> {{ $actLabel }}
             </button>
-        @elseif(in_array($act['action'], ['enable-extended-progress', 'disable-extended-progress']))
-            <form method="POST" action="{{ route('workflow.toggle-extended', $project->id ?? '') }}" style="display:inline;">
-                @csrf
-                <input type="hidden" name="enable" value="{{ $act['action'] === 'enable-extended-progress' ? '1' : '0' }}">
-                <button type="submit" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}">
-                    <i class="{{ $actIcon }}"></i> {{ $actLabel }}
-                </button>
-            </form>
         @else
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, '{{ $act['action'] }}')">
                 <i class="{{ $actIcon }}"></i> {{ $actLabel }}

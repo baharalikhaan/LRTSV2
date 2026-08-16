@@ -61,7 +61,7 @@ class RegisterWizardController extends Controller
      */
     public function registerPage($id)
     {
-        $confProject = Project::with('program.grant')->findOrFail($id);
+        $confProject = Project::with('program.grant', 'lpi')->findOrFail($id);
 
         if ($confProject->hasStatus(Project::STATUS_REGISTERED)) {
             return redirect()->back()->with('error', 'This project has already been registered.');

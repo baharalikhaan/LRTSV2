@@ -23,34 +23,110 @@
     // Pre-group outcomes by type for pre-filling the form
     $outcomeGroups = $outcomes->groupBy('type');
 
-    // Mode: 'progress' (Add/Update Progress) or 'final' (Add Final Report)
+    // Mode: 'progress' (Add/Update Progress), 'final' (Add Final Report), or 'update' (Unified)
     $mode = $mode ?? 'progress';
     $isFinalMode = $mode === 'final';
+    $isUpdateMode = $mode === 'update';
 
-    // Readonly once the progress report has been submitted (added) and not rejected.
-    // A rejection reopens the form so the LPI can resubmit (version 2).
+    // Readonly once the progress report has been submitted (file uploaded) and not rejected.
+    // Check file existence instead of status (buttons removed, files uploaded directly).
     $progressSubmitted = $project
-        && $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_ADDED)
+        && $submissions->where('type', 'progress')->count() > 0
         && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED);
 
-    // Final report submitted?
-    $finalSubmitted = $project && $project->hasStatus(\App\Models\Project::STATUS_FINAL_ADDED);
+    // Final report submitted? Check file existence instead of status.
+    $finalSubmitted = $project && $submissions->where('type', 'final')->count() > 0;
+
+    // Check if admin has sent back for resubmission (stays open until reviewer grades it)
+    $lastProgressRejReviewed = $project->statusHistories()->where('status', \App\Models\Project::STATUS_PROGRESS_REJ_REVIEWED)->latest()->first();
+    $progressResubmitRequested = $lastProgressRejReviewed
+        && ($lastProgressRejReviewed->metadata['action'] ?? null) === 'send_to_lpi'
+        && !$project->statusHistories()
+            ->whereIn('status', [\App\Models\Project::STATUS_PROGRESS_REVIEWED, \App\Models\Project::STATUS_PROGRESS_REJECTED])
+            ->where('created_at', '>', $lastProgressRejReviewed->created_at)
+            ->exists();
+
+    $lastProgressRejection = $project->statusHistories()->where('status', \App\Models\Project::STATUS_PROGRESS_REJECTED)->latest()->first();
+    $progressRejectionReason = $lastProgressRejection ? ($lastProgressRejection->metadata['comment'] ?? $lastProgressRejection->metadata['reason'] ?? null) : null;
+
+    $lastFinalRejReviewed = $project->statusHistories()->where('status', \App\Models\Project::STATUS_FINAL_REJ_REVIEWED)->latest()->first();
+    $finalResubmitRequested = $lastFinalRejReviewed
+        && ($lastFinalRejReviewed->metadata['action'] ?? null) === 'send_to_lpi'
+        && !$project->statusHistories()
+            ->whereIn('status', [\App\Models\Project::STATUS_GRADED, \App\Models\Project::STATUS_FINAL_REJECTED])
+            ->where('created_at', '>', $lastFinalRejReviewed->created_at)
+            ->exists();
+
+    $lastFinalRejection = $project->statusHistories()->where('status', \App\Models\Project::STATUS_FINAL_REJECTED)->latest()->first();
+    $finalRejectionReason = $lastFinalRejection ? ($lastFinalRejection->metadata['comment'] ?? $lastFinalRejection->metadata['reason'] ?? null) : null;
 
     // Which sections are locked:
-    //  - In final mode: progress sections are readonly (progress already reviewed).
-    //  - In progress mode: the Final Report section is readonly (not yet at that stage).
-    $progressLocked = $isFinalMode || $progressSubmitted;
-    $finalLocked = !$isFinalMode || $finalSubmitted;
+    //  - Progress: locked when the deadline passes — until then the LPI may
+    //    submit AND overwrite freely (UNLESS resubmission requested)
+    //  - Final: locked if deadline passed OR submitted (UNLESS resubmission requested)
+    $progressDeadlinePassed = false;
+    $finalDeadlinePassed = false;
+    if (isset($deadlines['progress'])) {
+        $progressDl = $deadlines['progress'];
+        $progressEffectiveDl = $progressDl['original'] ?? null;
+        $progressDeadlinePassed = $progressEffectiveDl ? now()->greaterThan($progressEffectiveDl) : true;
+    }
+    if (isset($deadlines['final'])) {
+        $finalDl = $deadlines['final'];
+        $finalEffectiveDl = $finalDl['original'] ?? null;
+        $finalDeadlinePassed = $finalEffectiveDl ? now()->greaterThan($finalEffectiveDl) : true;
+    }
+
+    // Lock only if NOT resubmission requested.
+    // Progress: gated ONLY by the deadline (submission alone does not lock);
+    // the LPI can re-upload/overwrite until the deadline arrives.
+    $progressLocked = !$progressResubmitRequested && $progressDeadlinePassed;
+    $finalLocked = !$finalResubmitRequested && $finalDeadlinePassed;
+    // Outcomes & Students stay open until the final report deadline arrives.
+    // They do NOT reopen during a final resubmission — only the final-report
+    // upload part re-opens (matches the server-side data lock).
+    $outcomesAndStaffLocked = $finalDeadlinePassed;
+
+    // Resubmission requests: admin reviewed rejection and sent back to LPI (open until reviewer grades)
+    $lastProgressRejReviewed = $project
+        ? $project->statusHistories()->where('status', \App\Models\Project::STATUS_PROGRESS_REJ_REVIEWED)->latest()->first()
+        : null;
+    $progressResubmitRequested = $lastProgressRejReviewed
+        && ($lastProgressRejReviewed->metadata['action'] ?? null) === 'send_to_lpi'
+        && !$project->statusHistories()
+            ->whereIn('status', [\App\Models\Project::STATUS_PROGRESS_REVIEWED, \App\Models\Project::STATUS_PROGRESS_REJECTED])
+            ->where('created_at', '>', $lastProgressRejReviewed->created_at)
+            ->exists();
+
+    $lastProgressRejection = $project
+        ? $project->statusHistories()->where('status', \App\Models\Project::STATUS_PROGRESS_REJECTED)->latest()->first()
+        : null;
+    $progressRejectionReason = $lastProgressRejection ? ($lastProgressRejection->metadata['comment'] ?? $lastProgressRejection->metadata['reason'] ?? null) : null;
+
+    $lastFinalRejReviewed = $project
+        ? $project->statusHistories()->where('status', \App\Models\Project::STATUS_FINAL_REJ_REVIEWED)->latest()->first()
+        : null;
+    $finalResubmitRequested = $lastFinalRejReviewed
+        && ($lastFinalRejReviewed->metadata['action'] ?? null) === 'send_to_lpi'
+        && !$project->statusHistories()
+            ->whereIn('status', [\App\Models\Project::STATUS_GRADED, \App\Models\Project::STATUS_FINAL_REJECTED])
+            ->where('created_at', '>', $lastFinalRejReviewed->created_at)
+            ->exists();
+
+    $lastFinalRejection = $project
+        ? $project->statusHistories()->where('status', \App\Models\Project::STATUS_FINAL_REJECTED)->latest()->first()
+        : null;
+    $finalRejectionReason = $lastFinalRejection ? ($lastFinalRejection->metadata['comment'] ?? $lastFinalRejection->metadata['reason'] ?? null) : null;
 @endphp
 
 @extends('layouts.app')
 
-@section('title', 'Progress Update — ' . ($project->title ?? 'Project'))
+@section('title', 'Update Progress — ' . ($project->title ?? 'Project'))
 
 @section('content')
 <div class="page-head">
     <div>
-        <h1><i class="fas {{ $isFinalMode ? 'fa-file-signature' : 'fa-chart-line' }}"></i> Progress Update</h1>
+        <h1><i class="fas fa-chart-line"></i> Update Progress</h1>
         <p>
             <span style="color:#8d1b3d; font-weight:600;">{{ $project->old_project_id }}</span>
             <span style="color:var(--ink-400); margin:0 6px;">·</span>
@@ -64,118 +140,89 @@
     </div>
 </div>
 
-{{-- Resubmission after rejection --}}
-@if($project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED))
-<div style="background:linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); border:1px solid var(--danger); border-radius:8px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:flex-start; gap:12px;">
-    <div style="width:36px; height:36px; border-radius:50%; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; margin-top:2px;">
-        <i class="fas fa-exclamation-triangle"></i>
-    </div>
-    <div>
-        <strong style="color:#991b1b; font-size:14px;">Progress Report Rejected — Resubmission Required</strong>
-        <p style="margin:4px 0 0 0; color:#7f1d1d; font-size:13px;">
-            The reviewer has requested changes to your progress report. Please review the comments,
-            make the necessary updates, and resubmit. This will be saved as version 2.
-        </p>
-    </div>
-</div>
-@endif
-
-@if($project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_REQUEST_REJECTED))
-<div style="background:linear-gradient(135deg, #fef2f2 0%, #fecaca 100%); border:1px solid var(--danger); border-radius:8px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:flex-start; gap:12px;">
-    <div style="width:36px; height:36px; border-radius:50%; background:var(--danger); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; margin-top:2px;">
-        <i class="fas fa-exclamation-triangle"></i>
-    </div>
-    <div>
-        <strong style="color:#991b1b; font-size:14px;">Extended Progress Request Not Approved</strong>
-        <p style="margin:4px 0 0 0; color:#7f1d1d; font-size:13px;">
-            Your request to upload an extended progress report was not approved by the admin.
-            Please contact the admin for more information.
-        </p>
-    </div>
-</div>
-@endif
-
-{{-- Research Call Inactive Banner --}}
-@if($project && $project->program && !$project->programIsActive())
-<div style="background:linear-gradient(135deg, #fbeef1 0%, #f3d2da 100%); border:1px solid var(--brand-200); border-radius:8px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:center; gap:12px;">
-    <div style="width:36px; height:36px; border-radius:50%; background:var(--brand-500); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">
-        <i class="fas fa-lock"></i>
-    </div>
-    <div>
-        <strong style="color:var(--brand-800); font-size:14px;">Research Call Inactive</strong>
-        <p style="margin:2px 0 0 0; color:var(--brand-700); font-size:13px;">
-            The research call <strong>{{ $project->program->program_title }}</strong> is no longer active.
-            Progress cannot be added to projects under this research call.
-        </p>
-    </div>
-</div>
-@endif
-
 {{-- ========== TABBED FORM ========== --}}
 <form id="mainProgressForm" action="{{ $isFinalMode ? route('progress.save-final', $project->id) : route('progress.save', $project->id) }}" method="POST" enctype="multipart/form-data">
     @csrf
 
-    @if($progressLocked)
+    {{-- Priority 1: Resubmission requested (show first) --}}
+    @if($progressResubmitRequested)
+    <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:14px 18px; margin-bottom:16px;">
+        <p style="margin:0; color:#9a3412; font-size:13px; font-style:italic;">
+            <strong>Progress Resubmission Requested</strong> — The reviewer rejected your progress report. Please review the concerns below and upload a revised version.
+        </p>
+        @if($lastProgressRejReviewed->metadata['admin_message'] ?? null)
+        <p style="margin:6px 0 0; color:#78350f; font-size:12px;">
+            <strong>Admin message:</strong> {{ $lastProgressRejReviewed->metadata['admin_message'] }}
+        </p>
+        @endif
+        @if($progressRejectionReason)
+        <p style="margin:6px 0 0; color:#9a3412; font-size:12px;">
+            <strong>Reviewer's rejection reason:</strong> {{ $progressRejectionReason }}
+        </p>
+        @endif
+    </div>
+    @elseif($finalResubmitRequested)
+    <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:14px 18px; margin-bottom:16px;">
+        <p style="margin:0; color:#9a3412; font-size:13px; font-style:italic;">
+            <strong>Final Report Resubmission Requested</strong> — The reviewer rejected your final report. Please review the concerns below and upload a revised version.
+        </p>
+        @if($lastFinalRejReviewed->metadata['admin_message'] ?? null)
+        <p style="margin:6px 0 0; color:#78350f; font-size:12px;">
+            <strong>Admin message:</strong> {{ $lastFinalRejReviewed->metadata['admin_message'] }}
+        </p>
+        @endif
+        @if($finalRejectionReason)
+        <p style="margin:6px 0 0; color:#9a3412; font-size:12px;">
+            <strong>Reviewer's rejection reason:</strong> {{ $finalRejectionReason }}
+        </p>
+        @endif
+    </div>
+    {{-- Priority 2: Deadline messages --}}
+    @elseif($finalDeadlinePassed)
+    <div style="background:#fef2f2; border:1px solid var(--danger); border-radius:8px; padding:14px 18px; margin-bottom:16px;">
+        <p style="margin:0; color:#991b1b; font-size:13px; font-style:italic;">
+            <strong>Final Report Deadline Passed</strong> — The deadline has passed. Outcomes, Students & Researchers, Final Report, and Readiness Report are now readonly.
+        </p>
+    </div>
+    @elseif($progressDeadlinePassed)
     <div style="background:#eef6fd; border:1px solid #a8cbe8; border-radius:8px; padding:14px 18px; margin-bottom:16px;">
         <p style="margin:0; color:#1d6fb8; font-size:13px; font-style:italic;">
-            <strong>Final Report Submission</strong> — Upload the Readiness Report and Final Report. The progress report data below is readonly — it was already submitted and reviewed.
+            <strong>Progress Report Deadline Passed</strong> — The progress report upload is now closed. You can still update Outcomes and Students & Researchers.
+        </p>
+    </div>
+    @elseif($progressSubmitted)
+    <div style="background:#eef6fd; border:1px solid #a8cbe8; border-radius:8px; padding:14px 18px; margin-bottom:16px;">
+        <p style="margin:0; color:#1d6fb8; font-size:13px; font-style:italic;">
+            <strong>Progress Report Submitted</strong> — Your progress report has been submitted. You may still re-upload an updated version until the progress report deadline arrives.
         </p>
     </div>
     @endif
 
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- TAB HEADER (Fluent-style) --}}
+    {{-- TAB HEADER --}}
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
     <div class="ws-tabs" role="tablist">
-        <button type="button" class="ws-tab active" role="tab" data-tab="tab-progress-update" onclick="switchTab('tab-progress-update', this)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
-            Progress Update
+        <button type="button" class="ws-tab active" role="tab" data-tab="tab-outcomes" onclick="switchTab('tab-outcomes', this)">
+            <i class="fas fa-trophy" style="font-size:12px;"></i> Outcomes
         </button>
-        @if($isFinalMode)
-        <button type="button" class="ws-tab" role="tab" data-tab="tab-final" onclick="switchTab('tab-final', this)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
-            Final Report
+        <button type="button" class="ws-tab" role="tab" data-tab="tab-staff" onclick="switchTab('tab-staff', this)">
+            <i class="fas fa-users" style="font-size:12px;"></i> Students & Researchers
         </button>
-        @endif
+        <button type="button" class="ws-tab" role="tab" data-tab="tab-progress-report" onclick="switchTab('tab-progress-report', this)">
+            <i class="fas fa-chart-line" style="font-size:12px;"></i> Progress Report
+        </button>
+        <button type="button" class="ws-tab" role="tab" data-tab="tab-final-report" onclick="switchTab('tab-final-report', this)">
+            <i class="fas fa-file-signature" style="font-size:12px;"></i> Final Report
+        </button>
     </div>
 
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- TAB: PROGRESS UPDATE (merged: Outcomes + Personnel + Report Submission) --}}
+    {{-- TAB: OUTCOMES (Scholarly Articles + Intellectual Property) --}}
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    <div id="tab-progress-update" class="ws-tab-panel" role="tabpanel">
-    <div class="ws-stepper">
-        <button type="button" class="ws-stepper-step is-active" data-step="0">
-            <span class="ws-stepper-dot"><span class="ws-stepper-num">1</span></span>
-            <span class="ws-stepper-text">Project Outcomes</span>
-        </button>
-        <span class="ws-stepper-connector"></span>
-        <button type="button" class="ws-stepper-step" data-step="1">
-            <span class="ws-stepper-dot"><span class="ws-stepper-num">2</span></span>
-            <span class="ws-stepper-text">Students &amp; Personnel</span>
-        </button>
-        <span class="ws-stepper-connector"></span>
-        <button type="button" class="ws-stepper-step" data-step="2">
-            <span class="ws-stepper-dot"><span class="ws-stepper-num">3</span></span>
-            <span class="ws-stepper-text">Report Submission</span>
-        </button>
-        @if(!$progressLocked)
-        <span class="ws-stepper-connector"></span>
-        <button type="button" class="ws-stepper-step" data-step="3">
-            <span class="ws-stepper-dot"><span class="ws-stepper-num">4</span></span>
-            <span class="ws-stepper-text">Save &amp; Submit</span>
-        </button>
-        @endif
-    </div>
-
-        {{-- ══════════ SECTION 1: PROJECT OUTCOMES ══════════ --}}
-<div class="ws-section-block" data-step="0">
-
-            {{-- BOTH SECTIONS IN A SINGLE ROW (two columns) --}}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
-
-                {{-- ── SUBSECTION: SCHOLARLY ARTICLES ── --}}
-                <div>
-                    <h2 class="ws-section-title">Scholarly Articles</h2>
+    <div id="tab-outcomes" class="ws-tab-panel" role="tabpanel">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+        <div class="ws-section-block">
+            <h2 class="ws-section-title">Scholarly Articles</h2>
 
                     @php
                         $scholarlyTypes = [
@@ -192,7 +239,7 @@
                         $scholarlyOutcomes = $outcomes->filter(function($o) use ($contribTypeKeys) { return !in_array($o->type, $contribTypeKeys); });
                     @endphp
 
-                @if($progressLocked)
+                @if($outcomesAndStaffLocked)
                 {{-- READONLY TABLE VIEW --}}
                 <div class="ws-card" style="padding:16px 18px;">
                     @if($scholarlyOutcomes->count() > 0)
@@ -466,11 +513,10 @@
                     </div>
                 </div>
                 @endif
-            </div>
+        </div>
 
-            {{-- ── SUBSECTION: INTELLECTUAL PROPERTY ── --}}
-            <div>
-                <h2 class="ws-section-title">Intellectual Property</h2>
+        <div class="ws-section-block">
+            <h2 class="ws-section-title">Intellectual Property</h2>
 
                 @php
                     $ipTypes = [
@@ -483,7 +529,7 @@
                     $ipOutcomes = $outcomes->whereIn('type', array_keys($ipTypes));
                 @endphp
 
-                @if($progressLocked)
+                @if($outcomesAndStaffLocked)
                 {{-- READONLY TABLE VIEW --}}
                 <div class="ws-card" style="padding:16px 18px;">
                     @if($ipOutcomes->count() > 0)
@@ -551,16 +597,14 @@
         </div>
     </div>
 
-        {{-- ══════════ SECTION 2: STUDENTS & PERSONNEL ══════════ --}}
+    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
+    {{-- TAB: STUDENTS & RESEARCHERS --}}
+    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
+    <div id="tab-staff" class="ws-tab-panel" style="display:none;" role="tabpanel">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
         <div class="ws-section-block">
-
-            {{-- ── STUDENTS FORM (50% width) + HIRED RESEARCHERS (50% width) ── --}}
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
-
-            {{-- ── SUBSECTION: STUDENTS ── --}}
-            <div class="ws-card" style="padding:16px 18px;">
-                <h2 class="ws-section-title">Students</h2>
-                @if($progressLocked)
+            <h2 class="ws-section-title">Students</h2>
+                @if($outcomesAndStaffLocked)
                 {{-- READONLY TABLE VIEW --}}
                 @if($projectStudents->count() > 0)
                 <table class="ws-table">
@@ -709,12 +753,11 @@
                     @endif
                 </div>
                 @endif
-            </div>
+        </div>
 
-            {{-- ── SUBSECTION: HIRED RESEARCHERS ── --}}
-            <div class="ws-card" data-student-type="hired_researcher" style="padding:16px 18px;">
-                <h2 class="ws-section-title">Hired Researchers</h2>
-                @if($progressLocked)
+        <div class="ws-section-block">
+            <h2 class="ws-section-title">Hired Researchers</h2>
+                @if($outcomesAndStaffLocked)
                 {{-- READONLY TABLE VIEW --}}
                 @if($projectResearchers->count() > 0)
                 <table class="ws-table">
@@ -783,7 +826,7 @@
             <div class="ws-card" style="padding:14px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid var(--ink-100);padding-bottom:8px;">
                     <span style="font-size:12px;font-weight:600;color:var(--brand-600);line-height:1.3;">Cross-College Participation</span>
-                    @if($progressLocked)
+                    @if($outcomesAndStaffLocked)
                     <span class="ws-pill {{ $crossCollegeValue === 'Yes' ? 'ws-pill-success' : 'ws-pill-ink' }}">{{ $crossCollegeValue }}</span>
                     @else
                     <label class="ws-toggle" style="flex-shrink:0;">
@@ -796,7 +839,7 @@
                     </label>
                     @endif
                 </div>
-                @if($progressLocked)
+                @if($outcomesAndStaffLocked)
                 @if($crossCollegeValue === 'Yes' && $crossCollegeDetails)
                 <p style="font-size:12px;color:var(--ink-700);margin:0;line-height:1.5;">{{ $crossCollegeDetails }}</p>
                 @else
@@ -812,7 +855,7 @@
             <div class="ws-card" style="padding:14px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;border-bottom:1px solid var(--ink-100);padding-bottom:8px;">
                     <span style="font-size:12px;font-weight:600;color:var(--brand-600);line-height:1.3;">Research Awards</span>
-                    @if($progressLocked)
+                    @if($outcomesAndStaffLocked)
                     <span class="ws-pill {{ $researchAwardsValue === 'Yes' ? 'ws-pill-success' : 'ws-pill-ink' }}">{{ $researchAwardsValue }}</span>
                     @else
                     <label class="ws-toggle" style="flex-shrink:0;">
@@ -825,7 +868,7 @@
                     </label>
                     @endif
                 </div>
-                @if($progressLocked)
+                @if($outcomesAndStaffLocked)
                 @if($researchAwardsValue === 'Yes' && $researchAwardsDetails)
                 <p style="font-size:12px;color:var(--ink-700);margin:0;line-height:1.5;">{{ $researchAwardsDetails }}</p>
                 @else
@@ -838,489 +881,207 @@
                 @endif
             </div>
         </div>
-        </div>
-
-        {{-- ══════════ SECTION 3: REPORT SUBMISSION ══════════ --}}
-        <div class="ws-section-block">
-
-                @php
-                    $reportTypes = [
-                        'progress' => ['label' => 'Progress Report', 'color' => 'var(--brand-50)', 'icon' => 'var(--brand-600)'],
-                    ];
-                @endphp
-
-                <div id="ws-upload-grid" style="display:grid;grid-template-columns:repeat(1,1fr);gap:16px;max-width:420px;">
-                    @foreach($reportTypes as $rType => $rInfo)
-@php
-    $isEdit = false;
-    $rLatest = null;
-    if ($rType === 'progress') $rLatest = $progressSub ?? null;
-    $dl = $deadlines[$rType] ?? [];
-    $effectiveDeadline = isset($dl['extended']) ? $dl['extended'] : ($dl['original'] ?? null);
-    $deadlinePassed = $effectiveDeadline ? now()->greaterThan($effectiveDeadline) : false;
-@endphp
-                    <div class="ws-upload-card {{ $deadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="{{ $rType }}" data-deadline-passed="{{ $deadlinePassed ? '1' : '0' }}">
-                        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
-                            <div class="ws-upload-card-icon" style="background:{{ $rInfo['color'] }};color:{{ $rInfo['icon'] }};">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            </div>
-                            <div style="flex:1;">
-                                <strong style="font-size:13px;">{{ $rInfo['label'] }}</strong>
-                                @if($effectiveDeadline)
-                                    <div style="font-size:11px;color:{{ $deadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};display:flex;align-items:center;gap:6px;">
-                                        @if($deadlinePassed)
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                        @endif
-                                        Deadline: {{ $effectiveDeadline->format('M d, Y') }}
-                                        @if($deadlinePassed)
-                                            <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--danger);">Passed</span>
-                                        @endif
-                                    </div>
-                                @endif
-                            </div>
-                        </div>
-
-                        {{-- Current file (single, replaceable) --}}
-                        <div class="ws-current-file" data-type="{{ $rType }}" style="border:1px solid var(--ink-100);border-radius:6px;padding:6px 8px;margin-bottom:8px;min-height:30px;background:var(--sand-50);">
-                            @if($rLatest)
-                                <div class="ws-file-row" data-id="{{ $rLatest->id }}" style="display:flex;align-items:center;gap:8px;padding:4px 0;">
-                                    <a href="{{ route('serveFile2', ['type' => $rType, 'id' => $project->id]) }}" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-                                        {{ $rLatest->stored_filename }}
-                                    </a>
-                                    <span style="font-size:10px;color:var(--ink-400);">{{ $rLatest->created_at->format('M d, Y H:i') }}</span>
-                                    @if(!$progressLocked)
-                                    <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $rLatest->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete file">
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                    </button>
-                                    @endif
-                                </div>
-                            @else
-                                <p style="font-size:12px;color:var(--ink-400);margin:8px 0;text-align:center;">No file uploaded yet.</p>
-                            @endif
-                        </div>
-
-                        @if($deadlinePassed || $progressLocked)
-                            <div style="text-align:center;padding:10px 0;border-top:1px solid var(--ink-100);margin-top:4px;">
-                                <span style="font-size:11px;color:var(--ink-400);font-weight:500;">
-                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                    {{ $progressLocked ? 'Readonly — already submitted' : 'Deadline passed — upload closed' }}
-                                </span>
-                            </div>
-                        @else
-                            <input type="file" class="ws-file-input" accept=".pdf">
-                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-upload-btn" style="cursor:pointer;width:100%;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                {{ $rLatest ? 'Re-Upload' : 'Upload' }}
-                            </button>
-                            <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
-                            <a href="{{ route('download.template', 'progress') }}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--brand-500);margin-top:6px;text-decoration:none;font-weight:500;">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Download Template (DOCX)
-                            </a>
-                        @endif
-
-                        {{-- No separate submit — saving the form submits the progress report --}}
-                        <div class="ws-submit-row" data-type="{{ $rType }}" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--ink-100);">
-                            @if($rLatest)
-                                <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-400);margin-bottom:6px;">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                                    {{ $isFinalMode ? 'Progress report already submitted.' : 'File uploaded — will be submitted when you click Save.' }}
-                                </div>
-                            @else
-                                <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-400);margin-bottom:6px;">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                                    {{ $isFinalMode ? 'No progress report file uploaded.' : 'Upload the progress report PDF above, then save to submit.' }}
-                                </div>
-                            @endif
-                        </div>
-                    </div>
-                    @endforeach
-                </div>
-
-                {{-- Extended Progress Request Section --}}
-                @php
-                    $hasProgressReviewed = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REVIEWED);
-                    $hasExtRequested = $project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_REQUESTED);
-                    $hasExtApproved = $project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_APPROVED);
-                    $hasExtRequestRejected = $project->hasStatus(\App\Models\Project::STATUS_EXT_PROGRESS_REQUEST_REJECTED);
-                    $hasProgressExtended = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_EXTENDED);
-                    $hasFinalAdded = $project->hasStatus(\App\Models\Project::STATUS_FINAL_ADDED);
-                    $hasGraded = $project->hasStatus(\App\Models\Project::STATUS_GRADED);
-
-                    $canRequestExtended = $hasProgressReviewed && !$hasExtRequested && !$hasExtApproved && !$hasExtRequestRejected
-                                          && !$hasProgressExtended && !$hasFinalAdded && !$hasGraded;
-                    $isPendingApproval = $hasExtRequested && !$hasExtApproved && !$hasExtRequestRejected
-                                         && !$hasProgressExtended;
-                    $wasRejected = $hasExtRequestRejected && !$hasExtApproved && !$hasProgressExtended;
-                @endphp
-
-                @if($canRequestExtended || $isPendingApproval || $wasRejected)
-                <div style="margin-top:16px;border-top:1px solid var(--ink-100);padding-top:16px;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                        <span style="font-size:11px;font-weight:700;color:var(--brand-600);text-transform:uppercase;letter-spacing:.04em;">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M12 8v4"/><path d="M12 16h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-                            Extended Progress Report (Optional)
-                        </span>
-                    </div>
-
-                    @if($canRequestExtended)
-                        <div style="padding:16px;background:var(--sand-50);border-radius:8px;border:1px dashed var(--ink-200);">
-                            <p style="margin:0 0 12px 0;color:var(--ink-500);font-size:13px;">
-                                Need more time to complete your progress report? You can request an extended progress report. This will require admin approval before you can upload.
-                            </p>
-                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm"
-                                    onclick="requestExtendedProgress({{ $project->id }})"
-                                    style="display:inline-flex;align-items:center;gap:6px;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                                Request Extended Progress
-                            </button>
-                        </div>
-                    @elseif($isPendingApproval)
-                        <div style="padding:16px;background:#fff8e1;border-radius:8px;border:1px solid #ffc107;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f57c00" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                                <p style="margin:0;color:#e65100;font-size:13px;">
-                                    <strong>Extended progress request is pending admin approval.</strong><br>
-                                    <span style="font-size:12px;">You will be notified once the admin reviews your request.</span>
-                                </p>
-                            </div>
-                        </div>
-                    @elseif($wasRejected)
-                        <div style="padding:16px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                <p style="margin:0;color:var(--danger);font-size:13px;">
-                                    <strong>Your extended progress request was not approved.</strong><br>
-                                    <span style="font-size:12px;">Please contact the admin for more information.</span>
-                                </p>
-                            </div>
-                        </div>
-                    @endif
-                </div>
-                @endif
-
-                {{-- Extended Progress Report Upload --}}
-                @if($project->is_extended && !$progressLocked)
-                @php
-                    $progressExtSub = $submissions->where('type', 'progress')->where('version', '>=', 2)->last();
-                    $progressExtDl = $deadlines['readiness'] ?? [];
-                    $progressExtEffectiveDeadline = isset($progressExtDl['extended']) ? $progressExtDl['extended'] : ($progressExtDl['original'] ?? null);
-                    $progressExtDeadlinePassed = $progressExtEffectiveDeadline ? now()->greaterThan($progressExtEffectiveDeadline) : false;
-                @endphp
-                <div style="margin-top:16px;border-top:1px solid var(--ink-100);padding-top:16px;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-                        <span style="font-size:11px;font-weight:700;color:var(--brand-600);text-transform:uppercase;letter-spacing:.04em;">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M12 8v4"/><path d="M12 16h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-                            Extended Progress Report
-                        </span>
-                    </div>
-
-                    <div class="ws-upload-card {{ $progressExtDeadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress_extended">
-                        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;">
-                            <div class="ws-upload-card-icon" style="background:var(--brand-100);color:var(--brand-600);">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            </div>
-                            <div style="flex:1;">
-                                <strong style="font-size:13px;">Extended Progress Report (V2)</strong>
-                                @if($progressExtEffectiveDeadline)
-                                    <div style="font-size:11px;color:{{ $progressExtDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};display:flex;align-items:center;gap:6px;">
-                                        @if($progressExtDeadlinePassed)
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                        @endif
-                                        Deadline: {{ $progressExtEffectiveDeadline->format('M d, Y') }}
-                                    </div>
-                                @endif
-                            </div>
-                        </div>
-
-                        <div class="ws-current-file" data-type="progress_extended" style="border:1px solid var(--ink-100);border-radius:6px;padding:8px;margin-bottom:8px;min-height:30px;background:var(--sand-50);">
-                            @if($progressExtSub)
-                                <div class="ws-file-row" data-id="{{ $progressExtSub->id }}" style="display:flex;align-items:center;gap:8px;">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-                                    <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">{{ $progressExtSub->stored_filename }}</a>
-                                    <span style="font-size:10px;color:var(--ink-400);">v{{ $progressExtSub->version }}</span>
-                                    <span style="font-size:10px;color:var(--ink-400);">{{ $progressExtSub->created_at->format('M d, Y H:i') }}</span>
-                                    @if(!$finalLocked)
-                                    <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $progressExtSub->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete">
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                    </button>
-                                    @endif
-                                </div>
-                            @else
-                                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No file uploaded yet.</p>
-                            @endif
-                        </div>
-
-                        @if(!$progressExtDeadlinePassed && !$finalLocked)
-                            <input type="file" class="ws-file-input" accept=".pdf">
-                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-upload-btn" style="width:100%;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                {{ $progressExtSub ? 'Re-Upload' : 'Upload Extended Report' }}
-                            </button>
-                            <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
-                        @endif
-                    </div>
-                </div>
-                @endif
-        </div>
-
-        @if(!$progressLocked)
-        <div class="ws-section-block" data-step="3" style="display:none;">
-            <div class="ws-card" style="max-width:680px;margin:0 auto;padding:28px 32px;">
-                <div style="text-align:center;margin-bottom:20px;">
-                    <div style="width:52px;height:52px;border-radius:12px;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                    </div>
-                    <h3 style="font-size:18px;font-weight:600;color:var(--ink-800);margin:0 0 6px;">Ready to Submit?</h3>
-                </div>
-
-                <div style="border:1px solid var(--ink-100);border-radius:8px;padding:16px 18px;background:var(--sand-50);margin-bottom:20px;">
-                    <div style="display:flex;align-items:flex-start;gap:12px;">
-                        <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 16h-1v-4h-1m1-4h.01"/><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                        </div>
-                        <div>
-                            <strong style="font-size:13.5px;color:var(--ink-800);">Before you submit, please note:</strong>
-                            <ul style="font-size:12.5px;color:var(--ink-500);margin:6px 0 0;padding-left:18px;line-height:1.8;">
-                                <li>Please review all your information before submitting. Once submitted, you will not be able to make changes.</li>
-                                <li>After the progress report deadline, the data and report will be <strong>submitted automatically to the reviewer</strong>.</li>
-                                @php
-                                    $progressDl = $deadlines['progress'] ?? [];
-                                    $effectiveProgressDl = isset($progressDl['extended']) ? $progressDl['extended'] : ($progressDl['original'] ?? null);
-                                @endphp
-                                @if($effectiveProgressDl)
-                                    <li>Current deadline: <strong>{{ $effectiveProgressDl->format('M d, Y') }}</strong></li>
-                                @endif
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="text-align:center;">
-                    <button type="submit" class="ws-btn ws-btn-primary ws-btn-lg" style="padding:12px 32px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:var(--brand-500, #6c4cf1);color:#fff;display:inline-flex;align-items:center;gap:8px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                        Save & Submit Progress
-                    </button>
-                    <p style="font-size:11.5px;color:var(--ink-400);margin-top:12px;font-style:italic;">
-                        Your progress report will be sent to the assigned reviewer.
-                    </p>
-                </div>
-            </div>
-        </div>
-        @endif
-
     </div>
 
-    @if($isFinalMode)
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    {{-- FINAL REPORT TAB (final mode only) — stepper with 3 steps --}}
+    {{-- TAB: PROGRESS REPORT --}}
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
-    <div id="tab-final" class="ws-tab-panel" style="display:none;" role="tabpanel">
-
-        {{-- Final Report Stepper --}}
-        <div class="ws-stepper" style="margin-bottom:20px;">
-            <button type="button" class="ws-stepper-step is-active" data-step="0" onclick="finalGoStep(0)">
-                <span class="ws-stepper-dot"><span class="ws-stepper-num">1</span></span>
-                <span class="ws-stepper-text">Final Report</span>
-            </button>
-            <span class="ws-stepper-connector"></span>
-            <button type="button" class="ws-stepper-step" data-step="1" onclick="finalGoStep(1)">
-                <span class="ws-stepper-dot"><span class="ws-stepper-num">2</span></span>
-                <span class="ws-stepper-text">Readiness Report</span>
-            </button>
-            <span class="ws-stepper-connector"></span>
-            <button type="button" class="ws-stepper-step" data-step="2" onclick="finalGoStep(2)">
-                <span class="ws-stepper-dot"><span class="ws-stepper-num">3</span></span>
-                <span class="ws-stepper-text">Confirm &amp; Submit</span>
-            </button>
-        </div>
-
+    <div id="tab-progress-report" class="ws-tab-panel" style="display:none;" role="tabpanel">
         @php
-            $finalDl = $deadlines['final'] ?? [];
-            $finalEffectiveDeadline = isset($finalDl['extended']) ? $finalDl['extended'] : ($finalDl['original'] ?? null);
-            $finalDeadlinePassed = $finalEffectiveDeadline ? now()->greaterThan($finalEffectiveDeadline) : false;
-
-            $readinessDl = $deadlines['readiness'] ?? [];
-            $readinessEffectiveDeadline = isset($readinessDl['extended']) ? $readinessDl['extended'] : ($readinessDl['original'] ?? null);
-            $readinessDeadlinePassed = $readinessEffectiveDeadline ? now()->greaterThan($readinessEffectiveDeadline) : false;
-
-            $finalLatest = $submissions->where('type', 'final')->last();
-            $readinessLatest = $submissions->where('type', 'readiness')->last();
+            $progressLatest = $progressSub ?? null;
+            $progressDl = $deadlines['progress'] ?? [];
+            $progressEffectiveDeadline = $progressDl['original'] ?? null;
+            $progressDeadlinePassed = $progressEffectiveDeadline ? now()->greaterThan($progressEffectiveDeadline) : true;
         @endphp
 
-        {{-- ── STEP 1: Final Report Upload ── --}}
-        <div class="final-step" data-step="0">
-            <div class="ws-card" style="max-width:680px;margin:0 auto;">
-                <div class="ws-card-header">
-                    <span class="ws-card-title">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        Final Report
-                    </span>
+        <div class="ws-card" style="max-width:480px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--ink-100);">
+                <div style="width:36px;height:36px;border-radius:8px;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 </div>
-                <div class="ws-card-body">
-                    @if($finalEffectiveDeadline)
-                        <div style="font-size:11px;color:{{ $finalDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};margin-bottom:12px;display:flex;align-items:center;gap:6px;">
-                            @if($finalDeadlinePassed)
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                Deadline Passed
-                            @else
-                                Deadline: {{ $finalEffectiveDeadline->format('M d, Y') }}
-                            @endif
+                <div>
+                    <strong style="font-size:13px;color:var(--ink-800);">Progress Report</strong>
+                    @if($progressEffectiveDeadline)
+                        <div style="font-size:11px;color:{{ $progressDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};">
+                            Deadline: {{ $progressEffectiveDeadline->format('M d, Y') }}
+                            @if($progressDeadlinePassed) <span style="font-weight:600;">(Passed)</span> @endif
                         </div>
                     @endif
-
-                    <div class="ws-upload-card {{ $finalDeadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="final">
-                        <div class="ws-current-file" data-type="final" style="border:1px solid var(--ink-100);border-radius:6px;padding:8px;margin-bottom:8px;min-height:30px;background:var(--sand-50);">
-                            @if($finalLatest)
-                                <div class="ws-file-row" data-id="{{ $finalLatest->id }}" style="display:flex;align-items:center;gap:8px;">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-                                    <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id]) }}" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">{{ $finalLatest->stored_filename }}</a>
-                                    <span style="font-size:10px;color:var(--ink-400);">{{ $finalLatest->created_at->format('M d, Y H:i') }}</span>
-                                    @if(!$finalLocked)
-                                    <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $finalLatest->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete">
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                    </button>
-                                    @endif
-                                </div>
-                            @else
-                                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No file uploaded yet.</p>
-                            @endif
-                        </div>
-                        @if(!$finalLocked && !$finalDeadlinePassed)
-                            <input type="file" class="ws-file-input" accept=".pdf">
-                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-upload-btn" style="width:100%;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                {{ $finalLatest ? 'Re-Upload' : 'Upload Final Report' }}
-                            </button>
-                            <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
-                            <a href="{{ route('download.template', 'final') }}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--brand-500);margin-top:6px;text-decoration:none;font-weight:500;">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Download Template (DOCX)
-                            </a>
-                        @elseif($finalLocked)
-                            <div style="text-align:center;padding:8px 0;color:var(--ink-400);font-size:11px;">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                Readonly — already submitted
-                            </div>
-                        @endif
-                    </div>
                 </div>
             </div>
-        </div>
 
-        {{-- ── STEP 2: Readiness Report Upload ── --}}
-        <div class="final-step" data-step="1" style="display:none;">
-            <div class="ws-card" style="max-width:680px;margin:0 auto;">
-                <div class="ws-card-header">
-                    <span class="ws-card-title">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        Readiness Report
-                    </span>
-                </div>
-                <div class="ws-card-body">
-                    @if($readinessEffectiveDeadline)
-                        <div style="font-size:11px;color:{{ $readinessDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};margin-bottom:12px;display:flex;align-items:center;gap:6px;">
-                            @if($readinessDeadlinePassed)
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                                Deadline Passed
-                            @else
-                                Deadline: {{ $readinessEffectiveDeadline->format('M d, Y') }}
+<div class="ws-upload-card {{ ($progressDeadlinePassed || $progressLocked) && !$progressResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress" data-versioned="{{ $progressResubmitRequested ? '1' : '0' }}" data-can-delete="{{ $progressResubmitRequested || !$progressDeadlinePassed ? '1' : '0' }}">
+                <div class="ws-current-file" data-type="progress">
+                    @php
+                        $progressVersions = $submissions->where('type', 'progress')->sortBy('version');
+                        $progressNextVersion = $progressResubmitRequested ? 2 : (($progressVersions->max('version') ?? 0) + 1);
+                    @endphp
+                    @if($progressVersions->count() > 0)
+                        @foreach($progressVersions as $pv)
+                        <div class="ws-file-row" data-id="{{ $pv->id }}" style="margin-bottom:4px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id, 'submission_id' => $pv->id]) }}" target="_blank" class="ws-file-link">{{ $pv->stored_filename }}</a>
+                            <span class="ws-file-version" style="font-size:10px;font-weight:600;color:{{ $loop->last ? 'var(--success)' : 'var(--ink-400)' }};background:{{ $loop->last ? '#d1fae5' : 'var(--ink-50)' }};padding:1px 6px;border-radius:4px;">v{{ $pv->version }}</span>
+                            <span class="ws-file-date">{{ $pv->created_at->format('M d, Y H:i') }}</span>
+                            @if(($pv->version == 1 && !$progressDeadlinePassed) || ($pv->version == 2 && $progressResubmitRequested))
+                            <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $pv->id }}" title="Delete">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
                             @endif
                         </div>
+                        @endforeach
+@else
+                        <div class="ws-file-empty">No file uploaded yet.</div>
                     @endif
-
-                    <div class="ws-upload-card {{ $readinessDeadlinePassed ? 'ws-upload-card--deadline-passed' : '' }}" data-type="readiness">
-                        <div class="ws-current-file" data-type="readiness" style="border:1px solid var(--ink-100);border-radius:6px;padding:8px;margin-bottom:8px;min-height:30px;background:var(--sand-50);">
-                            @if($readinessLatest)
-                                <div class="ws-file-row" data-id="{{ $readinessLatest->id }}" style="display:flex;align-items:center;gap:8px;">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
-                                    <a href="{{ route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">{{ $readinessLatest->stored_filename }}</a>
-                                    <span style="font-size:10px;color:var(--ink-400);">{{ $readinessLatest->created_at->format('M d, Y H:i') }}</span>
-                                    @if(!$finalLocked)
-                                    <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $readinessLatest->id }}" style="width:20px;height:20px;margin-left:auto;" title="Delete">
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                    </button>
-                                    @endif
-                                </div>
-                            @else
-                                <p style="font-size:12px;color:var(--ink-400);margin:0;text-align:center;">No file uploaded yet.</p>
-                            @endif
-                        </div>
-                        @if(!$finalLocked && !$readinessDeadlinePassed)
-                            <input type="file" class="ws-file-input" accept=".pdf">
-                            <button type="button" class="ws-btn ws-btn-outline ws-btn-sm ws-upload-btn" style="width:100%;">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                                {{ $readinessLatest ? 'Re-Upload' : 'Upload Readiness Report' }}
-                            </button>
-                            <div class="ws-upload-status" style="margin-top:6px;font-size:11px;color:var(--ink-400);"></div>
-                            <a href="{{ route('download.template', 'readiness') }}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--brand-500);margin-top:6px;text-decoration:none;font-weight:500;">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Download Template (DOCX)
-                            </a>
-                        @elseif($finalLocked)
-                            <div style="text-align:center;padding:8px 0;color:var(--ink-400);font-size:11px;">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                Readonly — already submitted
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- ── STEP 3: Confirm & Submit ── --}}
-        <div class="final-step" data-step="2" style="display:none;">
-            <div class="ws-card" style="max-width:680px;margin:0 auto;padding:28px 32px;">
-                <div style="text-align:center;margin-bottom:20px;">
-                    <div style="width:52px;height:52px;border-radius:12px;background:var(--brand-50);color:var(--brand-500);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                    </div>
-                    <h2 style="font-size:18px;font-weight:600;color:var(--ink-800);margin:0 0 6px;">Confirm & Submit</h2>
                 </div>
 
-                @if(!$finalLocked)
-                <div style="border:1px solid var(--ink-100);border-radius:8px;padding:16px 18px;background:var(--sand-50);margin-bottom:20px;">
-                    <div style="display:flex;align-items:flex-start;gap:12px;">
-                        <div style="width:34px;height:34px;border-radius:50%;background:#fef3c7;color:#92400e;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-                        </div>
-                        <div>
-                            <strong style="font-size:13.5px;color:var(--ink-800);">Before you confirm, please note:</strong>
-                            <ul style="font-size:12.5px;color:var(--ink-500);margin:6px 0 0;padding-left:18px;line-height:1.8;">
-                                <li>Upload both the <strong>Readiness Report</strong> and <strong>Final Report</strong> before submitting.</li>
-                                <li>By confirming, you will <strong>not be able to upload or replace</strong> the Final and Readiness Report files.</li>
-                                <li>Once confirmed, the reviewer will be notified to grade the final report.</li>
-                                <li>If the final report deadline passes without confirmation, the report will be <strong>submitted automatically</strong>.</li>
-                                @php
-                                    $effectiveDl = $finalEffectiveDeadline ?? $readinessEffectiveDeadline;
-                                @endphp
-                                @if($effectiveDl)
-                                    <li>Current deadline: <strong>{{ $effectiveDl->format('M d, Y') }}</strong></li>
-                                @endif
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="text-align:center;">
-                    <button type="button" onclick="confirmFinalSubmit()" style="padding:12px 32px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;background:var(--brand-500, #6c4cf1);color:#fff;display:inline-flex;align-items:center;gap:8px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                        Confirm & Submit Final Report
+                @if(!$progressLocked || $progressResubmitRequested)
+                    <input type="file" class="ws-file-input" accept=".pdf">
+                    <button type="button" class="ws-btn ws-btn-outline ws-upload-btn ws-upload-btn--full">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        {{ $progressResubmitRequested ? 'Re-Upload Progress Report (v' . $progressNextVersion . ')' : ($progressLatest ? 'Re-Upload' : 'Upload Progress Report') }}
                     </button>
-                    <p style="font-size:11.5px;color:var(--ink-400);margin-top:12px;font-style:italic;">
-                        The reviewer will be notified to grade the final report.
-                    </p>
-                </div>
+                    <div class="ws-upload-status"></div>
+                    <a href="{{ route('download.template', 'progress') }}" target="_blank" class="ws-template-link">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download Template (DOCX)
+                    </a>
                 @else
-                <div style="text-align:center;padding:20px;color:var(--ink-400);">
-                    <p style="font-size:13px;"><i class="fas fa-check-circle" style="color:var(--success);margin-right:6px;"></i> Final report has already been submitted.</p>
-                </div>
+                    <div class="ws-upload-locked">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        @if($progressDeadlinePassed) Deadline passed — upload closed @elseif($progressLocked) Already submitted @endif
+                    </div>
                 @endif
             </div>
         </div>
     </div>
-    @endif
+
+    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
+    {{-- TAB: FINAL REPORT --}}
+    {{-- ═══════════════════════════════════════════════════════════════════════ --}}
+    <div id="tab-final-report" class="ws-tab-panel" style="display:none;" role="tabpanel">
+        @php
+            $finalLatest = $submissions->where('type', 'final')->last();
+            $readinessLatest = $submissions->where('type', 'readiness')->last();
+            $finalDl = $deadlines['final'] ?? [];
+            $finalEffectiveDeadline = $finalDl['original'] ?? null;
+            $finalDeadlinePassed = $finalEffectiveDeadline ? now()->greaterThan($finalEffectiveDeadline) : true;
+            $readinessDl = $deadlines['readiness'] ?? [];
+            $readinessEffectiveDeadline = $readinessDl['original'] ?? null;
+            $readinessDeadlinePassed = $readinessEffectiveDeadline ? now()->greaterThan($readinessEffectiveDeadline) : true;
+        @endphp
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+        <div class="ws-card">
+            {{-- Final Report --}}
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--ink-100);">
+                <div style="width:36px;height:36px;border-radius:8px;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div>
+                    <strong style="font-size:13px;color:var(--ink-800);">Final Report</strong>
+                    @if($finalEffectiveDeadline)
+                        <div style="font-size:11px;color:{{ $finalDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};">
+                            Deadline: {{ $finalEffectiveDeadline->format('M d, Y') }}
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            <div class="ws-upload-card {{ ($finalDeadlinePassed || $finalLocked) && !$finalResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="final" data-versioned="{{ $finalResubmitRequested ? '1' : '0' }}" data-can-delete="{{ $finalResubmitRequested || !$finalDeadlinePassed ? '1' : '0' }}">
+                <div class="ws-current-file" data-type="final">
+                    @php
+                        $finalVersions = $submissions->where('type', 'final')->sortBy('version');
+                        $finalNextVersion = $finalResubmitRequested ? 2 : (($finalVersions->max('version') ?? 0) + 1);
+                    @endphp
+                    @if($finalVersions->count() > 0)
+                        @foreach($finalVersions as $fv)
+                        <div class="ws-file-row" data-id="{{ $fv->id }}" style="margin-bottom:4px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id, 'submission_id' => $fv->id]) }}" target="_blank" class="ws-file-link">{{ $fv->stored_filename }}</a>
+                            <span class="ws-file-version" style="font-size:10px;font-weight:600;color:{{ $loop->last ? 'var(--success)' : 'var(--ink-400)' }};background:{{ $loop->last ? '#d1fae5' : 'var(--ink-50)' }};padding:1px 6px;border-radius:4px;">v{{ $fv->version }}</span>
+                            <span class="ws-file-date">{{ $fv->created_at->format('M d, Y H:i') }}</span>
+                            @if(($fv->version == 1 && !$finalDeadlinePassed) || ($fv->version == 2 && $finalResubmitRequested))
+                            <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $fv->id }}" title="Delete">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                            @endif
+                        </div>
+                        @endforeach
+@else
+                        <div class="ws-file-empty">No file uploaded yet.</div>
+                    @endif
+                </div>
+                @if(!$finalLocked || $finalResubmitRequested)
+                    <input type="file" class="ws-file-input" accept=".pdf">
+                    <button type="button" class="ws-btn ws-btn-outline ws-upload-btn ws-upload-btn--full">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        {{ $finalResubmitRequested ? 'Re-Upload Final Report (v' . $finalNextVersion . ')' : ($finalLatest ? 'Re-Upload Final Report' : 'Upload Final Report') }}
+                    </button>
+                    <div class="ws-upload-status"></div>
+                @else
+                    <div class="ws-upload-locked">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        @if($finalDeadlinePassed) Deadline passed — upload closed @elseif($finalLocked) Already submitted @endif
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        <div class="ws-card">
+            {{-- Readiness Report --}}
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--ink-100);">
+                <div style="width:36px;height:36px;border-radius:8px;background:#fef3c7;color:#92400e;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div>
+                    <strong style="font-size:13px;color:var(--ink-800);">Readiness Report</strong>
+                    @if($readinessEffectiveDeadline)
+                        <div style="font-size:11px;color:{{ $readinessDeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};">
+                            Deadline: {{ $readinessEffectiveDeadline->format('M d, Y') }}
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            <div class="ws-upload-card {{ $finalDeadlinePassed || $finalLocked ? 'ws-upload-card--deadline-passed' : '' }}" data-type="readiness" data-can-delete="{{ !$finalDeadlinePassed && !$finalLocked ? '1' : '0' }}">
+                <div class="ws-current-file" data-type="readiness">
+                    @if($readinessLatest)
+                        <div class="ws-file-row" data-id="{{ $readinessLatest->id }}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <a href="{{ route('serveFile2', ['type' => 'readiness', 'id' => $project->id]) }}" target="_blank" class="ws-file-link">{{ $readinessLatest->stored_filename }}</a>
+                            <span class="ws-file-date">{{ $readinessLatest->created_at->format('M d, Y H:i') }}</span>
+                            @if(!$finalDeadlinePassed && !$finalLocked)
+                            <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $readinessLatest->id }}" title="Delete">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                            @endif
+                        </div>
+                    @else
+                        <div class="ws-file-empty">No file uploaded yet.</div>
+                    @endif
+                </div>
+                @if(!$finalDeadlinePassed && !$finalLocked)
+                    <input type="file" class="ws-file-input" accept=".pdf">
+                    <button type="button" class="ws-btn ws-btn-outline ws-upload-btn ws-upload-btn--full">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        {{ $readinessLatest ? 'Re-Upload' : 'Upload Readiness Report' }}
+                    </button>
+                    <div class="ws-upload-status"></div>
+                    <a href="{{ route('download.template', 'readiness') }}" target="_blank" class="ws-template-link">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download Template (DOCX)
+                    </a>
+                @else
+                    <div class="ws-upload-locked">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        @if($finalDeadlinePassed) Deadline passed — upload closed @elseif($finalLocked) Already submitted @endif
+                    </div>
+                @endif
+            </div>
+        </div>
+        </div>{{-- /grid --}}
+    </div>
 
 
 </form>
@@ -1338,7 +1099,7 @@
     gap: 4px;
     border-bottom: 1px solid var(--ink-100);
     padding: 0;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
     background: var(--sand-50);
     border-radius: 8px 8px 0 0;
     padding: 4px 4px 0 4px;
@@ -1374,7 +1135,11 @@
     box-shadow: 0 -1px 3px rgba(22,19,26,.04);
 }
 .ws-tab svg { flex-shrink: 0; }
-.ws-tab-panel { animation: tabFadeIn .15s ease-out; }
+.ws-tab-panel {
+    animation: tabFadeIn .15s ease-out;
+    padding: 0;
+    margin: 0;
+}
 @keyframes tabFadeIn {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -1730,86 +1495,210 @@
 }
 .outcome-input-group .ws-input { flex: 1; }
 
+/* ─── Upload Section (Clean Layout) ─── */
+.ws-upload-section {
+    background: #fff;
+    border: 1px solid var(--ink-100);
+    border-radius: 10px;
+    padding: 24px;
+    transition: box-shadow .15s, border-color .15s;
+}
+.ws-upload-section:hover { box-shadow: var(--fluent-depth-3); border-color: var(--ink-200); }
+.ws-upload-section + .ws-upload-section { margin-top: 20px; }
+.ws-upload-section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--ink-100);
+}
+.ws-upload-section-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.ws-upload-section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink-800);
+    margin: 0;
+}
+.ws-upload-section-deadline {
+    font-size: 12px;
+    color: var(--ink-400);
+    margin-top: 2px;
+}
+.ws-deadline-passed { color: var(--danger); }
+.ws-deadline-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--danger);
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
 /* ─── Upload Card ─── */
 .ws-upload-card {
     border: 1px solid var(--ink-100);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    background: #fff;
-    transition: box-shadow .15s;
+    gap: 10px;
+    background: var(--sand-50);
+    transition: box-shadow .15s, border-color .15s;
 }
-.ws-upload-card:hover { box-shadow: var(--fluent-depth-4); }
+.ws-upload-card:hover { box-shadow: var(--fluent-depth-2); border-color: var(--ink-200); }
 .ws-upload-card--deadline-passed {
     background: var(--ink-50);
     opacity: 0.85;
     border-color: var(--ink-200);
     pointer-events: none;
 }
-.ws-upload-card--deadline-passed .ws-upload-card-icon {
-    filter: grayscale(0.6);
-    opacity: 0.7;
+.ws-upload-card--deadline-passed .ws-current-file { pointer-events: auto; }
+.ws-upload-card--deadline-passed .ws-current-file a { pointer-events: auto; }
+.ws-upload-card--deadline-passed .ws-delete-file { pointer-events: auto; }
+
+/* ─── Current File Display ─── */
+.ws-current-file {
+    border: 1px solid var(--ink-200);
+    border-radius: 8px;
+    padding: 12px 14px;
+    min-height: 44px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
 }
-.ws-upload-card--deadline-passed .ws-current-file {
-    pointer-events: auto;
+.ws-file-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
 }
-.ws-upload-card--deadline-passed .ws-current-file a {
-    pointer-events: auto;
+.ws-file-link {
+    color: var(--brand-500);
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
 }
-.ws-upload-card--deadline-passed .ws-delete-file {
-    pointer-events: auto;
+.ws-file-link:hover { text-decoration: underline; }
+.ws-file-date {
+    font-size: 10px;
+    color: var(--ink-400);
+    margin-left: auto;
+    white-space: nowrap;
 }
-.ws-upload-card--deadline-passed:hover {
-    box-shadow: var(--fluent-depth-2);
-    border-color: var(--ink-200);
+.ws-file-empty {
+    font-size: 12px;
+    color: var(--ink-400);
+    text-align: center;
+    width: 100%;
 }
-.ws-upload-card-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
+
+/* ─── Upload Button ─── */
+.ws-upload-btn--full {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 16px;
+}
+.ws-upload-status {
+    font-size: 11px;
+    color: var(--ink-400);
+    min-height: 16px;
+}
+.ws-template-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--brand-500);
+    text-decoration: none;
+    font-weight: 500;
+}
+.ws-template-link:hover { text-decoration: underline; }
+.ws-upload-locked {
+    text-align: center;
+    padding: 8px 0;
+    color: var(--ink-400);
+    font-size: 11px;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    gap: 4px;
 }
-    .ws-upload-card-file {
-        padding: 6px 8px;
-        background: var(--sand-50);
-        border-radius: 6px;
-        font-size: 12px;
-    }
+
+/* ─── Final Submit ─── */
+.ws-final-submit {
+    text-align: center;
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--ink-100);
+}
+.ws-btn-lg {
+    padding: 12px 32px;
+    font-size: 14px;
+}
+.ws-final-submit-note {
+    font-size: 12px;
+    color: var(--ink-400);
+    margin-top: 10px;
+    font-style: italic;
+}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
     @if($progressLocked)
     // ═══════════════════════════════════════════════════════════════════════
-    // READONLY MODE — progress report submitted or final mode: lock progress inputs
+    // READONLY MODE — lock progress tab inputs
     // ═══════════════════════════════════════════════════════════════════════
-    var progressPanel = document.getElementById('tab-progress-update');
+    var progressPanel = document.getElementById('tab-progress-report');
     if (progressPanel) {
         progressPanel.querySelectorAll('input, textarea, select, button').forEach(function(el) {
-            if (!el.closest('.ws-stepper')) {
-                el.disabled = true;
-                el.readOnly = true;
-            }
+            el.disabled = true;
+            el.readOnly = true;
         });
     }
     @endif
 
     @if($finalLocked)
     // ═══════════════════════════════════════════════════════════════════════
-    // READONLY MODE — final report already submitted: lock final inputs
+    // READONLY MODE — lock final report tab inputs
     // ═══════════════════════════════════════════════════════════════════════
-    var finalPanel = document.getElementById('tab-final');
+    var finalPanel = document.getElementById('tab-final-report');
     if (finalPanel) {
         finalPanel.querySelectorAll('input, textarea, select, button').forEach(function(el) {
             el.disabled = true;
             el.readOnly = true;
         });
     }
+    @endif
+
+    @if($outcomesAndStaffLocked)
+    // ═══════════════════════════════════════════════════════════════════════
+    // READONLY MODE — lock outcomes & students/researchers tab inputs
+    // ═══════════════════════════════════════════════════════════════════════
+    ['tab-outcomes', 'tab-staff'].forEach(function(tabId) {
+        var panel = document.getElementById(tabId);
+        if (panel) {
+            panel.querySelectorAll('input, textarea, select, button').forEach(function(el) {
+                el.disabled = true;
+                el.readOnly = true;
+            });
+        }
+    });
     @endif
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1848,52 +1737,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Ensure the right tab is active on load (Final Report tab by default in final mode)
-    @if($isFinalMode)
-    var finalTabBtn = document.querySelector('.ws-tab[data-tab=tab-final]');
-    if (finalTabBtn) {
-        finalTabBtn.classList.add('active');
-        switchTab('tab-final', finalTabBtn);
-    }
-    // Initialize final report stepper - show step 0
-    if (typeof finalGoStep === 'function') finalGoStep(0);
-    @endif
+    // Ensure the right tab is active on load
     var firstTab = document.querySelector('.ws-tab.active');
-    if (firstTab && firstTab.getAttribute('data-tab') !== 'tab-final') firstTab.click();
-
-    // Final Report stepper
-    window.finalGoStep = function(n) {
-        document.querySelectorAll('.final-step').forEach(function(s, i) {
-            s.style.display = (i === n) ? 'block' : 'none';
-        });
-        document.querySelectorAll('#tab-final .ws-stepper-step').forEach(function(s, i) {
-            s.classList.toggle('is-active', i === n);
-        });
-    };
-
-    // Wizard steps inside Progress Update tab
-    (function() {
-        var blocks = document.querySelectorAll('#tab-progress-update .ws-section-block');
-        blocks.forEach(function(b, i) {
-            b.setAttribute('data-step', i);
-            if (i > 0) b.style.display = 'none';
-        });
-        function wsGoStep(n) {
-            blocks.forEach(function(b, i) {
-                b.style.display = (i === n) ? 'block' : 'none';
-            });
-            document.querySelectorAll('.ws-stepper-step').forEach(function(s, i) {
-                s.classList.remove('is-active');
-                s.classList.remove('is-completed');
-                if (i < n) s.classList.add('is-completed');
-                else if (i === n) s.classList.add('is-active');
-            });
-        }
-        document.querySelectorAll('.ws-stepper-step').forEach(function(step, idx) {
-            step.addEventListener('click', function() { wsGoStep(idx); });
-        });
-        wsGoStep(0);
-    })();
+    if (firstTab) firstTab.click();
 
     // ═══════════════════════════════════════════════════════════════════════
     // TOGGLE: Show/hide detail textareas on Yes/No toggle
@@ -2633,19 +2479,21 @@ document.addEventListener('DOMContentLoaded', function() {
     var csrfToken = document.querySelector('input[name="_token"]')?.value || '';
 
     // Build the "current file" row HTML for a freshly uploaded submission
-    function buildFileRow(type, sub) {
-        var downloadUrl = '{{ route("serveFile2", ["type" => "PLACEHOLDER", "id" => $project->id]) }}'.replace('PLACEHOLDER', type);
+    function buildFileRow(type, sub, showDelete) {
+        var baseUrl = '{{ route("serveFile2", ["type" => "PLACEHOLDER", "id" => $project->id]) }}'.replace('PLACEHOLDER', type);
+        var downloadUrl = baseUrl + '&submission_id=' + sub.id;
         var row = document.createElement('div');
         row.className = 'ws-file-row';
         row.setAttribute('data-id', sub.id);
         row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;';
         row.innerHTML =
-            '<a href="' + downloadUrl + '" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">' +
-            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="flex-shrink:0;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+            '<a href="' + downloadUrl + '" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;flex-shrink:0;">' +
             sub.stored_filename + '</a>' +
-            '<span style="font-size:10px;color:var(--ink-400);">' + sub.created_at + '</span>' +
-            '<button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="' + sub.id + '" style="width:20px;height:20px;margin-left:auto;" title="Delete file">' +
-            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>';
+            '<span class="ws-file-version" style="font-size:10px;font-weight:600;color:var(--success);background:#d1fae5;padding:1px 6px;border-radius:4px;flex-shrink:0;">v' + sub.version + '</span>' +
+            '<span style="font-size:10px;color:var(--ink-400);flex-shrink:0;">' + sub.created_at + '</span>' +
+            (showDelete ? '<button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="' + sub.id + '" style="width:20px;height:20px;margin-left:auto;" title="Delete file">' +
+            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' : '');
         return row;
     }
 
@@ -2703,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Upload handler
-    ['ws-upload-grid', 'ws-final-upload-grid', 'tab-final'].forEach(function(gridId) {
+    ['tab-progress-report', 'tab-final-report'].forEach(function(gridId) {
         var uploadGrid = document.getElementById(gridId);
         if (!uploadGrid) return;
         uploadGrid.querySelectorAll('.ws-upload-card').forEach(function(card) {
@@ -2735,9 +2583,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
 
-                    // If a file already exists, confirm replacement
+                    // If a file already exists and this is NOT a versioned resubmission, confirm replacement
+                    var isVersioned = card.getAttribute('data-versioned') === '1';
                     var existingRow = fileBox ? fileBox.querySelector('.ws-file-row') : null;
-                    if (existingRow) {
+                    if (existingRow && !isVersioned) {
                         if (!confirm('A file already exists for this report. Re-uploading will replace it. Continue?')) {
                             this.value = '';
                             return;
@@ -2766,10 +2615,29 @@ document.addEventListener('DOMContentLoaded', function() {
                     })
                     .then(function(data) {
                         if (data.success) {
-                            // Replace the current-file box with the new file row
+                            // Re-render the current-file box: for versioned resubmissions replace any
+                            // existing row with the same version number; otherwise replace with the new file.
                             if (fileBox) {
-                                fileBox.innerHTML = '';
-                                fileBox.appendChild(buildFileRow(type, data.submission));
+                                var isVersioned = card.getAttribute('data-versioned') === '1';
+                                var canDelete = card.getAttribute('data-can-delete') === '1';
+                                var newRow = buildFileRow(type, data.submission, canDelete);
+                                if (isVersioned) {
+                                    var existingRow = null;
+                                    fileBox.querySelectorAll('.ws-file-row').forEach(function(r) {
+                                        var vTag = r.querySelector('.ws-file-version');
+                                        if (vTag && vTag.textContent === 'v' + data.submission.version) {
+                                            existingRow = r;
+                                        }
+                                    });
+                                    if (existingRow) {
+                                        fileBox.replaceChild(newRow, existingRow);
+                                    } else {
+                                        fileBox.appendChild(newRow);
+                                    }
+                                } else {
+                                    fileBox.innerHTML = '';
+                                    fileBox.appendChild(newRow);
+                                }
                             }
                             if (statusDiv) { statusDiv.textContent = 'Uploaded successfully!'; statusDiv.style.color = 'var(--success)'; }
                             if (uploadBtn) {
@@ -2800,30 +2668,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 
-function requestExtendedProgress(projectId) {
-    if (!confirm('Are you sure you want to request an extended progress report? This will require admin approval.')) return;
-
-    fetch('/workflow/request-extended/' + projectId, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        },
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            showToast('success', data.message || 'Request submitted successfully.');
-            setTimeout(function() { location.reload(); }, 1000);
-        } else {
-            showToast('error', data.error || 'Failed to submit request.');
-        }
-    })
-    .catch(function(error) {
-        showToast('error', 'An error occurred. Please try again.');
-    });
-}
 </script>
 <style>
 /* Toast notification */

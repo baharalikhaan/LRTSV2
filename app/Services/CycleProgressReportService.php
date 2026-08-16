@@ -348,6 +348,153 @@ class CycleProgressReportService
     }
 
     /**
+     * Build the student grant report for a given program. One row per project.
+     *
+     * @return array{rows: Collection, footer: array, totalProjects: int, program: Program|null}
+     */
+    public function buildStudentGrantReport(int $programId): array
+    {
+        $program = Program::with('grant', 'cycle')->find($programId);
+
+        // Get all projects in this program
+        $projects = Project::query()
+            ->where('program_id', $programId)
+            ->with(['lpi', 'program'])
+            ->get();
+
+        $projectIds = $projects->pluck('id')->toArray();
+        $totalProjects = $projects->count();
+
+        if (empty($projectIds)) {
+            return [
+                'rows'           => collect(),
+                'footer'         => $this->buildStudentGrantFooter(collect()),
+                'totalProjects'  => 0,
+                'program'        => $program,
+            ];
+        }
+
+        // Get total student counts per project
+        $studentCounts = DB::table('project_students')
+            ->whereIn('project_id', $projectIds)
+            ->select('project_id', DB::raw('COUNT(*) as total'))
+            ->groupBy('project_id')
+            ->pluck('total', 'project_id');
+
+        // Get budget data from ProjectBudget
+        $budgetData = DB::table('project_budgets')
+            ->whereIn('project_id', $projectIds)
+            ->pluck('actual_exp_amount', 'project_id');
+
+        $budgetAmounts = DB::table('project_budgets')
+            ->whereIn('project_id', $projectIds)
+            ->pluck('budget_amount', 'project_id');
+
+        // Registered projects
+        $registeredProjects = DB::table('status_histories')
+            ->whereIn('project_id', $projectIds)
+            ->where('status', 'registered')
+            ->distinct()
+            ->pluck('project_id');
+
+        // Build rows
+        $rows = $projects->map(function ($project) use ($studentCounts, $budgetData, $budgetAmounts, $registeredProjects) {
+            $id = $project->id;
+            $totalStudents = $studentCounts[$id] ?? 0;
+
+            // Check form saved (registration status)
+            $formSaved = $registeredProjects->contains($id);
+
+            // Check engagement (column may not exist)
+            $hasEngagement = false;
+            if (\Illuminate\Support\Facades\Schema::hasColumn('projects', 'student_engagement')) {
+                $hasEngagement = !empty($project->student_engagement);
+            }
+
+            // Check publications
+            $hasPublications = false;
+            if (\Illuminate\Support\Facades\Schema::hasColumn('projects', 'publications')) {
+                $hasPublications = !empty($project->publications);
+            }
+            if (!$hasPublications) {
+                $hasPublications = $project->outcomes()->whereIn('type', [
+                    'journal_q1', 'journal_q2', 'journal_q3', 'journal_q4',
+                    'conference', 'book', 'edited_book', 'book_chapter'
+                ])->count() > 0;
+            }
+
+            // Check ethical approval
+            $hasEthicalApproval = $project->submissions()
+                ->where('type', 'readiness')
+                ->count() > 0;
+
+            // Calculate spending
+            $budget = $budgetAmounts[$id] ?? $project->budget ?? $project->requested_budget_qar ?? 0;
+            $spending = $budgetData[$id] ?? 0;
+            $utilization = $budget > 0 ? round(($spending / $budget) * 100, 2) : 0;
+
+            if ($budget > 0 && $spending > 0) {
+                if ($utilization > 100) {
+                    $spendingStatus = 'exceeded';
+                } elseif ($utilization < 100) {
+                    $spendingStatus = 'under';
+                } else {
+                    $spendingStatus = 'full';
+                }
+            } elseif ($spending == 0 && $formSaved) {
+                $spendingStatus = 'no_spending';
+            } else {
+                $spendingStatus = 'na';
+            }
+
+            return [
+                'old_project_id'      => $project->old_project_id ?? $id,
+                'lpi_email'           => $project->lpi ? $project->lpi->email : null,
+                'form_saved'          => $formSaved,
+                'total_students'      => $totalStudents,
+                'has_engagement'      => $hasEngagement,
+                'has_publications'    => $hasPublications,
+                'has_ethical_approval'=> $hasEthicalApproval,
+                'utilization_pct'     => $utilization,
+                'spending_status'     => $spendingStatus,
+            ];
+        });
+
+        $footer = $this->buildStudentGrantFooter($rows);
+
+        return [
+            'rows'          => $rows,
+            'footer'        => $footer,
+            'totalProjects' => $totalProjects,
+            'program'       => $program,
+        ];
+    }
+
+    /**
+     * Build footer for student grant report.
+     */
+    protected function buildStudentGrantFooter(Collection $rows): array
+    {
+        $total = $rows->count();
+
+        return [
+            'form_saved' => [
+                'completed' => $rows->where('form_saved', true)->count(),
+                'pending'   => $total - $rows->where('form_saved', true)->count(),
+            ],
+            'total_students' => $rows->sum('total_students'),
+            'engagement' => [
+                'completed' => $rows->where('has_engagement', true)->count(),
+                'pending'   => $total - $rows->where('has_engagement', true)->count(),
+            ],
+            'publications' => [
+                'completed' => $rows->where('has_publications', true)->count(),
+                'pending'   => $total - $rows->where('has_publications', true)->count(),
+            ],
+        ];
+    }
+
+    /**
      * Compute the footer aggregate: completed + pending per column.
      */
     protected function buildFooter(Collection $rows): array

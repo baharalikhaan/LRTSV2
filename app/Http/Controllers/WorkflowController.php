@@ -100,17 +100,8 @@ class WorkflowController extends Controller
                 ))->render();
                 break;
 
-            case 'approve-extended-progress':
-                $html = view('workflow.modals.approve-extended', compact('project'))->render();
-                break;
-
             case 'review-rejection':
                 $reportType = request()->query('report_type', 'progress');
-                $html = view('workflow.modals.review-rejection', compact('project', 'reportType'))->render();
-                break;
-
-            case 'review-ext-rejection':
-                $reportType = 'extended_progress';
                 $html = view('workflow.modals.review-rejection', compact('project', 'reportType'))->render();
                 break;
 
@@ -154,11 +145,6 @@ class WorkflowController extends Controller
             ]);
         }
 
-        // Block if program is inactive
-        if (!$project->programIsActive()) {
-            return response()->json(['error' => 'This program is no longer active. Projects under this program cannot be manipulated.'], 422);
-        }
-
         // Verify the action is valid for this project
         $validActions = $project->availableActions($user);
         $validActionKeys = array_column($validActions, 'action');
@@ -191,12 +177,6 @@ class WorkflowController extends Controller
         $project = Project::findOrFail($validated['project_id']);
         $user = auth()->user();
 
-        // Block if program is inactive
-        if (!$project->programIsActive()) {
-            return redirect($validated['redirect'] ?? route('projects.available'))
-                ->with('error', 'This program is no longer active. Projects under this program cannot be manipulated.');
-        }
-
         $statusMap = [
             'register'        => Project::STATUS_REGISTERED,
             'progress'        => Project::STATUS_PROGRESS_ADDED,
@@ -226,11 +206,6 @@ class WorkflowController extends Controller
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
-
-        // Block if program is inactive
-        if (!$project->programIsActive()) {
-            return response()->json(['error' => 'This program is no longer active. Projects under this program cannot be manipulated.'], 422);
-        }
 
         $reviewerIds = $validated['reviewer_ids'];
 
@@ -289,11 +264,6 @@ class WorkflowController extends Controller
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
-
-        // Block if program is inactive
-        if (!$project->programIsActive()) {
-            return response()->json(['error' => 'This program is no longer active. Actions cannot be taken on projects under this program.'], 422);
-        }
 
         $user = auth()->user();
 
@@ -379,10 +349,6 @@ class WorkflowController extends Controller
 
         $project = Project::findOrFail($validated['project_id']);
 
-        if (!$project->programIsActive()) {
-            return response()->json(['error' => 'This program is no longer active.'], 422);
-        }
-
         $user = auth()->user();
 
         // Verify this user is assigned as a reviewer
@@ -409,35 +375,15 @@ class WorkflowController extends Controller
             ]);
         }
 
-        // Rejected — remove reviewer and record progress_rejected
-        DB::transaction(function () use ($project, $user, $validated) {
-            // 1. Remove the reviewer from projects_reviewers
-            DB::table('projects_reviewers')
-                ->where('project_id', $project->id)
-                ->where('user_id', $user->id)
-                ->delete();
-
-            // 2. Record rejection in reviewer_rejections table
-            if (\Illuminate\Support\Facades\Schema::hasTable('reviewer_rejections')) {
-                \App\Models\ReviewerRejection::create([
-                    'project_id' => $project->id,
-                    'user_id'    => $user->id,
-                    'reason'     => $validated['comment'] ?? null,
-                ]);
-            }
-
-            // 3. Record progress_rejected status
-            if (!$project->hasStatus(Project::STATUS_PROGRESS_REJECTED)) {
-                $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
-                    'triggered_by' => 'progress-review-reject',
-                    'comment'      => $validated['comment'] ?? null,
-                ], $user->id);
-            }
-        });
+        // Rejected — keep reviewer assigned and record progress_rejected
+        $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
+            'triggered_by' => 'progress-review-reject',
+            'comment'      => $validated['comment'] ?? null,
+        ], $user->id);
 
         return response()->json([
             'success' => true,
-            'message' => 'Progress report rejected. The project has been returned to the admin queue for reassignment.',
+            'message' => 'Progress report rejected. The admin will review and send it back to the LPI.',
         ]);
     }
 
@@ -471,131 +417,16 @@ class WorkflowController extends Controller
     }
 
     /**
-     * Toggle extended progress report for a project.
-     * Admin can enable/disable extended progress submission.
-     */
-    public function toggleExtendedProgress(Request $request, $id)
-    {
-        $project = Project::findOrFail($id);
-        $user = auth()->user();
-
-        // Only Admin can toggle
-        if (!$user->isAdmin()) {
-            return redirect()->back()->with('error', 'Only administrators can enable extended progress reports.');
-        }
-
-        $enable = $request->input('enable') === '1';
-
-        $project->update(['is_extended' => $enable]);
-
-        $status = $enable ? 'enabled' : 'disabled';
-        return redirect()->back()->with('success', "Extended progress report {$status} for this project.");
-    }
-
-    /**
-     * AJAX: LPI requests to upload extended progress report.
-     * Records the request status and notifies admins.
-     */
-    public function requestExtendedProgress(Request $request, $id)
-    {
-        $project = Project::findOrFail($id);
-        $user = auth()->user();
-
-        if (!$project->programIsActive()) {
-            return response()->json(['error' => 'This program is no longer active.'], 422);
-        }
-
-        // Only LPI can request
-        if ($user->activeRole() !== 'LPI' && !$user->isAdmin()) {
-            return response()->json(['error' => 'Only LPI can request extended progress.'], 403);
-        }
-
-        // Must have progress reviewed
-        if (!$project->hasStatus(Project::STATUS_PROGRESS_REVIEWED)) {
-            return response()->json(['error' => 'Progress report must be reviewed first.'], 422);
-        }
-
-        // Record the request
-        $project->recordStatus(Project::STATUS_EXT_PROGRESS_REQUESTED, [
-            'triggered_by' => 'request-extended-progress',
-        ], $user->id);
-
-        // Send notification to admins
-        $this->sendNotificationToAdmins(
-            $project,
-            $user,
-            'Extended Progress Request',
-            "LPI {$user->name} has requested to upload an extended progress report for project: {$project->title} (ID: {$project->old_project_id}).\n\nPlease review and approve/reject this request."
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Extended progress request submitted. Waiting for admin approval.'
-        ]);
-    }
-
-    /**
-     * AJAX: Admin approves or rejects extended progress request.
-     */
-    public function approveExtendedProgress(Request $request, $id)
-    {
-        $validated = $request->validate([
-            'approve' => 'required|in:approved,rejected',
-            'message' => 'nullable|string|max:2000',
-        ]);
-
-        $project = Project::findOrFail($id);
-        $user = auth()->user();
-
-        if (!$user->isAdmin()) {
-            return response()->json(['error' => 'Only administrators can approve.'], 403);
-        }
-
-        if ($validated['approve'] === 'approved') {
-            $project->update(['is_extended' => true]);
-            $project->recordStatus(Project::STATUS_EXT_PROGRESS_APPROVED, [
-                'triggered_by' => 'approve-extended-progress',
-                'admin_message' => $validated['message'] ?? null,
-            ], $user->id);
-
-            // Notify LPI
-            $lpiMessage = "Your request to upload an extended progress report for project: {$project->title} has been approved by {$user->name}.";
-            if ($validated['message'] ?? null) {
-                $lpiMessage .= "\n\nAdmin message: {$validated['message']}";
-            }
-            $lpiMessage .= "\n\nYou can now upload the extended progress report.";
-            $this->sendNotificationToLpi($project, $user, 'Extended Progress Request Approved', $lpiMessage);
-
-            return response()->json(['success' => true, 'message' => 'Extended progress approved. LPI can now upload.']);
-        } else {
-            // Record rejection of the request
-            $project->recordStatus(Project::STATUS_EXT_PROGRESS_REQUEST_REJECTED, [
-                'triggered_by' => 'reject-extended-progress',
-                'admin_message' => $validated['message'] ?? null,
-            ], $user->id);
-
-            // Notify LPI
-            $lpiMessage = "Your request to upload an extended progress report for project: {$project->title} has been rejected by {$user->name}.";
-            if ($validated['message'] ?? null) {
-                $lpiMessage .= "\n\nAdmin message: {$validated['message']}";
-            }
-            $this->sendNotificationToLpi($project, $user, 'Extended Progress Request Rejected', $lpiMessage);
-
-            return response()->json(['success' => true, 'message' => 'Extended progress request rejected.']);
-        }
-    }
-
-    /**
      * AJAX: Admin reviews progress rejection.
      * Can either send to LPI for resubmission or override rejection.
      */
     public function reviewProgressRejection(Request $request, $id)
     {
         $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
-            'action' => 'required|in:send_to_lpi,override',
-            'message' => 'required|string|max:2000',
-            'report_type' => 'required|in:progress,extended_progress',
+            'project_id'  => 'required|exists:projects,id',
+            'action'      => 'required|in:send_to_lpi',
+            'message'     => 'required|string|max:2000',
+            'report_type' => 'required|in:progress,final',
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
@@ -605,47 +436,29 @@ class WorkflowController extends Controller
             return response()->json(['error' => 'Only administrators can review rejections.'], 403);
         }
 
-        $statusMap = [
-            'progress' => Project::STATUS_PROGRESS_REJ_REVIEWED,
-            'extended_progress' => Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
-        ];
-
-        $status = $statusMap[$validated['report_type']];
+        $status = $validated['report_type'] === 'final'
+            ? Project::STATUS_FINAL_REJ_REVIEWED
+            : Project::STATUS_PROGRESS_REJ_REVIEWED;
 
         $project->recordStatus($status, [
-            'action' => $validated['action'], // 'send_to_lpi' or 'override'
+            'action' => 'send_to_lpi',
             'admin_message' => $validated['message'],
+            'report_type' => $validated['report_type'],
             'triggered_by' => 'review-rejection',
         ], $user->id);
 
-        $reportLabel = $validated['report_type'] === 'extended_progress' ? 'Extended Progress Report' : 'Progress Report';
+        $reportLabel = $validated['report_type'] === 'final' ? 'Final Report' : 'Progress Report';
 
-        if ($validated['action'] === 'send_to_lpi') {
-            // Notify LPI to resubmit
-            $this->sendNotificationToLpi(
-                $project,
-                $user,
-                "{$reportLabel} Resubmission Required",
-                "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
-                "Admin message: {$validated['message']}\n\n" .
-                "Please resubmit your {$reportLabel}."
-            );
+        $this->sendNotificationToLpi(
+            $project,
+            $user,
+            "{$reportLabel} Resubmission Required",
+            "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
+            "Admin message: {$validated['message']}\n\n" .
+            "Please resubmit your {$reportLabel}."
+        );
 
-            return response()->json(['success' => true, 'message' => "{$reportLabel} sent to LPI for resubmission."]);
-        } else {
-            // Override — notify reviewer to grade existing
-            $this->sendNotificationToReviewers(
-                $project,
-                $user,
-                "{$reportLabel} Rejection Overridden",
-                "The admin has reviewed your rejection of the {$reportLabel} for: {$project->title}\n\n" .
-                "Admin decision: Please grade the existing report.\n" .
-                "Admin message: {$validated['message']}\n\n" .
-                "Please proceed with grading the previously uploaded report."
-            );
-
-            return response()->json(['success' => true, 'message' => "Rejection overridden. Reviewer will grade existing {$reportLabel}."]);
-        }
+        return response()->json(['success' => true, 'message' => "{$reportLabel} sent to LPI for resubmission."]);
     }
 
     /**
@@ -664,10 +477,6 @@ class WorkflowController extends Controller
 
         if (!$user->isAdmin()) {
             return response()->json(['error' => 'Only administrators can un-assign reviewers.'], 403);
-        }
-
-        if (!$project->programIsActive()) {
-            return response()->json(['error' => 'This program is no longer active.'], 422);
         }
 
         // Check if reviewer exists
@@ -711,7 +520,7 @@ class WorkflowController extends Controller
                 $user,
                 'Reviewer Un-assignment',
                 "You have been un-assigned from project: {$project->title} (ID: {$project->old_project_id}).\n\n" .
-                ($validated['reason'] ? "Reason: {$validated['reason']}\n\n" : '') .
+                (!empty($validated['reason']) ? "Reason: {$validated['reason']}\n\n" : '') .
                 "Please contact the admin if you have any questions."
             );
         }

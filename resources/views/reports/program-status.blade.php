@@ -78,11 +78,8 @@
                     <th>Grant</th>
                     <th>Status</th>
                     <th>Prog. 1</th>
-                    <th>Ext. 1</th>
                     <th>Prog. 2</th>
-                    <th>Ext. 2</th>
                     <th>Final</th>
-                    <th>Ext. F</th>
                     <th>Prj</th>
                     <th>Reg</th>
                     <th>Pend</th>
@@ -107,18 +104,15 @@
                         @endif
                     </td>
                     <td class="a4-cell-date">{{ $program->prog_rpt_deadline ? $program->prog_rpt_deadline->format('d-m-Y') : '—' }}</td>
-                    <td class="a4-cell-date">{{ $program->extended_prog_rpt_deadline ? $program->extended_prog_rpt_deadline->format('d-m-Y') : '—' }}</td>
                     <td class="a4-cell-date">{{ $program->prog_rpt2_deadline ? $program->prog_rpt2_deadline->format('d-m-Y') : '—' }}</td>
-                    <td class="a4-cell-date">{{ $program->extended_prog_rpt2_deadline ? $program->extended_prog_rpt2_deadline->format('d-m-Y') : '—' }}</td>
                     <td class="a4-cell-date">{{ $program->final_rpt_deadline ? $program->final_rpt_deadline->format('d-m-Y') : '—' }}</td>
-                    <td class="a4-cell-date">{{ $program->extended_final_rpt_deadline ? $program->extended_final_rpt_deadline->format('d-m-Y') : '—' }}</td>
                     <td class="a4-cell-num">{{ $totalProjects }}</td>
                     <td class="a4-cell-num">{{ $registeredProjects }}</td>
                     <td class="a4-cell-num">{{ $pendingProjects }}</td>
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="13" class="a4-cell-empty">No programs found.</td>
+                    <td colspan="10" class="a4-cell-empty">No programs found.</td>
                 </tr>
                 @endforelse
             </tbody>
@@ -126,7 +120,7 @@
                 <tr>
                     <td colspan="3" class="a4-foot-label">Totals:</td>
                     <td>{{ $programs->filter(fn($p) => $p->isActive())->count() }} active</td>
-                    <td colspan="6"></td>
+                    <td colspan="3"></td>
                     <td class="a4-cell-num">{{ $programs->sum(fn($p) => $p->projects->count()) }}</td>
                     <td class="a4-cell-num">{{ $programs->sum(fn($p) => $p->projects->filter(fn($pr) => $pr->added ?? false)->count()) }}</td>
                     <td class="a4-cell-num">{{ $programs->sum(fn($p) => $p->projects->count()) - $programs->sum(fn($p) => $p->projects->filter(fn($pr) => $pr->added ?? false)->count()) }}</td>

@@ -147,13 +147,7 @@ class HomeController extends Controller
                 Project::STATUS_PROGRESS_ADDED,
                 Project::STATUS_PROGRESS_REVIEWED,
                 Project::STATUS_PROGRESS_REJECTED,
-                Project::STATUS_EXT_PROGRESS_REQUESTED,
-                Project::STATUS_EXT_PROGRESS_APPROVED,
-                Project::STATUS_PROGRESS_EXTENDED,
-                Project::STATUS_PROGRESS_EXT_REVIEWED,
-                Project::STATUS_PROGRESS_EXT_REJECTED,
                 Project::STATUS_PROGRESS_REJ_REVIEWED,
-                Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
                 Project::STATUS_FINAL_ADDED,
                 Project::STATUS_GRADED,
             ]);
@@ -176,13 +170,7 @@ class HomeController extends Controller
                 Project::STATUS_PROGRESS_ADDED,
                 Project::STATUS_PROGRESS_REVIEWED,
                 Project::STATUS_PROGRESS_REJECTED,
-                Project::STATUS_EXT_PROGRESS_REQUESTED,
-                Project::STATUS_EXT_PROGRESS_APPROVED,
-                Project::STATUS_PROGRESS_EXTENDED,
-                Project::STATUS_PROGRESS_EXT_REVIEWED,
-                Project::STATUS_PROGRESS_EXT_REJECTED,
                 Project::STATUS_PROGRESS_REJ_REVIEWED,
-                Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
                 Project::STATUS_FINAL_ADDED,
             ]);
         })->count();
@@ -233,12 +221,12 @@ class HomeController extends Controller
 
         // Publications: total count and list grouped by project
         $publicationsTotal = $myProjects->sum(function ($p) {
-            return $p->publications->count();
+            return $p->publications ? $p->publications->count() : 0;
         });
 
         // Students attached: total count
         $studentsTotal = $myProjects->sum(function ($p) {
-            return $p->students->count();
+            return $p->students ? $p->students->count() : 0;
         });
 
         // Pillars: distinct pillars across this LPI's projects
@@ -312,10 +300,7 @@ class HomeController extends Controller
                 Project::STATUS_REGISTERED, Project::STATUS_ASSIGNED,
                 Project::STATUS_CLAIMED, Project::STATUS_PROGRESS_ADDED,
                 Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
-                Project::STATUS_EXT_PROGRESS_REQUESTED, Project::STATUS_EXT_PROGRESS_APPROVED,
-                Project::STATUS_PROGRESS_EXTENDED, Project::STATUS_PROGRESS_EXT_REVIEWED,
-                Project::STATUS_PROGRESS_EXT_REJECTED, Project::STATUS_PROGRESS_REJ_REVIEWED,
-                Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
+                Project::STATUS_PROGRESS_REJ_REVIEWED,
                 Project::STATUS_FINAL_ADDED, Project::STATUS_GRADED,
             ])) {
                 $programsStats[$progKey]['unreg']++;
@@ -323,10 +308,7 @@ class HomeController extends Controller
                 $programsStats[$progKey]['pending']++;
             } elseif (in_array($latest, [
                 Project::STATUS_PROGRESS_ADDED, Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
-                Project::STATUS_EXT_PROGRESS_REQUESTED, Project::STATUS_EXT_PROGRESS_APPROVED,
-                Project::STATUS_PROGRESS_EXTENDED, Project::STATUS_PROGRESS_EXT_REVIEWED,
-                Project::STATUS_PROGRESS_EXT_REJECTED, Project::STATUS_PROGRESS_REJ_REVIEWED,
-                Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
+                Project::STATUS_PROGRESS_REJ_REVIEWED,
             ])) {
                 $programsStats[$progKey]['progress']++;
             } elseif ($latest === Project::STATUS_GRADED) {
@@ -357,10 +339,7 @@ class HomeController extends Controller
                     Project::STATUS_REGISTERED, Project::STATUS_ASSIGNED,
                     Project::STATUS_CLAIMED, Project::STATUS_PROGRESS_ADDED,
                     Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
-                    Project::STATUS_EXT_PROGRESS_REQUESTED, Project::STATUS_EXT_PROGRESS_APPROVED,
-                    Project::STATUS_PROGRESS_EXTENDED, Project::STATUS_PROGRESS_EXT_REVIEWED,
-                    Project::STATUS_PROGRESS_EXT_REJECTED, Project::STATUS_PROGRESS_REJ_REVIEWED,
-                    Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
+                    Project::STATUS_PROGRESS_REJ_REVIEWED,
                     Project::STATUS_FINAL_ADDED, Project::STATUS_GRADED,
                 ])) {
                     $pillarsStats[$pillarKey]['unreg']++;
@@ -368,10 +347,7 @@ class HomeController extends Controller
                     $pillarsStats[$pillarKey]['pending']++;
                 } elseif (in_array($latest, [
                     Project::STATUS_PROGRESS_ADDED, Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
-                    Project::STATUS_EXT_PROGRESS_REQUESTED, Project::STATUS_EXT_PROGRESS_APPROVED,
-                    Project::STATUS_PROGRESS_EXTENDED, Project::STATUS_PROGRESS_EXT_REVIEWED,
-                    Project::STATUS_PROGRESS_EXT_REJECTED, Project::STATUS_PROGRESS_REJ_REVIEWED,
-                    Project::STATUS_EXT_PROGRESS_REJ_REVIEWED,
+                    Project::STATUS_PROGRESS_REJ_REVIEWED,
                 ])) {
                     $pillarsStats[$pillarKey]['progress']++;
                 } elseif ($latest === Project::STATUS_GRADED) {

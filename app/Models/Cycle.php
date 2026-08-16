@@ -16,17 +16,13 @@ class Cycle extends Model
         'cycle_id',
         'program_title',
         'prog_rpt_deadline',
-        'extended_prog_rpt_deadline',
         'final_rpt_deadline',
-        'extended_final_rpt_deadline',
         'description',
     ];
 
     protected $casts = [
         'prog_rpt_deadline' => 'datetime',
-        'extended_prog_rpt_deadline' => 'datetime',
         'final_rpt_deadline' => 'datetime',
-        'extended_final_rpt_deadline' => 'datetime',
     ];
 
     public function grant()
@@ -49,8 +45,8 @@ class Cycle extends Model
         $now = now();
 
         // Check the latest applicable deadline
-        $progDeadline = $this->extended_prog_rpt_deadline ?? $this->prog_rpt_deadline;
-        $finalDeadline = $this->extended_final_rpt_deadline ?? $this->final_rpt_deadline;
+        $progDeadline = $this->prog_rpt_deadline;
+        $finalDeadline = $this->final_rpt_deadline;
 
         // If both deadlines are null, treat as active
         if (!$progDeadline && !$finalDeadline) {
@@ -67,7 +63,7 @@ class Cycle extends Model
             return true;
         }
 
-        // Both deadlines have passed (or extended deadlines are past)
+        // Both deadlines have passed
         return false;
     }
 
@@ -76,23 +72,19 @@ class Cycle extends Model
         $now = now();
         return $query->where(function ($q) use ($now) {
             $q->whereNull('final_rpt_deadline')
-              ->whereNull('extended_final_rpt_deadline')
               ->whereNull('prog_rpt_deadline')
-              ->whereNull('extended_prog_rpt_deadline')
               ->orWhere(function ($q2) use ($now) {
                   $q2->where(function ($q3) use ($now) {
-                      $q3->whereNotNull('prog_rpt_deadline')
-                         ->orWhereNotNull('extended_prog_rpt_deadline');
+                      $q3->whereNotNull('prog_rpt_deadline');
                   })->where(function ($q3) use ($now) {
-                      $q3->whereRaw('COALESCE(extended_prog_rpt_deadline, prog_rpt_deadline) >= ?', [$now]);
+                      $q3->whereRaw('prog_rpt_deadline >= ?', [$now]);
                   });
               })
               ->orWhere(function ($q2) use ($now) {
                   $q2->where(function ($q3) use ($now) {
-                      $q3->whereNotNull('final_rpt_deadline')
-                         ->orWhereNotNull('extended_final_rpt_deadline');
+                      $q3->whereNotNull('final_rpt_deadline');
                   })->where(function ($q3) use ($now) {
-                      $q3->whereRaw('COALESCE(extended_final_rpt_deadline, final_rpt_deadline) >= ?', [$now]);
+                      $q3->whereRaw('final_rpt_deadline >= ?', [$now]);
                   });
               });
         });

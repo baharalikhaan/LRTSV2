@@ -9,30 +9,60 @@
         <h1><i class="fas fa-project-diagram"></i> Project Details</h1>
     </div>
     <div class="page-actions">
-        <a href="{{ route('projects.report-card', $project->id) }}" class="btn-secondary" target="_blank">
-            <i class="fas fa-print"></i> Project Report Card
-        </a>
+        @php
+            $userActions = $project->availableActions(auth()->user());
+        @endphp
+        <div class="dropdown" style="position:relative;display:inline-block;">
+            <button class="btn-secondary" type="button" onclick="toggleProjectMenu(this)" style="background:#8d1b3d;color:#fff;border-color:#8d1b3d;">
+                <i class="fas fa-cog"></i> Actions ▾
+            </button>
+            <div class="action-menu" style="display:none;position:fixed;z-index:10000;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:200px;padding:4px 0;">
+                @foreach($userActions as $act)
+                    @if($act['action'] === 'progress' || $act['action'] === 'final-report')
+                        <a class="dropdown-item" href="{{ route('progress.update', $project->id) }}" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-chart-line" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'progress-grade' || $act['action'] === 'final-grade')
+                        <a class="dropdown-item" href="{{ route('projects.grading', $project->id) }}" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-star" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'open-grading')
+                        <a class="dropdown-item" href="{{ route('projects.grading', $project->id) }}" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-clipboard-check" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'report-card')
+                        <a class="dropdown-item" href="{{ route('projects.report-card', $project->id) }}" target="_blank" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-file-alt" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'claim')
+                        <a class="dropdown-item" href="#" onclick="openWorkflowModal({{ $project->id }}, 'accept-proposal')" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-check-circle" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'assign')
+                        <a class="dropdown-item" href="#" onclick="openWorkflowModal({{ $project->id }}, 'assign')" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-user-tag" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'unassign-reviewer')
+                        <a class="dropdown-item" href="#" onclick="confirmUnassignReviewer({{ $project->id }})" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#dc3545;">
+                            <i class="fas fa-user-minus" style="width:16px;text-align:center;font-size:11px;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'review-progress-rejection')
+                        <a class="dropdown-item" href="#" onclick="openWorkflowModal({{ $project->id }}, 'review-rejection', 'lg', 'report_type=progress')" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-balance-scale" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @elseif($act['action'] === 'review-final-rejection')
+                        <a class="dropdown-item" href="#" onclick="openWorkflowModal({{ $project->id }}, 'review-rejection', 'lg', 'report_type=final')" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                            <i class="fas fa-balance-scale" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                        </a>
+                    @endif
+                @endforeach
+            </div>
+        </div>
         <a href="{{ route('projects.available') }}" class="btn-secondary">
             <i class="fas fa-arrow-left"></i> Back to Projects
         </a>
     </div>
 </div>
-
-{{-- Research Call Inactive Banner --}}
-@if($project->program && !$project->programIsActive())
-<div style="background:linear-gradient(135deg, #fbeef1 0%, #f3d2da 100%); border:1px solid var(--color-brand-200); border-radius:8px; padding:14px 18px; margin-bottom:22px; display:flex; align-items:center; gap:12px;">
-    <div style="width:36px; height:36px; border-radius:50%; background:var(--color-brand-500); color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0;">
-        <i class="fas fa-lock"></i>
-    </div>
-    <div>
-        <strong style="color:var(--color-brand-800); font-size:14px;">Research Call Inactive</strong>
-        <p style="margin:2px 0 0 0; color:var(--color-brand-700); font-size:13px;">
-            The research call <strong>{{ $project->program->program_title }}</strong> is no longer active (deadline passed on {{ optional($project->program->extended_deadline ?? $project->program->deadline)->format('M d, Y') ?? 'N/A' }}).
-            Projects under this research call cannot be manipulated.
-        </p>
-    </div>
-</div>
-@endif
 
 {{-- Core Project Info --}}
 <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 18px; background:linear-gradient(135deg, #fafbfc 0%, #f5f6f8 100%); border:1px solid var(--ink-100); border-radius:8px; margin-bottom:16px; font-size:13px;">
@@ -48,106 +78,6 @@
         <span style="color:var(--ink-600);">{{ $project->lpi->email ?? '—' }}</span>
     </div>
 </div>
-
-@if(!auth()->user()->isReviewer())
-{{-- Lifecycle Progress Bar + Inline Actions --}}
-<div class="panel" style="margin-bottom: 22px;">
-    <div class="panel-head">
-        <h2><i class="fas fa-tasks"></i> Project Lifecycle</h2>
-    </div>
-    <div class="panel-body" style="padding: 12px 16px;">
-        @php
-            $stages = $project->lifecycle;
-            $currentStage = $project->lifecycle_stage;
-            $stageKeys = array_keys($stages);
-            $totalStages = count($stages);
-
-            // Map lifecycle stage keys to available action types (single-reviewer workflow)
-            $availableActions = $project->availableActions(auth()->user());
-
-            // Build a lookup: stage_key => action data for quick matching
-            $actionLookup = [];
-            foreach ($availableActions as $act) {
-                $actionType = $act['action'];
-                if ($actionType === 'register') $actionLookup['registered'] = $act;
-                elseif (in_array($actionType, ['progress'])) $actionLookup['progress_added'] = $act;
-                elseif (in_array($actionType, ['final-report'])) $actionLookup['progress_reviewed'] = $act;
-                elseif (in_array($actionType, ['assign'])) $actionLookup['assigned'] = $act;
-                elseif (in_array($actionType, ['claim'])) $actionLookup['assigned'] = $act;
-                elseif (in_array($actionType, ['progress-grade', 'final-grade'])) $actionLookup['progress_added'] = $act;
-                elseif (in_array($actionType, ['report-card'])) $actionLookup['graded'] = $act;
-            }
-        @endphp
-
-        {{-- Row 1: Lifecycle progress bar (100% inline styles — no CSS class dependencies) --}}
-        <div style="display:flex; justify-content:space-between; margin:8px 0 4px; padding:0;">
-            @foreach($stages as $key => $stage)
-                @php
-                    $stageIndex = array_search($key, $stageKeys);
-                    $isComplete = $stage['done'];
-                    $isCurrent = $stageIndex >= $currentStage && !$isComplete && $stageIndex === $currentStage;
-                    $stepDate = $stage['date'] ?? null;
-                    $formattedDate = $stepDate ? \Carbon\Carbon::parse($stepDate)->format('M d, Y') : null;
-                    $stepUser = $stage['user_name'] ?? null;
-                @endphp
-                <div style="flex:1; text-align:center; position:relative;">
-                    {{-- Connector line to the next node --}}
-                    @if(!$loop->last)
-                        @php
-                            $nextIsComplete = $stages[$stageKeys[$stageIndex+1]]['done'] ?? false;
-                            $connColor = $nextIsComplete ? '#8d1b3d' : '#eeedf0';
-                        @endphp
-                        <div style="position:absolute; top:25px; left:calc(50% + 26px); right:calc(-50% + 26px); height:3px; background:{{ $connColor }}; z-index:1; border-radius:2px;"></div>
-                    @endif
-
-                    @if($isCurrent)
-                        {{-- Double-ring wrapper for current step --}}
-                        <div style="display:inline-block; width:62px; height:62px; border:2px solid #8d1b3d; border-radius:50%; background:#fff; position:relative; z-index:2;">
-                            <div style="width:50px; height:50px; border-radius:50%; background:#8d1b3d; color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; margin:4px auto 0;">
-                                <i class="fa-solid {{ $stage['icon'] }}" style="font-style:normal !important;"></i>
-                            </div>
-                        </div>
-                    @elseif($isComplete)
-                        {{-- Filled circle with stage icon + check badge --}}
-                        <div style="position:relative; display:inline-block;">
-                            <div style="width:50px; height:50px; border-radius:50%; background:#8d1b3d; color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; margin:0 auto 12px; position:relative; z-index:2;">
-                                <i class="fa-solid {{ $stage['icon'] }}" style="font-style:normal !important;"></i>
-                            </div>
-                            <span style="position:absolute; bottom:8px; right:-4px; width:18px; height:18px; border-radius:50%; background:#1f8a5f; color:#fff; border:2px solid #fff; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.2); z-index:3;">
-                                <i class="fa-solid fa-check" style="font-size:9px; line-height:1; font-style:normal !important;"></i>
-                            </span>
-                        </div>
-                    @else
-                        {{-- Gray circle with xmark --}}
-                        <div style="width:50px; height:50px; border-radius:50%; background:#b4b0ba; color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; margin:0 auto 12px; position:relative; z-index:2;">
-                            <i class="fa-solid fa-xmark" style="font-style:normal !important;"></i>
-                        </div>
-                    @endif
-
-                    {{-- Label --}}
-                    <p style="margin:0; font-size:13px; font-weight:600; line-height:1.3; color:{{ $isComplete || $isCurrent ? '#63102b' : '#8b8592' }};">
-                        {{ $stage['label'] }}
-                    </p>
-
-                    {{-- Date --}}
-                    @if($formattedDate)
-                        <span style="display:block; margin-top:3px; font-size:10px; font-weight:500; color:#b8496b; white-space:nowrap;">
-                            <i class="far fa-calendar-alt" style="font-style:normal !important;"></i> {{ $formattedDate }}
-                        </span>
-                    @endif
-                    {{-- User --}}
-                    @if($stepUser)
-                        <span style="display:block; margin-top:1px; font-size:9.5px; font-weight:500; color:#8d1b3d; white-space:nowrap;">
-                            <i class="fas fa-user-circle" style="font-style:normal !important;"></i> {{ $stepUser }}
-                        </span>
-                    @endif
-                </div>
-            @endforeach
-        </div>
-
-    </div>
-</div>
-@endif
 
 @php
     $commitment = $project->commitments()->first();
@@ -535,6 +465,32 @@
     font-weight: 700;
 }
 </style>
+@endpush
+
+@push('scripts')
+<script>
+    function toggleProjectMenu(btn) {
+        var menu = btn.nextElementSibling;
+        var wasOpen = menu.style.display === 'block';
+        closeProjectMenus();
+        if (!wasOpen) {
+            var rect = btn.getBoundingClientRect();
+            menu.style.left = (rect.right - 200) + 'px';
+            menu.style.top = (rect.bottom + 2) + 'px';
+            menu.style.display = 'block';
+        }
+    }
+
+    function closeProjectMenus() {
+        document.querySelectorAll('.action-menu').forEach(function(m) { m.style.display = 'none'; });
+    }
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown')) {
+            closeProjectMenus();
+        }
+    });
+</script>
 @endpush
 
 @endsection

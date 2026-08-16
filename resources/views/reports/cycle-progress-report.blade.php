@@ -52,7 +52,7 @@
         <div class="a4-header-title-block">
             <div class="a4-report-title">Research Call Summary</div>
             <div class="a4-report-desc">
-                @if($program){{ $program->program_title }} — @endif
+                @if($program){{ $program->program_title }} @if($isStudentGrant)(Student Grant) @endif — @endif
                 {{ $totalProjects }} project{{ $totalProjects !== 1 ? 's' : '' }}
             </div>
         </div>
@@ -65,6 +65,105 @@
     </div>
 
     <div class="a4-table-section">
+        @if($isStudentGrant)
+        {{-- Student Grant Table --}}
+        <table class="a4-data-table" id="reportTable">
+            <thead>
+                <tr class="a4-group-header">
+                    <th colspan="1" class="a4-group-project">Project Info</th>
+                    <th colspan="6" class="a4-group-lpi">LPI Student Project Form</th>
+                </tr>
+                <tr>
+                    <th class="a4-col-id">Project ID</th>
+                    <th class="a4-col-center">Form Saved</th>
+                    <th class="a4-col-center">Students</th>
+                    <th class="a4-col-center">Engagement</th>
+                    <th class="a4-col-center">Publications</th>
+                    <th class="a4-col-center">Ethical Approval</th>
+                    <th class="a4-col-center">Spending (QAR)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($rows as $row)
+                <tr>
+                    <td class="a4-cell-id">
+                        <div style="font-weight:600;">{{ $row['old_project_id'] }}</div>
+                        <div style="font-size:8px;color:teal;font-style:italic;margin-top:1px;">{{ $row['lpi_email'] ?? '—' }}</div>
+                    </td>
+                    <td class="a4-cell-center">
+                        @if($row['form_saved'])
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <i class="fas fa-times-circle a4-icon-no"></i>
+                        @endif
+                    </td>
+                    <td class="a4-cell-center">{{ $row['total_students'] }}</td>
+                    <td class="a4-cell-center">
+                        @if($row['has_engagement'])
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <i class="fas fa-times-circle a4-icon-no"></i>
+                        @endif
+                    </td>
+                    <td class="a4-cell-center">
+                        @if($row['has_publications'])
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <i class="fas fa-times-circle a4-icon-no"></i>
+                        @endif
+                    </td>
+                    <td class="a4-cell-center">
+                        @if($row['has_ethical_approval'])
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <span style="font-size:10px;color:var(--color-ink-400);">N/A</span>
+                        @endif
+                    </td>
+                    <td class="a4-cell-center">
+                        @if($row['spending_status'] === 'exceeded')
+                            <span style="color:#dc2626;font-size:10px;">{{ $row['utilization_pct'] }}% - Exceeded</span>
+                        @elseif($row['spending_status'] === 'under')
+                            <span style="color:#f59e0b;font-size:10px;">{{ $row['utilization_pct'] }}% - Under</span>
+                        @elseif($row['spending_status'] === 'full')
+                            <span style="color:#10b981;font-size:10px;">{{ $row['utilization_pct'] }}%</span>
+                        @elseif($row['spending_status'] === 'no_spending')
+                            <span style="color:#f97316;font-size:10px;">0% - No Spending</span>
+                        @else
+                            <span style="font-size:10px;color:var(--color-ink-400);">N/A</span>
+                        @endif
+                    </td>
+                </tr>
+                @empty
+                <tr>
+                    <td colspan="7" class="a4-cell-empty">No student grant projects found in this research call.</td>
+                </tr>
+                @endforelse
+            </tbody>
+            @if($totalProjects > 0)
+            <tfoot>
+                <tr class="a4-foot-summary">
+                    <td class="a4-foot-label">Summary — Total: {{ $totalProjects }}</td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['form_saved']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['form_saved']['pending'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c" style="font-size:9px;">Total: {{ $footer['total_students'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['engagement']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['engagement']['pending'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['publications']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['publications']['pending'] }}</div></td>
+                    <td class="a4-foot-cell"></td>
+                    <td class="a4-foot-cell"></td>
+                </tr>
+                <tr class="a4-foot-email no-print-col">
+                    <td class="a4-foot-label">Send Email Reminders</td>
+                    <td class="a4-foot-cell">@if($footer['form_saved']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('form_saved')" data-column="form_saved"><i class="fas fa-envelope"></i> Send</button>@endif</td>
+                    <td class="a4-foot-cell">@if($footer['total_students'] == 0)<button class="btn-send-email" onclick="sendReminder('students')" data-column="students"><i class="fas fa-envelope"></i> Send</button>@endif</td>
+                    <td class="a4-foot-cell">@if($footer['engagement']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('engagement')" data-column="engagement"><i class="fas fa-envelope"></i> Send</button>@endif</td>
+                    <td class="a4-foot-cell">@if($footer['publications']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('publications')" data-column="publications"><i class="fas fa-envelope"></i> Send</button>@endif</td>
+                    <td class="a4-foot-cell"></td>
+                    <td class="a4-foot-cell"></td>
+                </tr>
+            </tfoot>
+            @endif
+        </table>
+        @else
+        {{-- Regular Grant Table --}}
         <table class="a4-data-table" id="reportTable">
             <thead>
                 <tr class="a4-group-header">
@@ -149,7 +248,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="11" class="a4-cell-empty">No projects found in this cycle.</td>
+                    <td colspan="11" class="a4-cell-empty">No projects found in this research call.</td>
                 </tr>
                 @endforelse
             </tbody>
@@ -184,6 +283,7 @@
             </tfoot>
             @endif
         </table>
+        @endif
     </div>
 
     <div class="a4-report-footer">

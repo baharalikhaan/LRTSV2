@@ -14,6 +14,7 @@ class ProjectStudent extends Model
         'user_id',
         'type',
         'std_id',
+        'nationality',
         'days',
         'score',
         'verifcation_by_system',

@@ -138,13 +138,23 @@ class User extends Authenticatable
         return $college ? collect([$college]) : collect();
     }
 
-    /**
-     * Pillar assignment was removed (the user_pillars pivot table was
-     * dropped), so pillar_list is always an empty collection now.
+/**
+     * The research pillars associated with this user, parsed from the
+     * `users.pillars` string column (comma / semicolon / newline separated).
+     * Returns a collection of { pillar: name } objects for display.
      */
     public function getPillarListAttribute()
     {
-        return collect();
+        if (!$this->pillars || trim($this->pillars) === '') {
+            return collect();
+        }
+
+        $parts = preg_split('/[;,|\n\r]+/', $this->pillars);
+        $names = array_values(array_filter(array_map('trim', $parts)));
+
+        return collect($names)->map(function ($name) {
+            return (object) ['pillar' => $name];
+        });
     }
 
     public function comments()
