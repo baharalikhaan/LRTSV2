@@ -361,6 +361,84 @@
     </div>
     @endif
 
+    {{-- Progress Report 2 Grading --}}
+    @if(isset($progress2Grading) && $progress2Grading && $progress2Grading->publish !== 'pending')
+    <div class="section">
+        <div class="section-title">Progress Report 2 Grading</div>
+        <div class="grid-2">
+            <div>
+                <div class="info-box">
+                    <div class="label">Status</div>
+                    <div class="value">
+                        <span class="badge {{ $progress2Grading->isAccepted == 1 ? 'badge-success' : 'badge-danger' }}">
+                            {{ $progress2Grading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
+                        </span>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Section</th>
+                            <th>Rating</th>
+                            <th>Comments</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Achievements</td>
+                            <td><strong>{{ $progress2Grading->achievementsRating ?? '—' }}/5</strong></td>
+                            <td>{{ $progress2Grading->achievementsComments ?? '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td>Publications</td>
+                            <td><strong>{{ $progress2Grading->publicationsRating ?? '—' }}/5</strong></td>
+                            <td>{{ $progress2Grading->publicationsComments ?? '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td>Students</td>
+                            <td><strong>{{ $progress2Grading->studentsRating ?? '—' }}/5</strong></td>
+                            <td>{{ $progress2Grading->studentsComments ?? '—' }}</td>
+                        </tr>
+                        <tr>
+                            <td>Budget</td>
+                            <td><strong>{{ $progress2Grading->budgetRating ?? '—' }}/5</strong></td>
+                            <td>{{ $progress2Grading->budgetComments ?? '—' }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div>
+                <div class="info-box">
+                    <div class="label">Ethical Approval</div>
+                    <div class="value">
+                        <span class="badge {{ $progress2Grading->ethical ? 'badge-success' : 'badge-neutral' }}">
+                            {{ $progress2Grading->ethical ? 'Yes' : 'No' }}
+                        </span>
+                    </div>
+                </div>
+                @if($progress2Grading->analysis)
+                <div class="info-box">
+                    <div class="label">Analysis</div>
+                    <div class="value">{{ $progress2Grading->analysis }}</div>
+                </div>
+                @endif
+                @if($progress2Grading->comments)
+                <div class="info-box">
+                    <div class="label">Comments</div>
+                    <div class="value">{{ $progress2Grading->comments }}</div>
+                </div>
+                @endif
+                @if($progress2Grading->recommendation)
+                <div class="info-box">
+                    <div class="label">Recommendation</div>
+                    <div class="value">{{ $progress2Grading->recommendation }}</div>
+                </div>
+                @endif
+            </div>
+        </div>
+    </div>
+    @endif
+
     {{-- Final Grading --}}
     @if($finalGrading && $finalGrading->publish !== 'pending')
     <div class="section page-break">

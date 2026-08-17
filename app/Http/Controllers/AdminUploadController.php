@@ -41,6 +41,7 @@ class AdminUploadController extends Controller
                 'projects.id',
                 'projects.old_project_id',
                 'projects.title',
+                'projects.extended_progress',
                 'programs.program_title',
                 'programs.cycle_id'
             )
@@ -75,6 +76,8 @@ class AdminUploadController extends Controller
             $hasProgress = $p->submissions->where('type', 'progress')->first();
             $hasFinal = $p->submissions->where('type', 'final')->first();
             $hasReadiness = $p->submissions->where('type', 'readiness')->first();
+            $isExtended = (bool) ($p->extended_progress ?? false);
+            $hasProgress2 = $p->submissions->where('type', 'progress2')->first();
 
             $progressBadge = $hasProgress
                 ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> Uploaded</span>'
@@ -88,6 +91,12 @@ class AdminUploadController extends Controller
                 ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> Uploaded</span>'
                 : '<span class="pill inactive" style="font-size:10px;"><i class="fas fa-minus" style="font-size:9px;"></i> None</span>';
 
+            $progress2Badge = !$isExtended
+                ? '<span class="pill inactive" style="font-size:10px;">—</span>'
+                : ($hasProgress2
+                    ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> Uploaded</span>'
+                    : '<span class="pill inactive" style="font-size:10px;"><i class="fas fa-minus" style="font-size:9px;"></i> None</span>');
+
             return [
                 'id'            => $p->id,
                 'old_project_id' => e($oldId),
@@ -96,9 +105,10 @@ class AdminUploadController extends Controller
                 'lpi_email'     => '<span style="font-size:12px;">' . e($lpiEmail) . '</span>',
                 'program'       => '<div style="font-weight:500;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' . e($programTitle) . '">' . e($programTitle) . '</div><div style="font-size:11px;color:var(--ink-400,#8b8592);">' . e($cycleYear . ' / ' . $grantCode) . '</div>',
                 'progress'      => $progressBadge,
+                'progress2'     => $progress2Badge,
                 'final'         => $finalBadge,
                 'readiness'     => $readinessBadge,
-                'action'        => $this->renderUploadForm($p, $oldId, $hasProgress, $hasFinal, $hasReadiness),
+                'action'        => $this->renderUploadForm($p, $oldId, $hasProgress, $hasProgress2, $hasFinal, $hasReadiness),
             ];
         });
 
@@ -113,7 +123,7 @@ class AdminUploadController extends Controller
     /**
      * Render the inline upload form HTML for a project row.
      */
-    private function renderUploadForm(Project $p, string $oldId, $hasProgress, $hasFinal, $hasReadiness): string
+    private function renderUploadForm(Project $p, string $oldId, $hasProgress, $hasProgress2, $hasFinal, $hasReadiness): string
     {
         $html = '<form class="admin-upload-form" data-project-id="' . $p->id . '" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap;">';
         $html .= '<input type="hidden" name="_token" value="' . csrf_token() . '">';
@@ -126,6 +136,16 @@ class AdminUploadController extends Controller
         $html .= '<i class="fas fa-file-pdf" style="font-size:10px;"></i> Progress';
         $html .= '</span>';
         $html .= '</label>';
+
+        // Progress 2 (only for extended progress projects)
+        if ($p->extended_progress) {
+            $html .= '<label class="admin-upload-label" title="Progress Report 2">';
+            $html .= '<input type="file" name="progress2" accept=".pdf" class="admin-upload-input" data-type="progress2">';
+            $html .= '<span class="admin-upload-btn btn-sm btn-secondary" style="font-size:10px;padding:3px 8px;cursor:pointer;">';
+            $html .= '<i class="fas fa-file-pdf" style="font-size:10px;"></i> Progress 2';
+            $html .= '</span>';
+            $html .= '</label>';
+        }
 
         // Final
         $html .= '<label class="admin-upload-label" title="Final Report">';
@@ -168,8 +188,12 @@ class AdminUploadController extends Controller
         $uploaded = 0;
         $errors = [];
 
-        foreach (['progress', 'final', 'readiness'] as $type) {
+        foreach (['progress', 'progress2', 'final', 'readiness'] as $type) {
             if (!$request->hasFile($type)) {
+                continue;
+            }
+
+            if ($type === 'progress2' && !$project->extended_progress) {
                 continue;
             }
 
@@ -209,6 +233,7 @@ class AdminUploadController extends Controller
 
         $typeFolderMap = [
             'progress'  => 'progress_reports',
+            'progress2' => 'progress_reports',
             'final'     => 'final_reports',
             'readiness' => 'readiness_reports',
         ];

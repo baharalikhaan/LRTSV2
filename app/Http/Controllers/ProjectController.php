@@ -68,13 +68,15 @@ class ProjectController extends Controller
         $commitment = $project->commitments()->first();
         $finalGrading = \App\Models\FinalReportGrading::where('project_id', $id)->first();
         $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $id)->first();
+        $progress2Grading = \App\Models\ProgressReportGrading::where('project_id', $id)
+            ->where('report_type', 'progress2')->first();
 
         $outcomes = $project->outcomes()->get();
         $students = $project->students()->get();
         $researchers = $project->researchers()->get();
 
         return view('projects.report-card', compact(
-            'project', 'commitment', 'finalGrading', 'progressGrading',
+            'project', 'commitment', 'finalGrading', 'progressGrading', 'progress2Grading',
             'outcomes', 'students', 'researchers'
         ));
     }

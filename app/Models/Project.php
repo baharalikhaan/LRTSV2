@@ -29,6 +29,12 @@ class Project extends Model
     public const STATUS_PROGRESS_REJ_REVIEWED = 'progress_rejection_reviewed';
     public const STATUS_FINAL_REJ_REVIEWED = 'final_rejection_reviewed';
 
+    // Extended / second progress report workflow (progress report 2)
+    public const STATUS_PROGRESS2_ADDED = 'progress2_added';
+    public const STATUS_PROGRESS2_REVIEWED = 'progress2_reviewed';
+    public const STATUS_PROGRESS2_REJECTED = 'progress2_rejected';
+    public const STATUS_PROGRESS2_REJ_REVIEWED = 'progress2_rejection_reviewed';
+
     // Deprecated/removed (kept so old status_history records don't break)
     public const STATUS_PROGRESS           = 'progress_add';
     public const STATUS_PROGRESS_SUBMITTED = 'progress_submitted';
@@ -245,7 +251,8 @@ class Project extends Model
         $oldId = str_replace('/', '', $this->old_project_id ?? $this->id);
         $typeFolder = $type === 'proposal' ? 'proposals'
             : ($type === 'progress' ? 'progress_reports'
-            : ($type === 'readiness' ? 'readiness_reports' : 'final_reports'));
+            : ($type === 'progress2' ? 'progress_reports'
+            : ($type === 'readiness' ? 'readiness_reports' : 'final_reports')));
         $versionSuffix = $version ? '_v' . $version : '';
         return $this->getStorageDir($typeFolder) . '/' . $oldId . '_' . $type . $versionSuffix . '.pdf';
     }
@@ -272,6 +279,8 @@ class Project extends Model
     {
         if ($type === 'final') {
             $relevant = [self::STATUS_FINAL_REJECTED, self::STATUS_FINAL_REJ_REVIEWED, self::STATUS_GRADED];
+        } elseif ($type === 'progress2') {
+            $relevant = [self::STATUS_PROGRESS2_REJECTED, self::STATUS_PROGRESS2_REJ_REVIEWED, self::STATUS_PROGRESS2_REVIEWED];
         } else {
             $relevant = [self::STATUS_PROGRESS_REJECTED, self::STATUS_PROGRESS_REJ_REVIEWED, self::STATUS_PROGRESS_REVIEWED];
         }
@@ -285,7 +294,10 @@ class Project extends Model
             return false;
         }
 
-        return $latest->status === ($type === 'final' ? self::STATUS_FINAL_REJECTED : self::STATUS_PROGRESS_REJECTED);
+        $rejectedStatus = $type === 'final' ? self::STATUS_FINAL_REJECTED
+            : ($type === 'progress2' ? self::STATUS_PROGRESS2_REJECTED : self::STATUS_PROGRESS_REJECTED);
+
+        return $latest->status === $rejectedStatus;
     }
 
     public function recordStatus(string $status, ?array $metadata = null, ?int $userId = null): StatusHistory
@@ -311,6 +323,9 @@ class Project extends Model
             self::STATUS_PROGRESS_ADDED      => 'Progress Added',
             self::STATUS_PROGRESS_REVIEWED   => 'Progress Reviewed',
             self::STATUS_PROGRESS_REJECTED   => 'Progress Rejected',
+            self::STATUS_PROGRESS2_ADDED     => 'Progress Report 2 Added',
+            self::STATUS_PROGRESS2_REVIEWED  => 'Progress Report 2 Reviewed',
+            self::STATUS_PROGRESS2_REJECTED  => 'Progress Report 2 Rejected',
             self::STATUS_FINAL_REJECTED    => 'Final Rejected',
             self::STATUS_FINAL_ADDED         => 'Final Added',
             self::STATUS_GRADED              => 'Graded',
@@ -469,6 +484,16 @@ class Project extends Model
             // re-appears for the admin instead of being hidden forever).
             if ($hasProgressRej && !$hasGraded && $this->hasUnreviewedRejection('progress')) {
                 $adminActions[] = ['action' => 'review-progress-rejection', 'label' => 'Review Progress Rejection'];
+            }
+
+            // Review Progress Report 2 Rejection (only when extended progress is
+            // enabled for this project and the most recent progress2 rejection is
+            // still unreviewed).
+            if ($this->extended_progress
+                && $this->hasStatus(self::STATUS_PROGRESS2_REJECTED)
+                && !$hasGraded
+                && $this->hasUnreviewedRejection('progress2')) {
+                $adminActions[] = ['action' => 'review-progress2-rejection', 'label' => 'Review Progress Report 2 Rejection'];
             }
 
             // Review Final Rejection (same round-aware logic as progress).
@@ -714,6 +739,10 @@ class Project extends Model
             'progress_reviewed'   => 'progress_reviewed',
             'progress_rejected'   => 'progress_added',
             self::STATUS_PROGRESS_REJ_REVIEWED => 'progress_added',
+            self::STATUS_PROGRESS2_ADDED     => 'progress_added',
+            self::STATUS_PROGRESS2_REVIEWED  => 'progress_reviewed',
+            self::STATUS_PROGRESS2_REJECTED  => 'progress_added',
+            self::STATUS_PROGRESS2_REJ_REVIEWED => 'progress_added',
             'final_added'         => 'final_added',
             'final_rejected'      => 'final_added',
             self::STATUS_FINAL_REJ_REVIEWED => 'final_added',
@@ -729,6 +758,7 @@ class Project extends Model
                 // Rejection statuses unmark their respective stages
                 $isRejection = in_array($history->status, [
                     self::STATUS_PROGRESS_REJECTED,
+                    self::STATUS_PROGRESS2_REJECTED,
                     self::STATUS_FINAL_REJECTED,
                     self::STATUS_PROPOSAL_REJECTED,
                 ]);
@@ -810,11 +840,11 @@ class Project extends Model
             return 'badge badge-success';
         }
 
-        if (in_array($status, ['rejected', 'returned', self::STATUS_PROPOSAL_REJECTED, self::STATUS_PROGRESS_REJECTED, self::STATUS_FINAL_REJECTED])) {
+        if (in_array($status, ['rejected', 'returned', self::STATUS_PROPOSAL_REJECTED, self::STATUS_PROGRESS_REJECTED, self::STATUS_PROGRESS2_REJECTED, self::STATUS_FINAL_REJECTED])) {
             return 'badge badge-danger';
         }
 
-        if (in_array($status, [self::STATUS_PROGRESS_REJ_REVIEWED, self::STATUS_FINAL_REJ_REVIEWED])) {
+        if (in_array($status, [self::STATUS_PROGRESS_REJ_REVIEWED, self::STATUS_PROGRESS2_REJ_REVIEWED, self::STATUS_FINAL_REJ_REVIEWED])) {
             return 'badge badge-info';
         }
 

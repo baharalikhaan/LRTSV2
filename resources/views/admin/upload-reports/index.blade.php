@@ -46,6 +46,7 @@
                     <th>LPI Email</th>
                     <th>Research Call</th>
                     <th class="text-center">Progress Report</th>
+                    <th class="text-center">Progress Report 2</th>
                     <th class="text-center">Final Report</th>
                     <th class="text-center">Readiness Report</th>
                     <th class="text-center" style="min-width:220px;">Upload</th>
@@ -95,6 +96,7 @@ $(document).ready(function() {
             { data: 'lpi_email', name: 'lpi_email', title: 'LPI Email', orderable: false, searchable: false, width: '150px' },
             { data: 'program', name: 'program', title: 'Research Call', orderable: false, searchable: false, width: '160px' },
             { data: 'progress', name: 'progress', title: 'Progress Report', orderable: false, searchable: false, className: 'text-center', width: '90px' },
+            { data: 'progress2', name: 'progress2', title: 'Progress Report 2', orderable: false, searchable: false, className: 'text-center', width: '100px' },
             { data: 'final', name: 'final', title: 'Final Report', orderable: false, searchable: false, className: 'text-center', width: '90px' },
             { data: 'readiness', name: 'readiness', title: 'Readiness Report', orderable: false, searchable: false, className: 'text-center', width: '100px' },
             { data: 'action', name: 'action', title: 'Upload', orderable: false, searchable: false, className: 'text-center' },
@@ -124,7 +126,7 @@ function initUploadForms() {
         } else {
             label.removeClass('has-file');
             var type = $(this).data('type');
-            var labels = {progress: 'Progress', final: 'Final', readiness: 'Readiness'};
+            var labels = {progress: 'Progress', progress2: 'Progress 2', final: 'Final', readiness: 'Readiness'};
             $(this).closest('.admin-upload-label').find('.admin-upload-btn').html('<i class="fas fa-file-pdf" style="font-size:10px;"></i> ' + labels[type]);
         }
     });
@@ -165,9 +167,10 @@ function initUploadForms() {
                 // Reset form
                 form.find('.admin-upload-input').val('');
                 form.find('.admin-upload-label').removeClass('has-file');
-                form.find('.admin-upload-btn').each(function(i) {
-                    var labels = ['Progress', 'Final', 'Readiness'];
-                    $(this).html('<i class="fas fa-file-pdf" style="font-size:10px;"></i> ' + labels[i]);
+                form.find('.admin-upload-input').each(function() {
+                    var type = $(this).data('type');
+                    var labels = {progress: 'Progress', progress2: 'Progress 2', final: 'Final', readiness: 'Readiness'};
+                    $(this).closest('.admin-upload-label').find('.admin-upload-btn').html('<i class="fas fa-file-pdf" style="font-size:10px;"></i> ' + labels[type]);
                 });
                 submitBtn.prop('disabled', false).html('<i class="fas fa-upload" style="font-size:10px;"></i>');
                 form.removeClass('uploading');

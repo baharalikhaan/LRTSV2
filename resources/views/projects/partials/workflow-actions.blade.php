@@ -93,6 +93,10 @@
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'review-rejection', 'lg', 'report_type=progress')">
                 <i class="fas fa-balance-scale"></i> {{ $actLabel }}
             </button>
+        @elseif($act['action'] === 'review-progress2-rejection')
+            <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'review-rejection', 'lg', 'report_type=progress2')">
+                <i class="fas fa-balance-scale"></i> {{ $actLabel }}
+            </button>
         @elseif($act['action'] === 'review-final-rejection')
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'review-rejection', 'lg', 'report_type=final')">
                 <i class="fas fa-balance-scale"></i> {{ $actLabel }}

@@ -49,12 +49,14 @@ class WorkflowController extends Controller
         $commitment = $project->commitments()->first();
         $finalGrading = \App\Models\FinalReportGrading::where('project_id', $projectId)->first();
         $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $projectId)->first();
+        $progress2Grading = \App\Models\ProgressReportGrading::where('project_id', $projectId)
+            ->where('report_type', 'progress2')->first();
         $outcomes = $project->outcomes()->get();
         $students = $project->students()->get();
         $researchers = $project->researchers()->get();
 
         return view('workflow.modals.report-card', compact(
-            'project', 'commitment', 'finalGrading', 'progressGrading',
+            'project', 'commitment', 'finalGrading', 'progressGrading', 'progress2Grading',
             'outcomes', 'students', 'researchers'
         ));
     }
@@ -90,12 +92,14 @@ class WorkflowController extends Controller
                 $commitment = $project->commitments()->first();
                 $finalGrading = \App\Models\FinalReportGrading::where('project_id', $projectId)->first();
                 $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $projectId)->first();
+                $progress2Grading = \App\Models\ProgressReportGrading::where('project_id', $projectId)
+                    ->where('report_type', 'progress2')->first();
                 $outcomes = $project->outcomes()->get();
                 $students = $project->students()->get();
                 $researchers = $project->researchers()->get();
 
                 $html = view('workflow.modals.report-card', compact(
-                    'project', 'commitment', 'finalGrading', 'progressGrading',
+                    'project', 'commitment', 'finalGrading', 'progressGrading', 'progress2Grading',
                     'outcomes', 'students', 'researchers'
                 ))->render();
                 break;
@@ -345,11 +349,14 @@ class WorkflowController extends Controller
             'project_id' => 'required|exists:projects,id',
             'accept'     => 'required|in:accepted,rejected',
             'comment'    => 'nullable|string|max:2000',
+            'report_type' => 'nullable|in:progress,progress2',
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
 
         $user = auth()->user();
+
+        $isProgress2 = ($validated['report_type'] ?? 'progress') === 'progress2';
 
         // Verify this user is assigned as a reviewer
         $reviewerRecord = DB::table('projects_reviewers')
@@ -363,27 +370,33 @@ class WorkflowController extends Controller
         }
 
         if ($validated['accept'] === 'accepted') {
-            if (!$project->hasStatus(Project::STATUS_PROGRESS_REVIEWED)) {
-                $project->recordStatus(Project::STATUS_PROGRESS_REVIEWED, [
+            if (!$project->hasStatus($isProgress2 ? Project::STATUS_PROGRESS2_REVIEWED : Project::STATUS_PROGRESS_REVIEWED)) {
+                $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REVIEWED : Project::STATUS_PROGRESS_REVIEWED, [
                     'triggered_by' => 'progress-review-accept',
+                    'report_type'  => $validated['report_type'] ?? 'progress',
                 ], $user->id);
             }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Progress report approved. The LPI can now submit the final report.',
+                'message' => $isProgress2
+                    ? 'Progress Report 2 approved. The LPI can now submit the final report.'
+                    : 'Progress report approved. The LPI can now submit the final report.',
             ]);
         }
 
         // Rejected — keep reviewer assigned and record progress_rejected
-        $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
+        $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REJECTED : Project::STATUS_PROGRESS_REJECTED, [
             'triggered_by' => 'progress-review-reject',
             'comment'      => $validated['comment'] ?? null,
+            'report_type'  => $validated['report_type'] ?? 'progress',
         ], $user->id);
 
         return response()->json([
             'success' => true,
-            'message' => 'Progress report rejected. The admin will review and send it back to the LPI.',
+            'message' => $isProgress2
+                ? 'Progress Report 2 rejected. The admin will review and send it back to the LPI.'
+                : 'Progress report rejected. The admin will review and send it back to the LPI.',
         ]);
     }
 
@@ -426,7 +439,7 @@ class WorkflowController extends Controller
             'project_id'  => 'required|exists:projects,id',
             'action'      => 'required|in:send_to_lpi',
             'message'     => 'required|string|max:2000',
-            'report_type' => 'required|in:progress,final',
+            'report_type' => 'required|in:progress,progress2,final',
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
@@ -436,9 +449,13 @@ class WorkflowController extends Controller
             return response()->json(['error' => 'Only administrators can review rejections.'], 403);
         }
 
-        $status = $validated['report_type'] === 'final'
-            ? Project::STATUS_FINAL_REJ_REVIEWED
-            : Project::STATUS_PROGRESS_REJ_REVIEWED;
+        if ($validated['report_type'] === 'final') {
+            $status = Project::STATUS_FINAL_REJ_REVIEWED;
+        } elseif ($validated['report_type'] === 'progress2') {
+            $status = Project::STATUS_PROGRESS2_REJ_REVIEWED;
+        } else {
+            $status = Project::STATUS_PROGRESS_REJ_REVIEWED;
+        }
 
         $project->recordStatus($status, [
             'action' => 'send_to_lpi',
@@ -447,7 +464,8 @@ class WorkflowController extends Controller
             'triggered_by' => 'review-rejection',
         ], $user->id);
 
-        $reportLabel = $validated['report_type'] === 'final' ? 'Final Report' : 'Progress Report';
+        $reportLabel = $validated['report_type'] === 'final' ? 'Final Report'
+            : ($validated['report_type'] === 'progress2' ? 'Progress Report 2' : 'Progress Report');
 
         $this->sendNotificationToLpi(
             $project,

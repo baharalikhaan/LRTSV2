@@ -1,11 +1,14 @@
 @php
     $d = $draft ?? (isset($grading) ? $grading : null);
     $showAsSummary = $showAsSummary ?? false;
+    $reportType = $report_type ?? 'progress';
+    $isProgress2 = $reportType === 'progress2';
+    $reportTitle = $isProgress2 ? 'Progress Report 2' : 'Progress Report';
 @endphp
 
 <div class="ws-card">
     <div class="ws-section-title">
-        <span><i class="fas fa-clipboard-check"></i> Progress Report</span>
+        <span><i class="fas fa-clipboard-check"></i> {{ $reportTitle }}</span>
         @if(!$showAsSummary)
         <button type="button" class="ws-help" onclick="openHelp('helpProgress')">
             <i class="fas fa-question-circle"></i> Grading Help
@@ -172,7 +175,7 @@
         @php $projectId = $project->id ?? ($report->project_id ?? ''); @endphp>
         <form method="POST" action="/grading/{{ $projectId }}/save-progress-grade" data-progress-grade style="margin-top:4px;">
             @csrf
-            <input type="hidden" name="report_type" value="progress">
+            <input type="hidden" name="report_type" value="{{ $reportType }}">
 
             {{-- Section 1: Progress Toward Achieving Outcomes --}}
             <div style="margin-bottom:20px;">
@@ -321,7 +324,7 @@
                     <i class="fas fa-save"></i> Save Report as Draft
                 </button>
                 <button type="submit" name="save_action" value="submit" class="ws-btn ws-btn-primary" style="font-size:12px;padding:5px 12px;">
-                    <i class="fas fa-paper-plane"></i> Submit Progress Report
+                    <i class="fas fa-paper-plane"></i> Submit {{ $reportTitle }}
                 </button>
             </div>
         </form>

@@ -7,6 +7,10 @@
     $projectStudents ??= collect();
     $projectResearchers ??= collect();
 
+    // Extended progress report (Progress Report 2) availability — gated by the
+    // admin-controlled extended_progress flag on the project.
+    $extendedProgress = $project ? (bool) $project->extended_progress : false;
+
     // Cross-College & Research Awards from outcomes
     $crossCollegeOutcome = $outcomes->where('type', 'cross_college')->first();
     $crossCollegeValue = $crossCollegeOutcome ? 'Yes' : 'No';
@@ -17,6 +21,7 @@
     $researchAwardsDetails = $researchAwardsOutcome ? $researchAwardsOutcome->identifier : '';
     // Extract latest submissions by type for display in the upload cards
     $progressSub = $submissions->where('type', 'progress')->last();
+    $progress2Sub = $submissions->where('type', 'progress2')->last();
     $readinessSub = $submissions->where('type', 'readiness')->last();
     $finalSub = $submissions->where('type', 'final')->last();
 
@@ -48,6 +53,18 @@
 
     $lastProgressRejection = $project->statusHistories()->where('status', \App\Models\Project::STATUS_PROGRESS_REJECTED)->latest()->first();
     $progressRejectionReason = $lastProgressRejection ? ($lastProgressRejection->metadata['comment'] ?? $lastProgressRejection->metadata['reason'] ?? null) : null;
+
+    // Progress Report 2 resubmission state (extended progress report)
+    $lastProgress2RejReviewed = $project->statusHistories()->where('status', \App\Models\Project::STATUS_PROGRESS2_REJ_REVIEWED)->latest()->first();
+    $progress2ResubmitRequested = $lastProgress2RejReviewed
+        && ($lastProgress2RejReviewed->metadata['action'] ?? null) === 'send_to_lpi'
+        && !$project->statusHistories()
+            ->whereIn('status', [\App\Models\Project::STATUS_PROGRESS2_REVIEWED, \App\Models\Project::STATUS_PROGRESS2_REJECTED])
+            ->where('created_at', '>', $lastProgress2RejReviewed->created_at)
+            ->exists();
+
+    $lastProgress2Rejection = $project->statusHistories()->where('status', \App\Models\Project::STATUS_PROGRESS2_REJECTED)->latest()->first();
+    $progress2RejectionReason = $lastProgress2Rejection ? ($lastProgress2Rejection->metadata['comment'] ?? $lastProgress2Rejection->metadata['reason'] ?? null) : null;
 
     $lastFinalRejReviewed = $project->statusHistories()->where('status', \App\Models\Project::STATUS_FINAL_REJ_REVIEWED)->latest()->first();
     $finalResubmitRequested = $lastFinalRejReviewed
@@ -81,6 +98,16 @@
     // Progress: gated ONLY by the deadline (submission alone does not lock);
     // the LPI can re-upload/overwrite until the deadline arrives.
     $progressLocked = !$progressResubmitRequested && $progressDeadlinePassed;
+
+    // Progress Report 2 (extended progress): same semantics as progress report 1,
+    // using the extended progress report deadline (falls back to the progress one).
+    $progress2DeadlinePassed = false;
+    if (isset($deadlines['progress2'])) {
+        $progress2Dl = $deadlines['progress2'];
+        $progress2EffectiveDl = $progress2Dl['original'] ?? null;
+        $progress2DeadlinePassed = $progress2EffectiveDl ? now()->greaterThan($progress2EffectiveDl) : true;
+    }
+    $progress2Locked = !$progress2ResubmitRequested && $progress2DeadlinePassed;
     $finalLocked = !$finalResubmitRequested && $finalDeadlinePassed;
     // Outcomes & Students stay open until the final report deadline arrives.
     // They do NOT reopen during a final resubmission — only the final-report
@@ -144,8 +171,25 @@
 <form id="mainProgressForm" action="{{ $isFinalMode ? route('progress.save-final', $project->id) : route('progress.save', $project->id) }}" method="POST" enctype="multipart/form-data">
     @csrf
 
+    {{-- Priority 0: Progress 2 resubmission requested (extended progress) --}}
+    @if($extendedProgress && $progress2ResubmitRequested)
+    <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:14px 18px; margin-bottom:16px;">
+        <p style="margin:0; color:#9a3412; font-size:13px; font-style:italic;">
+            <strong>Progress Report 2 Resubmission Requested</strong> — The reviewer rejected your Progress Report 2. Please review the concerns below and upload a revised version.
+        </p>
+        @if($lastProgress2RejReviewed->metadata['admin_message'] ?? null)
+        <p style="margin:6px 0 0; color:#78350f; font-size:12px;">
+            <strong>Admin message:</strong> {{ $lastProgress2RejReviewed->metadata['admin_message'] }}
+        </p>
+        @endif
+        @if($progress2RejectionReason)
+        <p style="margin:6px 0 0; color:#9a3412; font-size:12px;">
+            <strong>Reviewer's rejection reason:</strong> {{ $progress2RejectionReason }}
+        </p>
+        @endif
+    </div>
     {{-- Priority 1: Resubmission requested (show first) --}}
-    @if($progressResubmitRequested)
+    @elseif($progressResubmitRequested)
     <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:14px 18px; margin-bottom:16px;">
         <p style="margin:0; color:#9a3412; font-size:13px; font-style:italic;">
             <strong>Progress Resubmission Requested</strong> — The reviewer rejected your progress report. Please review the concerns below and upload a revised version.
@@ -954,6 +998,74 @@
                 @endif
             </div>
         </div>
+
+        @if($extendedProgress)
+        @php
+            $progress2Latest = $progress2Sub ?? null;
+            $progress2Dl = $deadlines['progress2'] ?? [];
+            $progress2EffectiveDeadline = $progress2Dl['original'] ?? null;
+        @endphp
+        <div class="ws-card" style="max-width:480px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--ink-100);">
+                <div style="width:36px;height:36px;border-radius:8px;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div>
+                    <strong style="font-size:13px;color:var(--ink-800);">Progress Report 2</strong>
+                    @if($progress2EffectiveDeadline)
+                        <div style="font-size:11px;color:{{ $progress2DeadlinePassed ? 'var(--danger)' : 'var(--ink-400)' }};">
+                            Deadline: {{ $progress2EffectiveDeadline->format('M d, Y') }}
+                            @if($progress2DeadlinePassed) <span style="font-weight:600;">(Passed)</span> @endif
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+<div class="ws-upload-card {{ ($progress2DeadlinePassed || $progress2Locked) && !$progress2ResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress2" data-versioned="{{ $progress2ResubmitRequested ? '1' : '0' }}" data-can-delete="{{ $progress2ResubmitRequested || !$progress2DeadlinePassed ? '1' : '0' }}">
+                <div class="ws-current-file" data-type="progress2">
+                    @php
+                        $progress2Versions = $submissions->where('type', 'progress2')->sortBy('version');
+                        $progress2NextVersion = $progress2ResubmitRequested ? 2 : (($progress2Versions->max('version') ?? 0) + 1);
+                    @endphp
+                    @if($progress2Versions->count() > 0)
+                        @foreach($progress2Versions as $pv)
+                        <div class="ws-file-row" data-id="{{ $pv->id }}" style="margin-bottom:4px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <a href="{{ route('serveFile2', ['type' => 'progress2', 'id' => $project->id, 'submission_id' => $pv->id]) }}" target="_blank" class="ws-file-link">{{ $pv->stored_filename }}</a>
+                            <span class="ws-file-version" style="font-size:10px;font-weight:600;color:{{ $loop->last ? 'var(--success)' : 'var(--ink-400)' }};background:{{ $loop->last ? '#d1fae5' : 'var(--ink-50)' }};padding:1px 6px;border-radius:4px;">v{{ $pv->version }}</span>
+                            <span class="ws-file-date">{{ $pv->created_at->format('M d, Y H:i') }}</span>
+                            @if(($pv->version == 1 && !$progress2DeadlinePassed) || ($pv->version == 2 && $progress2ResubmitRequested))
+                            <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $pv->id }}" title="Delete">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                            @endif
+                        </div>
+                        @endforeach
+@else
+                        <div class="ws-file-empty">No file uploaded yet.</div>
+                    @endif
+                </div>
+
+                @if(!$progress2Locked || $progress2ResubmitRequested)
+                    <input type="file" class="ws-file-input" accept=".pdf">
+                    <button type="button" class="ws-btn ws-btn-outline ws-upload-btn ws-upload-btn--full">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        {{ $progress2ResubmitRequested ? 'Re-Upload Progress Report 2 (v' . $progress2NextVersion . ')' : ($progress2Latest ? 'Re-Upload' : 'Upload Progress Report 2') }}
+                    </button>
+                    <div class="ws-upload-status"></div>
+                    <a href="{{ route('download.template', 'progress') }}" target="_blank" class="ws-template-link">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download Template (DOCX)
+                    </a>
+                @else
+                    <div class="ws-upload-locked">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        @if($progress2DeadlinePassed) Deadline passed — upload closed @elseif($progress2Locked) Already submitted @endif
+                    </div>
+                @endif
+            </div>
+        </div>
+        @endif
     </div>
 
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
@@ -1667,6 +1779,10 @@ document.addEventListener('DOMContentLoaded', function() {
     var progressPanel = document.getElementById('tab-progress-report');
     if (progressPanel) {
         progressPanel.querySelectorAll('input, textarea, select, button').forEach(function(el) {
+            // Progress Report 2 has its own independent deadline/lock state
+            // (prog_rpt2_deadline), so it must NOT be disabled by the
+            // progress-report-1 deadline passing.
+            if (el.closest('[data-type="progress2"]')) return;
             el.disabled = true;
             el.readOnly = true;
         });

@@ -104,6 +104,10 @@ class ProgressController extends Controller
                 'original' => $program ? $program->prog_rpt_deadline : null,
                 'label' => 'Progress Report',
             ],
+            'progress2' => [
+                'original' => $program ? $program->prog_rpt2_deadline : null,
+                'label' => 'Progress Report 2',
+            ],
             'readiness' => [
                 'original' => $program ? $program->prog_rpt2_deadline : null,
                 'label' => 'Readiness Report',
@@ -272,7 +276,7 @@ class ProgressController extends Controller
 
         $request->validate([
             'file' => 'required|file|mimes:pdf|max:10240',
-            'type' => 'required|in:progress,readiness,final',
+            'type' => 'required|in:progress,progress2,readiness,final',
         ]);
 
         $file = $request->file('file');
@@ -297,6 +301,10 @@ class ProgressController extends Controller
             $submissionType = 'final';
             $typeLabel = 'final';
             $dir = $project->getStorageDir('final_reports');
+        } elseif ($type === 'progress2') {
+            $submissionType = 'progress2';
+            $typeLabel = 'progress2';
+            $dir = $project->getStorageDir('progress_reports');
         } else {
             $submissionType = 'progress';
             $typeLabel = 'progress';
@@ -329,6 +337,35 @@ class ProgressController extends Controller
             $version = 2;
         } elseif ($type === 'final') {
             // Final: replace existing (single file per type)
+            $existing = $project->submissions()->where('type', $submissionType)->first();
+            if ($existing) {
+                $oldPath = storage_path('app/' . $existing->file_path);
+                if (file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+                $existing->delete();
+            }
+            $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
+            $version = 1;
+        } elseif ($type === 'progress2' && ($project->hasStatus(Project::STATUS_PROGRESS2_REJECTED)
+                   || $project->hasStatus(Project::STATUS_PROGRESS2_REJ_REVIEWED)
+                   || \App\Models\ProgressReportGrading::where('project_id', $project->id)
+                        ->where('report_type', 'progress2')
+                        ->where('publish', 'rejected')
+                        ->exists())) {
+            // Progress 2 admin resubmission: keep v1, write/overwrite v2 only
+            $existingV2 = $project->submissions()->where('type', $submissionType)->where('version', 2)->first();
+            if ($existingV2) {
+                $oldPath = storage_path('app/' . $existingV2->file_path);
+                if (file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+                $existingV2->delete();
+            }
+            $storedFilename = $oldId . '_' . $typeLabel . '_v2.pdf';
+            $version = 2;
+        } elseif ($type === 'progress2') {
+            // Progress 2 normal upload: replace existing (single file)
             $existing = $project->submissions()->where('type', $submissionType)->first();
             if ($existing) {
                 $oldPath = storage_path('app/' . $existing->file_path);
@@ -389,7 +426,19 @@ class ProgressController extends Controller
             } elseif ($submissionType === 'progress') {
                 \App\Models\ProgressReportGrading::where('project_id', $project->id)
                     ->update(['publish' => 'pending', 'isAccepted' => 0]);
+            } elseif ($submissionType === 'progress2') {
+                \App\Models\ProgressReportGrading::where('project_id', $project->id)
+                    ->where('report_type', 'progress2')
+                    ->update(['publish' => 'pending', 'isAccepted' => 0]);
             }
+        }
+
+        // Record the progress2_added status so the extended report tracks its
+        // own workflow lifecycle (mirrors progress_added for progress report 1).
+        if ($submissionType === 'progress2') {
+            $project->recordStatus(Project::STATUS_PROGRESS2_ADDED, [
+                'triggered_by' => 'progress2',
+            ], $user->id);
         }
 
         // Render the download link HTML snippet
@@ -485,6 +534,9 @@ class ProgressController extends Controller
         if ($type === 'progress') {
             return $program->prog_rpt_deadline;
         }
+        if ($type === 'progress2') {
+            return $program->prog_rpt2_deadline;
+        }
         if ($type === 'readiness') {
             return $program->prog_rpt2_deadline;
         }
@@ -511,6 +563,16 @@ class ProgressController extends Controller
                     ->exists();
         }
 
+        if ($type === 'progress2') {
+            $last = $project->statusHistories()->where('status', Project::STATUS_PROGRESS2_REJ_REVIEWED)->latest()->first();
+            return $last
+                && ($last->metadata['action'] ?? null) === 'send_to_lpi'
+                && !$project->statusHistories()
+                    ->whereIn('status', [Project::STATUS_PROGRESS2_REVIEWED, Project::STATUS_PROGRESS2_REJECTED])
+                    ->where('created_at', '>', $last->created_at)
+                    ->exists();
+        }
+
         $last = $project->statusHistories()->where('status', Project::STATUS_PROGRESS_REJ_REVIEWED)->latest()->first();
         return $last
             && ($last->metadata['action'] ?? null) === 'send_to_lpi'
@@ -532,6 +594,10 @@ class ProgressController extends Controller
 
         if ($type === 'final' || $type === 'readiness') {
             return !$this->isResubmitRequested($project, 'final') && $deadlinePassed;
+        }
+
+        if ($type === 'progress2') {
+            return !$this->isResubmitRequested($project, 'progress2') && $deadlinePassed;
         }
 
         // progress: gated ONLY by the deadline — the LPI may submit and overwrite

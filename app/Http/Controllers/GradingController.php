@@ -82,7 +82,14 @@ class GradingController extends Controller
         }
 
         $finalGrading = FinalReportGrading::where('project_id', $id)->first();
-        $progressGrading = ProgressReportGrading::where('project_id', $id)->first();
+        $progressGrading = ProgressReportGrading::where('project_id', $id)
+            ->where(function ($q) {
+                $q->where('report_type', 'progress')->orWhereNull('report_type');
+            })
+            ->first();
+        $progress2Grading = $project->extended_progress
+            ? ProgressReportGrading::where('project_id', $id)->where('report_type', 'progress2')->first()
+            : null;
 
         $commitments = $project->commitments()->first();
         $contributions = $project->contributions()->get();
@@ -97,6 +104,7 @@ class GradingController extends Controller
         // LPI submission gates — check file existence instead of status
         // (buttons removed, files uploaded directly)
         $progressSubmitted = $submissions->where('type', 'progress')->count() > 0;
+        $progress2Submitted = $project->extended_progress ? $submissions->where('type', 'progress2')->count() > 0 : false;
         $finalSubmitted    = $submissions->where('type', 'final')->count() > 0;
 
         // Whether progress was rejected (show rejection info)
@@ -107,6 +115,10 @@ class GradingController extends Controller
             ->where('type', 'progress')
             ->orderBy('version', 'asc')
             ->get();
+
+        $progress2Versions = $project->extended_progress
+            ? $project->submissions()->where('type', 'progress2')->orderBy('version', 'asc')->get()
+            : collect();
 
         $typeMappings = [
             'prototype'      => 'Prototype',
@@ -182,25 +194,32 @@ class GradingController extends Controller
         // Deadline info — show/hide grading forms based on deadlines
         $program = $project->program;
         $progressDeadline = $program ? ($program->prog_rpt_deadline ?? null) : null;
+        $progress2Deadline = $program ? $program->prog_rpt2_deadline : null;
         $finalDeadline = $program ? ($program->final_rpt_deadline ?? null) : null;
         $now = now();
         $progressDeadlinePassed = $progressDeadline ? $now->greaterThan($progressDeadline) : true;
+        $progress2DeadlinePassed = $project->extended_progress ? ($progress2Deadline ? $now->greaterThan($progress2Deadline) : true) : false;
         $finalDeadlinePassed = $finalDeadline ? $now->greaterThan($finalDeadline) : true;
 
         // Latest rejection reason for pre-filling the re-grade form after resubmission
         $progressRejection = $project->statusHistories()
             ->where('status', Project::STATUS_PROGRESS_REJECTED)
             ->latest()->first();
+        $progress2Rejection = $project->statusHistories()
+            ->where('status', Project::STATUS_PROGRESS2_REJECTED)
+            ->latest()->first();
         $finalRejection = $project->statusHistories()
             ->where('status', Project::STATUS_FINAL_REJECTED)
             ->latest()->first();
         $progressRejectionReason = $progressRejection->metadata['comment'] ?? $progressRejection->metadata['reason'] ?? null;
+        $progress2RejectionReason = $progress2Rejection ? ($progress2Rejection->metadata['comment'] ?? $progress2Rejection->metadata['reason'] ?? null) : null;
         $finalRejectionReason = $finalRejection->metadata['comment'] ?? $finalRejection->metadata['reason'] ?? null;
 
         return view('grading.grading-page', compact(
             'project',
             'finalGrading',
             'progressGrading',
+            'progress2Grading',
             'commitments',
             'contributions',
             'outcomes',
@@ -209,9 +228,11 @@ class GradingController extends Controller
             'submissions',
             'typeMappings',
             'progressSubmitted',
+            'progress2Submitted',
             'finalSubmitted',
             'progressRejected',
             'progressVersions',
+            'progress2Versions',
             'autoGradeA',
             'autoGradeB',
             'autoGradeC',
@@ -219,10 +240,13 @@ class GradingController extends Controller
             'expectedSumA',
             'scoreMap',
             'progressDeadline',
+            'progress2Deadline',
             'finalDeadline',
             'progressDeadlinePassed',
+            'progress2DeadlinePassed',
             'finalDeadlinePassed',
             'progressRejectionReason',
+            'progress2RejectionReason',
             'finalRejectionReason'
         ));
     }
@@ -260,7 +284,7 @@ class GradingController extends Controller
             'analysis'           => 'nullable|string|max:255',
             'comments'           => 'nullable|string|max:255',
             'recommendation'     => 'nullable|string|max:255',
-            'report_type'        => 'nullable|string|max:50',
+            'report_type'        => 'nullable|in:progress,progress2',
             'rejection_reason'   => 'nullable|string|max:2000',
         ];
 
@@ -283,24 +307,43 @@ class GradingController extends Controller
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
         }
 
+        // Report type discriminator: 'progress' (report 1) or 'progress2' (extended report)
+        $reportType = $request->report_type ?: 'progress';
+        $isProgress2 = $reportType === 'progress2';
+
+        // Gate: progress report 2 grading is only available when the admin has
+        // enabled the extended progress flag for this project.
+        if ($isProgress2 && !$project->extended_progress) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Progress Report 2 is not enabled for this project.',
+            ], 403);
+        }
+
         // Check file existence instead of status (buttons removed, files uploaded directly)
-        $hasProgressAdded = $project->submissions()->where('type', 'progress')->count() > 0;
+        $hasProgressAdded = $project->submissions()
+            ->where('type', $isProgress2 ? 'progress2' : 'progress')
+            ->count() > 0;
 
         // Gate: reviewer can only grade if progress has been submitted
         if (!$hasProgressAdded) {
             return response()->json([
                 'success' => false,
-                'error'   => 'The LPI has not submitted the progress report yet. Grading is locked until then.',
+                'error'   => $isProgress2
+                    ? 'The LPI has not submitted Progress Report 2 yet. Grading is locked until then.'
+                    : 'The LPI has not submitted the progress report yet. Grading is locked until then.',
             ], 403);
         }
 
         // Gate: grading opens once the progress deadline passes (null = always open).
         $program = $project->program;
-        $progressDeadline = $program ? ($program->prog_rpt_deadline ?? null) : null;
+        $progressDeadline = $isProgress2
+            ? ($program ? $program->prog_rpt2_deadline : null)
+            : ($program ? ($program->prog_rpt_deadline ?? null) : null);
         if ($progressDeadline && !now()->greaterThan($progressDeadline)) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Grading opens after the progress report deadline.',
+                'error'   => 'Grading opens after the ' . ($isProgress2 ? 'extended progress report' : 'progress report') . ' deadline.',
             ], 403);
         }
 
@@ -311,10 +354,7 @@ class GradingController extends Controller
         $userSelection = $request->publish;
         $isAcceptedValue = $userSelection === 'accepted' ? 1 : ($userSelection === 'rejected' ? 0 : 0);
 
-        // Report type is always progress
-        $reportType = 'progress';
-
-        // Use updateOrCreate with report_type to handle v1 and v2 separately
+        // Use updateOrCreate with report_type to handle progress/progress2 separately
         $grading = \App\Models\ProgressReportGrading::updateOrCreate(
             ['project_id' => $project->id, 'user_id' => $user->id, 'report_type' => $reportType],
             [
@@ -339,13 +379,15 @@ class GradingController extends Controller
         // On submit, record the workflow status
         if ($saveAction === 'submit') {
             if ($userSelection === 'accepted') {
-                $project->recordStatus(Project::STATUS_PROGRESS_REVIEWED, [
-                    'triggered_by' => 'progress-grade-accept',
+                $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REVIEWED : Project::STATUS_PROGRESS_REVIEWED, [
+                    'triggered_by' => $isProgress2 ? 'progress2-grade-accept' : 'progress-grade-accept',
+                    'report_type'  => $reportType,
                 ], $user->id);
             } elseif ($userSelection === 'rejected') {
-                $project->recordStatus(Project::STATUS_PROGRESS_REJECTED, [
-                    'triggered_by' => 'progress-grade-reject',
+                $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REJECTED : Project::STATUS_PROGRESS_REJECTED, [
+                    'triggered_by' => $isProgress2 ? 'progress2-grade-reject' : 'progress-grade-reject',
                     'comment'      => $request->rejection_reason ?? $request->comments ?? null,
+                    'report_type'  => $reportType,
                 ], $user->id);
 
                 // A rejected grade must not persist: remove the grading record

@@ -26,6 +26,13 @@
     $progressVersions = $submissions->where('type', 'progress')->sortByDesc('version');
     $finalVersions = $submissions->where('type', 'final')->sortByDesc('version');
     $readinessVersions = $submissions->where('type', 'readiness')->sortByDesc('version');
+
+    // Progress Report 2 (extended progress) state — mirrors progress report 1
+    $progress2Versions = $progress2Versions ?? $submissions->where('type', 'progress2')->sortByDesc('version');
+    $isProgress2Step = $progress2Submitted
+        && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS2_REVIEWED)
+        && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS2_REJECTED);
+    $showProgress2Tab = ($project->extended_progress ?? false) && ($progress2DeadlinePassed ?? false);
 @endphp
 
 @section('content')
@@ -67,6 +74,11 @@
             @if($showProgressTab)
             <button type="button" class="ws-tab" role="tab" data-tab="ltab-progress" onclick="switchLeftTab('ltab-progress', this)">
                 <i class="fas fa-chart-line"></i> Progress Report
+            </button>
+            @endif
+            @if($showProgress2Tab)
+            <button type="button" class="ws-tab" role="tab" data-tab="ltab-progress2" onclick="switchLeftTab('ltab-progress2', this)">
+                <i class="fas fa-chart-line"></i> Progress Report 2
             </button>
             @endif
             @if($showFinalTab)
@@ -264,6 +276,47 @@
                     </div>
                 </div>
                 <iframe id="progress-iframe" class="ws-iframe" src="{{ $progressVersions->count() > 0 ? route('serveFile2', ['submission_id' => $progressVersions->first()->id]) : route('serveFile2', ['type' => 'progress', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+            </div>
+            @endif
+        </div>
+        @endif
+
+        {{-- Tab: Progress Report 2 --}}
+        @if($showProgress2Tab)
+        <div class="ws-left-tab-panel" id="ltab-progress2" style="display:none;">
+            @if(empty($progress2Submitted) || !$progress2Submitted)
+            <div class="ws-card" style="max-width:620px;margin:32px auto;text-align:center;padding:36px 28px;">
+                <div style="width:64px;height:64px;border-radius:50%;background:var(--sand-50);color:var(--ink-400);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                    <i class="fas fa-lock" style="font-size:24px;"></i>
+                </div>
+                <h3 style="font-size:16px;font-weight:600;color:var(--ink-800);margin:0 0 8px;">Progress Report 2 Not Available Yet</h3>
+                <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
+                    The LPI has not officially submitted the Progress Report 2 for this project.
+                    Grading will be unlocked once the report is submitted.
+                </p>
+            </div>
+            @else
+            <div class="ws-card">
+                <div class="ws-section-title">
+                    <span><i class="fas fa-file-pdf"></i> Progress Report 2</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($progress2Versions->count() > 1)
+                        <select class="ws-version-select" data-iframe="progress2-iframe" onchange="switchVersion(this, 'progress2-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($progress2Versions as $pv)
+                            <option value="{{ $pv->id }}" {{ $loop->first ? 'selected' : '' }}>v{{ $pv->version }} — {{ $pv->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @elseif($progress2Versions->count() === 1)
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $progress2Versions->first()->stored_filename }}</span>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);">No files uploaded</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['type' => 'progress2', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
+                </div>
+                <iframe id="progress2-iframe" class="ws-iframe" src="{{ $progress2Versions->count() > 0 ? route('serveFile2', ['submission_id' => $progress2Versions->first()->id]) : route('serveFile2', ['type' => 'progress2', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
             </div>
             @endif
         </div>
@@ -578,13 +631,18 @@
     <div class="ws-form-col">
 
         {{-- Any grading forms to show? --}}
-        @if(($isProgressStep && $progressDeadlinePassed) || ($isFinalStep && $finalDeadlinePassed))
+        @if(($isProgressStep && $progressDeadlinePassed) || ($isProgress2Step && $progress2DeadlinePassed) || ($isFinalStep && $finalDeadlinePassed))
 
             {{-- Tab buttons --}}
             <div class="ws-right-tabs" role="tablist">
                 @if($isProgressStep && $progressDeadlinePassed)
                 <button type="button" class="ws-tab active" role="tab" data-tab="rtab-progress" onclick="switchRightTab('rtab-progress', this)">
                     <i class="fas fa-chart-line"></i> Progress Grading
+                </button>
+                @endif
+                @if($isProgress2Step && $progress2DeadlinePassed)
+                <button type="button" class="ws-tab {{ !($isProgressStep && $progressDeadlinePassed) ? 'active' : '' }}" role="tab" data-tab="rtab-progress2" onclick="switchRightTab('rtab-progress2', this)">
+                    <i class="fas fa-chart-line"></i> Progress 2 Grading
                 </button>
                 @endif
                 @if($isFinalStep && $finalDeadlinePassed)
@@ -609,6 +667,22 @@
             </div>
             @endif
 
+            {{-- Progress 2 Grading Tab --}}
+            @if($isProgress2Step && $progress2DeadlinePassed)
+            <div class="ws-right-tab-panel" id="rtab-progress2" style="display:{{ !($isProgressStep && $progressDeadlinePassed) ? 'block' : 'none' }};">
+                @include('grading.partials.progress-grade', [
+                    'report' => null,
+                    'grading' => $progress2Grading ?? null,
+                    'index' => 1,
+                    'project' => $project,
+                    'report_type' => 'progress2',
+                    'showSubmitGrade' => $progress2Grading && $progress2Grading->isAccepted !== null && !$project->hasStatus(\App\Models\Project::STATUS_GRADED),
+                    'showAsSummary' => false,
+                    'latestRejectionReason' => $progress2RejectionReason ?? null,
+                ])
+            </div>
+            @endif
+
             {{-- Final Grading Tab --}}
             @if($isFinalStep && $finalDeadlinePassed)
             <div class="ws-right-tab-panel" id="rtab-final" style="display:{{ !($isProgressStep && $progressDeadlinePassed) ? 'block' : 'none' }};">
@@ -623,7 +697,7 @@
         {{-- NO ACTIVE STEP --}}
         @else
             {{-- Check if grading was already submitted --}}
-            @if(($progressGrading && $progressGrading->publish !== 'pending') || ($finalGrading && $finalGrading->publish !== 'pending'))
+            @if(($progressGrading && $progressGrading->publish !== 'pending') || ($progress2Grading && $progress2Grading->publish !== 'pending') || ($finalGrading && $finalGrading->publish !== 'pending'))
                 {{-- Show read-only view of submitted gradings --}}
                 @if($finalGrading && $finalGrading->publish !== 'pending')
                     @if($progressGrading && $progressGrading->publish !== 'pending')
@@ -662,16 +736,26 @@
                         'project' => $project,
                         'showAsSummary' => true
                     ])
+                @elseif($progress2Grading && $progress2Grading->publish !== 'pending')
+                    @include('grading.partials.progress-grade', [
+                        'grading' => $progress2Grading,
+                        'project' => $project,
+                        'showAsSummary' => true,
+                        'report_type' => 'progress2'
+                    ])
                 @endif
 
             {{-- Check if there's a pending rejection the admin needs to review --}}
             @elseif(
                 ($project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED) && (!$progressGrading || $progressGrading->publish === 'pending'))
                 ||
+                ($project->hasStatus(\App\Models\Project::STATUS_PROGRESS2_REJECTED) && (!$progress2Grading || $progress2Grading->publish === 'pending'))
+                ||
                 ($project->hasStatus(\App\Models\Project::STATUS_FINAL_REJECTED) && (!$finalGrading || $finalGrading->publish === 'pending'))
             )
                 @php
                     $hasProgressRejection = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REJECTED) && (!$progressGrading || $progressGrading->publish === 'pending');
+                    $hasProgress2Rejection = $project->hasStatus(\App\Models\Project::STATUS_PROGRESS2_REJECTED) && (!$progress2Grading || $progress2Grading->publish === 'pending');
                     $hasFinalRejection = $project->hasStatus(\App\Models\Project::STATUS_FINAL_REJECTED) && (!$finalGrading || $finalGrading->publish === 'pending');
                 @endphp
 
@@ -705,6 +789,14 @@
                         'grading' => $progressGrading,
                         'project' => $project,
                         'showAsSummary' => true
+                    ])
+
+                @elseif($hasProgress2Rejection)
+                    @include('grading.partials.progress-grade', [
+                        'grading' => $progress2Grading,
+                        'project' => $project,
+                        'showAsSummary' => true,
+                        'report_type' => 'progress2'
                     ])
 
                 @elseif($hasFinalRejection)

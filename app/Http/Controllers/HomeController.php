@@ -148,6 +148,10 @@ class HomeController extends Controller
                 Project::STATUS_PROGRESS_REVIEWED,
                 Project::STATUS_PROGRESS_REJECTED,
                 Project::STATUS_PROGRESS_REJ_REVIEWED,
+                Project::STATUS_PROGRESS2_ADDED,
+                Project::STATUS_PROGRESS2_REVIEWED,
+                Project::STATUS_PROGRESS2_REJECTED,
+                Project::STATUS_PROGRESS2_REJ_REVIEWED,
                 Project::STATUS_FINAL_ADDED,
                 Project::STATUS_GRADED,
             ]);
@@ -171,6 +175,10 @@ class HomeController extends Controller
                 Project::STATUS_PROGRESS_REVIEWED,
                 Project::STATUS_PROGRESS_REJECTED,
                 Project::STATUS_PROGRESS_REJ_REVIEWED,
+                Project::STATUS_PROGRESS2_ADDED,
+                Project::STATUS_PROGRESS2_REVIEWED,
+                Project::STATUS_PROGRESS2_REJECTED,
+                Project::STATUS_PROGRESS2_REJ_REVIEWED,
                 Project::STATUS_FINAL_ADDED,
             ]);
         })->count();
@@ -301,6 +309,8 @@ class HomeController extends Controller
                 Project::STATUS_CLAIMED, Project::STATUS_PROGRESS_ADDED,
                 Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
                 Project::STATUS_PROGRESS_REJ_REVIEWED,
+                Project::STATUS_PROGRESS2_ADDED, Project::STATUS_PROGRESS2_REVIEWED,
+                Project::STATUS_PROGRESS2_REJECTED, Project::STATUS_PROGRESS2_REJ_REVIEWED,
                 Project::STATUS_FINAL_ADDED, Project::STATUS_GRADED,
             ])) {
                 $programsStats[$progKey]['unreg']++;
@@ -309,6 +319,8 @@ class HomeController extends Controller
             } elseif (in_array($latest, [
                 Project::STATUS_PROGRESS_ADDED, Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
                 Project::STATUS_PROGRESS_REJ_REVIEWED,
+                Project::STATUS_PROGRESS2_ADDED, Project::STATUS_PROGRESS2_REVIEWED,
+                Project::STATUS_PROGRESS2_REJECTED, Project::STATUS_PROGRESS2_REJ_REVIEWED,
             ])) {
                 $programsStats[$progKey]['progress']++;
             } elseif ($latest === Project::STATUS_GRADED) {
@@ -340,6 +352,8 @@ class HomeController extends Controller
                     Project::STATUS_CLAIMED, Project::STATUS_PROGRESS_ADDED,
                     Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
                     Project::STATUS_PROGRESS_REJ_REVIEWED,
+                    Project::STATUS_PROGRESS2_ADDED, Project::STATUS_PROGRESS2_REVIEWED,
+                    Project::STATUS_PROGRESS2_REJECTED, Project::STATUS_PROGRESS2_REJ_REVIEWED,
                     Project::STATUS_FINAL_ADDED, Project::STATUS_GRADED,
                 ])) {
                     $pillarsStats[$pillarKey]['unreg']++;
@@ -348,6 +362,8 @@ class HomeController extends Controller
                 } elseif (in_array($latest, [
                     Project::STATUS_PROGRESS_ADDED, Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED,
                     Project::STATUS_PROGRESS_REJ_REVIEWED,
+                    Project::STATUS_PROGRESS2_ADDED, Project::STATUS_PROGRESS2_REVIEWED,
+                    Project::STATUS_PROGRESS2_REJECTED, Project::STATUS_PROGRESS2_REJ_REVIEWED,
                 ])) {
                     $pillarsStats[$pillarKey]['progress']++;
                 } elseif ($latest === Project::STATUS_GRADED) {

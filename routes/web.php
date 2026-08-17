@@ -233,7 +233,7 @@ HTML;
         return $fileNotAvailable();
     }
 
-    if (in_array($type, ['proposal', 'progress', 'readiness', 'final']) && $id) {
+    if (in_array($type, ['proposal', 'progress', 'progress2', 'readiness', 'final']) && $id) {
         $project = \App\Models\Project::find($id);
         if ($project) {
             // Try the deterministic filename first

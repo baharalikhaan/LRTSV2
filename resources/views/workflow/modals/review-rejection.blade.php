@@ -1,11 +1,14 @@
 @php
     $rejectionStatus = $reportType === 'final'
         ? \App\Models\Project::STATUS_FINAL_REJECTED
-        : \App\Models\Project::STATUS_PROGRESS_REJECTED;
+        : ($reportType === 'progress2'
+            ? \App\Models\Project::STATUS_PROGRESS2_REJECTED
+            : \App\Models\Project::STATUS_PROGRESS_REJECTED);
     $latestRejection = $project->statusHistories()
         ->where('status', $rejectionStatus)
         ->latest()->first();
-    $reportLabel = $reportType === 'final' ? 'Final Report' : 'Progress Report';
+    $reportLabel = $reportType === 'final' ? 'Final Report'
+        : ($reportType === 'progress2' ? 'Progress Report 2' : 'Progress Report');
 @endphp
 
 <div class="modal-header" style="border:none;padding:20px 24px 0;">

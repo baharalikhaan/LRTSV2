@@ -18,6 +18,7 @@ class FileExplorerController extends Controller
     private const TYPES = [
         'proposal'   => 'proposals',
         'progress'   => 'progress_reports',
+        'progress2'  => 'progress_reports',
         'final'      => 'final_reports',
         'readiness'  => 'readiness_reports',
     ];

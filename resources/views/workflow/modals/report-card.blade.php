@@ -527,6 +527,67 @@
     @endif
     @endif
 
+    {{-- ===== PROGRESS REPORT 2 GRADING ===== --}}
+    @if(isset($progress2Grading) && $progress2Grading && $progress2Grading->publish !== 'pending')
+    <div class="rc-section">Progress Report 2 Grading</div>
+    <div class="rc-meta" style="margin:0 0 6px;padding:6px 8px;">
+        <div class="rc-meta-item">
+            <strong>Status:</strong>
+            <span class="rating-badge {{ $progress2Grading->isAccepted == 1 ? 'vs' : 'd' }}">{{ $progress2Grading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}</span>
+        </div>
+        <div class="rc-meta-item">
+            <strong>Ethical Approval:</strong>
+            <span class="rating-badge {{ $progress2Grading->ethical ? 'vs' : 'n' }}">{{ $progress2Grading->ethical ? 'Yes' : 'No' }}</span>
+        </div>
+    </div>
+    <table class="rc-table">
+        <thead>
+            <tr>
+                <th>Section</th>
+                <th>Rating</th>
+                <th>Comments</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="reviewer-label">Achievements</td>
+                <td><strong>{{ $progress2Grading->achievementsRating ?? '—' }}/5</strong></td>
+                <td>{{ $progress2Grading->achievementsComments ?? '—' }}</td>
+            </tr>
+            <tr>
+                <td class="reviewer-label">Publications</td>
+                <td><strong>{{ $progress2Grading->publicationsRating ?? '—' }}/5</strong></td>
+                <td>{{ $progress2Grading->publicationsComments ?? '—' }}</td>
+            </tr>
+            <tr>
+                <td class="reviewer-label">Students</td>
+                <td><strong>{{ $progress2Grading->studentsRating ?? '—' }}/5</strong></td>
+                <td>{{ $progress2Grading->studentsComments ?? '—' }}</td>
+            </tr>
+            <tr>
+                <td class="reviewer-label">Budget</td>
+                <td><strong>{{ $progress2Grading->budgetRating ?? '—' }}/5</strong></td>
+                <td>{{ $progress2Grading->budgetComments ?? '—' }}</td>
+            </tr>
+        </tbody>
+    </table>
+    @if($progress2Grading->analysis)
+    <div class="rc-meta" style="margin:6px 0 0;padding:6px 8px;">
+        <div class="rc-meta-item" style="flex:1;"><strong>Analysis:</strong> {{ $progress2Grading->analysis }}</div>
+    </div>
+    @endif
+    @if($progress2Grading->comments)
+    <div class="rc-meta" style="margin:6px 0 0;padding:6px 8px;">
+        <div class="rc-meta-item" style="flex:1;"><strong>Comments:</strong> {{ $progress2Grading->comments }}</div>
+    </div>
+    @endif
+    @if($progress2Grading->recommendation)
+    <div class="rc-meta" style="margin:6px 0 0;padding:6px 8px;">
+        <div class="rc-meta-item" style="flex:1;"><strong>Recommendation:</strong> {{ $progress2Grading->recommendation }}</div>
+    </div>
+    @endif
+    @endif
+
     {{-- ===== FINAL REPORT GRADING ===== --}}
     @if($finalGrading && $finalGrading->publish !== 'pending')
     <div class="rc-section">Final Report Grading</div>
