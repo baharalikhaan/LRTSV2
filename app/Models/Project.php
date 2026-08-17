@@ -558,7 +558,7 @@ class Project extends Model
         $hasGraded = $this->hasStatus(self::STATUS_GRADED);
 
         if ($hasGraded) {
-            $actions[] = ['action' => 'report-card', 'label' => 'Report Card'];
+            $actions[] = ['action' => 'view-grade', 'label' => 'View Grades'];
             return $actions;
         }
 

@@ -51,6 +51,9 @@
         <p>Grade the reports submitted by <strong>{{ $project->lpi->name ?? 'LPI' }}</strong>.</p>
     </div>
     <div class="page-actions">
+        <button type="button" class="btn-primary" style="border:none;" onclick="openWorkflowModal({{ $project->id }}, 'report-card', 'lg')">
+            <i class="fas fa-file-alt"></i> Report Card
+        </button>
         <a href="{{ route('projects.available') }}" class="btn-secondary">
             <i class="fas fa-arrow-left"></i> Back to Projects
         </a>
@@ -698,50 +701,77 @@
         @else
             {{-- Check if grading was already submitted --}}
             @if(($progressGrading && $progressGrading->publish !== 'pending') || ($progress2Grading && $progress2Grading->publish !== 'pending') || ($finalGrading && $finalGrading->publish !== 'pending'))
-                {{-- Show read-only view of submitted gradings --}}
-                @if($finalGrading && $finalGrading->publish !== 'pending')
-                    @if($progressGrading && $progressGrading->publish !== 'pending')
-                    <div class="ws-right-tabs" role="tablist">
-                        <button type="button" class="ws-tab active" role="tab" data-tab="rtab-progress-ro" onclick="switchRightTab('rtab-progress-ro', this)">
-                            <i class="fas fa-chart-line"></i> Progress Grading
-                        </button>
-                        <button type="button" class="ws-tab" role="tab" data-tab="rtab-final" onclick="switchRightTab('rtab-final', this)">
-                            <i class="fas fa-star"></i> Final Grade
-                        </button>
-                    </div>
+                @php
+                    $gradedProgress  = $progressGrading && $progressGrading->publish !== 'pending';
+                    $gradedProgress2 = $progress2Grading && $progress2Grading->publish !== 'pending';
+                    $gradedFinal     = $finalGrading && $finalGrading->publish !== 'pending';
+                    $gradedTabCount  = ($gradedProgress ? 1 : 0) + ($gradedProgress2 ? 1 : 0) + ($gradedFinal ? 1 : 0);
+                @endphp
 
-                    <div class="ws-right-tab-panel" id="rtab-progress-ro" style="display:block;">
-                        @include('grading.partials.progress-grade', [
-                            'grading' => $progressGrading,
-                            'project' => $project,
-                            'showAsSummary' => true
-                        ])
-                    </div>
-
-                    <div class="ws-right-tab-panel" id="rtab-final" style="display:none;">
-                        @include('grading.partials.final-grades', [
-                            'grading' => $finalGrading,
-                            'project' => $project
-                        ])
-                    </div>
-                    @else
-                        @include('grading.partials.final-grades', [
-                            'grading' => $finalGrading,
-                            'project' => $project
-                        ])
+                {{-- Show read-only view of submitted gradings, keeping the tabs in place --}}
+                @if($gradedTabCount > 1)
+                <div class="ws-right-tabs" role="tablist">
+                    @if($gradedProgress)
+                    <button type="button" class="ws-tab active" role="tab" data-tab="rtab-ro-progress" onclick="switchRightTab('rtab-ro-progress', this)">
+                        <i class="fas fa-chart-line"></i> Progress Grading
+                    </button>
                     @endif
-                @elseif($progressGrading && $progressGrading->publish !== 'pending')
+                    @if($gradedProgress2)
+                    <button type="button" class="ws-tab {{ $gradedProgress ? '' : 'active' }}" role="tab" data-tab="rtab-ro-progress2" onclick="switchRightTab('rtab-ro-progress2', this)">
+                        <i class="fas fa-chart-line"></i> Progress 2 Grading
+                    </button>
+                    @endif
+                    @if($gradedFinal)
+                    <button type="button" class="ws-tab {{ ($gradedProgress || $gradedProgress2) ? '' : 'active' }}" role="tab" data-tab="rtab-ro-final" onclick="switchRightTab('rtab-ro-final', this)">
+                        <i class="fas fa-star"></i> Final Grade
+                    </button>
+                    @endif
+                </div>
+
+                @if($gradedProgress)
+                <div class="ws-right-tab-panel" id="rtab-ro-progress" style="display:block;">
                     @include('grading.partials.progress-grade', [
                         'grading' => $progressGrading,
                         'project' => $project,
                         'showAsSummary' => true
                     ])
-                @elseif($progress2Grading && $progress2Grading->publish !== 'pending')
+                </div>
+                @endif
+                @if($gradedProgress2)
+                <div class="ws-right-tab-panel" id="rtab-ro-progress2" style="display:none;">
                     @include('grading.partials.progress-grade', [
                         'grading' => $progress2Grading,
                         'project' => $project,
                         'showAsSummary' => true,
                         'report_type' => 'progress2'
+                    ])
+                </div>
+                @endif
+                @if($gradedFinal)
+                <div class="ws-right-tab-panel" id="rtab-ro-final" style="display:none;">
+                    @include('grading.partials.final-grades', [
+                        'grading' => $finalGrading,
+                        'project' => $project
+                    ])
+                </div>
+                @endif
+                @elseif($gradedProgress)
+                    @include('grading.partials.progress-grade', [
+                        'grading' => $progressGrading,
+                        'project' => $project,
+                        'showAsSummary' => true
+                    ])
+                @elseif($gradedProgress2)
+                    @include('grading.partials.progress-grade', [
+                        'grading' => $progress2Grading,
+                        'project' => $project,
+                        'showAsSummary' => true,
+                        'report_type' => 'progress2'
+                    ])
+                @elseif($gradedFinal)
+                    @include('grading.partials.final-grades', [
+                        'grading' => $finalGrading,
+                        'project' => $project
                     ])
                 @endif
 

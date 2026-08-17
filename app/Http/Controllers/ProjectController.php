@@ -47,7 +47,25 @@ class ProjectController extends Controller
 
         $commitmentsData = $this->computeCommitmentsVsOutcomes($project, $commitment);
 
-        return view('projects.show', compact('project', 'commitment', 'hasCommitments', 'commitmentsData'));
+        $finalGradings = \App\Models\FinalReportGrading::with('user')
+            ->where('project_id', $id)->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
+        $progressGradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+            ->where('project_id', $id)
+            ->where(function ($q) {
+                $q->where('report_type', 'progress')->orWhereNull('report_type');
+            })
+            ->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
+        $progress2Gradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+            ->where('project_id', $id)->where('report_type', 'progress2')
+            ->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
+
+        return view('projects.show', compact(
+            'project', 'commitment', 'hasCommitments', 'commitmentsData',
+            'finalGradings', 'progressGradings', 'progress2Gradings'
+        ));
     }
 
     public function reportCard($id)
@@ -66,17 +84,27 @@ class ProjectController extends Controller
         ])->findOrFail($id);
 
         $commitment = $project->commitments()->first();
-        $finalGrading = \App\Models\FinalReportGrading::where('project_id', $id)->first();
-        $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $id)->first();
-        $progress2Grading = \App\Models\ProgressReportGrading::where('project_id', $id)
-            ->where('report_type', 'progress2')->first();
+        $finalGradings = \App\Models\FinalReportGrading::with('user')
+            ->where('project_id', $id)->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
+        $progressGradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+            ->where('project_id', $id)
+            ->where(function ($q) {
+                $q->where('report_type', 'progress')->orWhereNull('report_type');
+            })
+            ->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
+        $progress2Gradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+            ->where('project_id', $id)->where('report_type', 'progress2')
+            ->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
 
         $outcomes = $project->outcomes()->get();
         $students = $project->students()->get();
         $researchers = $project->researchers()->get();
 
         return view('projects.report-card', compact(
-            'project', 'commitment', 'finalGrading', 'progressGrading', 'progress2Grading',
+            'project', 'commitment', 'finalGradings', 'progressGradings', 'progress2Gradings',
             'outcomes', 'students', 'researchers'
         ));
     }

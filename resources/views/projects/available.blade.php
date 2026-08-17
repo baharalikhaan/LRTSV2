@@ -232,9 +232,11 @@
                                             <i class="fas fa-plus" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Register
                                         </a>
                                         @else
+                                        @if(!$user->isReviewer())
                                         <a class="dropdown-item" href="{{ route('projects.show', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                             <i class="fas fa-eye" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> View Details
                                         </a>
+                                        @endif
                                         @if(!$cp->proposal_filename && $user->isAdmin())
                                         <a class="dropdown-item" href="#" onclick="closeProjectMenus();openSingleUploadModal({{ $cp->id }}, '{{ addslashes($cp->old_project_id) }}')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                             <i class="fas fa-file-pdf" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Upload Proposal
@@ -264,6 +266,10 @@
                                             @elseif($act['action'] === 'report-card')
                                                 <a class="dropdown-item" href="{{ route('projects.report-card', $cp->id) }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                                     <i class="fas fa-file-alt" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
+                                                </a>
+                                            @elseif($act['action'] === 'view-grade')
+                                                <a class="dropdown-item open-grade-modal" href="#" onclick="event.preventDefault();closeProjectMenus();" data-project-id="{{ $cp->id }}" data-project-title="{{ addslashes($cp->title ?? '') }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                                    <i class="fas fa-star" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
                                                 </a>
                                             @elseif($act['action'] === 'claim')
                                                 <a class="dropdown-item" href="#" onclick="closeProjectMenus();openWorkflowModal({{ $cp->id }}, 'accept-proposal')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">

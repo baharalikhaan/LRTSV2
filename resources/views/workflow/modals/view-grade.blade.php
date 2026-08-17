@@ -1,117 +1,212 @@
 @php
-    // Get the current user's grading data for this project
-    $myGrade = \App\Models\ProgressReportGrading::where('project_id', $project->id)
-        ->where('user_id', auth()->id())
+    $userId = auth()->id();
+    $reviewerPivot = DB::table('projects_reviewers')
+        ->where('project_id', $project->id)
+        ->where('user_id', $userId)
         ->first();
-    if (!$myGrade) {
-        $myGrade = \App\Models\FinalReportGrading::where('project_id', $project->id)
-            ->where('user_id', auth()->id())
-            ->first();
-    }
+
+    $progressRows = function ($g) {
+        return [
+            ['label' => 'Progress Toward Achieving Outcomes', 'rating' => $g->achievementsRating ?? null, 'word' => $g->achievementsRatingRef->rating ?? null, 'comments' => $g->achievementsComments ?? null],
+            ['label' => 'Progress in Publications',           'rating' => $g->publicationsRating ?? null, 'word' => $g->publicationsRatingRef->rating ?? null, 'comments' => $g->publicationsComments ?? null],
+            ['label' => 'Student Involvement & Capacity Building', 'rating' => $g->studentsRating ?? null, 'word' => $g->studentsRatingRef->rating ?? null, 'comments' => $g->studentsComments ?? null],
+            ['label' => 'Budget Utilization',                 'rating' => $g->budgetRating ?? null,       'word' => $g->budgetRatingRef->rating ?? null,       'comments' => $g->budgetComments ?? null],
+        ];
+    };
+
+    $hasAnyGrade = ($progressGrading && $progressGrading->publish !== 'pending' && $progressGrading->isAccepted !== null)
+        || ($progress2Grading && $progress2Grading->publish !== 'pending' && $progress2Grading->isAccepted !== null)
+        || ($finalGrading && $finalGrading->publish !== 'pending' && $finalGrading->isAccepted !== null);
 @endphp
-<div class="modal-header" style="border:none;padding:20px 24px 0;">
-    <h5 class="modal-title" style="font-weight:600;font-size:18px;">
-        <i class="fas fa-star" style="color:var(--color-gold-500);margin-right:8px;"></i>
-        My Grade &mdash; {{ \Illuminate\Support\Str::limit($project->project_title, 45) }}
-    </h5>
-    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-        <span aria-hidden="true">&times;</span>
-    </button>
-</div>
-<div class="modal-body" style="padding:16px 24px 20px;">
-    {{-- Project context card --}}
-    <div class="d-flex align-items-start gap-3" style="background:var(--color-sand-50);border:1px solid var(--color-ink-100);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-        <div style="flex-shrink:0;width:36px;height:36px;border-radius:6px;background:rgba(141,27,61,.1);display:flex;align-items:center;justify-content:center;">
-            <i class="fas fa-file-alt" style="color:var(--color-brand-500);font-size:16px;"></i>
-        </div>
-        <div style="flex:1;">
-            <div style="font-size:13px;font-weight:600;">{{ $project->project_title }}</div>
-            <div style="font-size:12px;color:var(--color-ink-400);margin-top:2px;">
+
+<style>
+.vg-modal{background:#fff;border-radius:8px;overflow:hidden;box-shadow:var(--fluent-depth-16)}
+.vg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--brand-500,#8d1b3d);color:#fff;padding:12px 18px;font-size:14px;font-weight:500}
+.vg-head span{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.vg-head .vg-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vg-close{background:transparent;border:none;color:#fff;font-size:22px;line-height:1;cursor:pointer;opacity:.85}
+.vg-close:hover{opacity:1}
+.vg-body{padding:14px 18px;font-size:13px;color:var(--ink-600,#4c4553);max-height:70vh;overflow-y:auto}
+.vg-sub{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--brand-50,#fbeef1);border:1px solid var(--brand-200,#e8c9d2);border-radius:6px;padding:7px 12px;margin:0 0 10px;font-size:12.5px;font-weight:500;color:var(--brand-700,#6d122e)}
+.vg-sub i{color:var(--brand-500,#8d1b3d)}
+.vg-sub .vg-date{font-size:10.5px;font-weight:400;color:var(--ink-400,#8b8592);white-space:nowrap}
+.vg-summary{background:var(--sand-50,#faf7f0);border:1px solid var(--ink-100,#eeedf0);border-radius:6px;padding:4px 14px;font-size:12.5px}
+.vg-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-bottom:1px solid var(--ink-100,#eeedf0)}
+.vg-row:last-child{border-bottom:none}
+.vg-label{font-weight:500;color:var(--ink-700,#38333e);font-size:12px}
+.vg-value{font-weight:500;color:var(--brand-600,#7a1636);font-size:12.5px;white-space:nowrap;flex-shrink:0}
+.vg-comment{color:var(--ink-500,#675f6e);font-size:11.5px;margin-top:3px;white-space:pre-wrap}
+.vg-pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:500;margin:2px 0 6px}
+.vg-pill-ok{background:#e8f5ee;color:var(--success,#1f8a5f);border:1px solid #a8e6b8}
+.vg-pill-no{background:#fbeef1;color:var(--danger,#b3261e);border:1px solid #f5c6cb}
+.vg-empty{text-align:center;padding:28px 12px;color:var(--ink-400,#8b8592);background:var(--sand-50,#faf7f0);border:1px solid var(--ink-100,#eeedf0);border-radius:6px;font-size:12.5px}
+.vg-empty i{font-size:26px;color:var(--ink-200,#d8d6dc);display:block;margin-bottom:6px}
+.vg-footer{display:flex;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--ink-100,#eeedf0)}
+</style>
+
+<div class="vg-modal">
+    <div class="vg-head">
+        <span>
+            <i class="fas fa-star" style="color:var(--color-gold-500,#f0b429);"></i>
+            <span class="vg-title">My Grades &mdash; {{ \Illuminate\Support\Str::limit($project->project_title, 40) }}</span>
+        </span>
+        <button type="button" class="vg-close" data-dismiss="modal" aria-label="Close">&times;</button>
+    </div>
+
+    <div class="vg-body">
+        {{-- Project context --}}
+        <div style="padding:8px 12px;background:#fff;border:1px solid var(--ink-100,#eeedf0);border-radius:6px;margin-bottom:12px;">
+            <div style="font-size:12.5px;font-weight:500;color:var(--ink-800,#241f2a);">
+                {{ $project->project_title }}
+            </div>
+            <div style="font-size:11.5px;color:var(--ink-400,#8b8592);margin-top:2px;">
                 ID: <code>{{ $project->old_project_id ?? $project->id }}</code>
                 &middot; {{ $project->program->program_title ?? 'N/A' }}
                 @if($project->program && $project->program->grant)
                     &middot; {{ $project->program->grant->category ?? $project->program->grant->grant_code ?? 'N/A' }}
                 @endif
-            </div>
-        </div>
-    </div>
-
-    @if($myGrade)
-        {{-- Grade display card --}}
-        <div style="background:#fff;border:1px solid var(--color-ink-100);border-radius:8px;padding:20px;margin-bottom:16px;text-align:center;box-shadow:var(--fluent-depth-2);">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--color-ink-400);margin-bottom:8px;">
-                Your Assessment
-            </div>
-            <div style="display:flex;justify-content:center;gap:32px;flex-wrap:wrap;">
-                <div>
-                    <div style="font-size:36px;font-weight:700;color:var(--color-brand-500);line-height:1;">
-                        {{ $myGrade->achievementsRating ?? '—' }}
-                    </div>
-                    <div style="font-size:11px;color:var(--color-ink-400);margin-top:4px;">Reviewer Grade</div>
-                </div>
-                @if($myGrade->publicationsRating ?? $myGrade->total ?? null)
-                <div>
-                    <div style="font-size:36px;font-weight:700;color:var(--color-gold-500);line-height:1;">
-                        {{ $myGrade->total ?? $myGrade->publicationsRating ?? '—' }}
-                    </div>
-                    <div style="font-size:11px;color:var(--color-ink-400);margin-top:4px;">Total Score</div>
-                </div>
+                @if($reviewerPivot && $reviewerPivot->role)
+                    &middot; Graded as <strong>{{ $reviewerPivot->role }}</strong>
                 @endif
             </div>
-            @if($myGrade->created_at ?? false)
-            <div style="font-size:11px;color:var(--color-ink-400);margin-top:12px;padding-top:12px;border-top:1px solid var(--color-ink-100);">
-                <i class="far fa-clock"></i> Submitted {{ $myGrade->created_at->format('d M Y, h:i A') }}
+        </div>
+
+        @if(!$hasAnyGrade)
+            <div class="vg-empty">
+                <i class="fas fa-hourglass-half"></i>
+                You have not submitted any grades for this project yet.
             </div>
+        @else
+
+        {{-- ═══ Progress Report ═══ --}}
+        @if($progressGrading && $progressGrading->publish !== 'pending' && $progressGrading->isAccepted !== null)
+        <div class="vg-sub">
+            <span><i class="fas fa-chart-line"></i> Progress Report</span>
+            @if($progressGrading->created_at)
+            <span class="vg-date"><i class="far fa-clock"></i> {{ $progressGrading->created_at->format('d M Y') }}</span>
             @endif
         </div>
-
-        {{-- Comments --}}
-        @if($myGrade->commentA ?? $myGrade->achievementsComments ?? $myGrade->comments ?? false)
-        @php
-            $commentText = $myGrade->commentA ?? $myGrade->achievementsComments ?? $myGrade->comments ?? '';
-        @endphp
-        <div style="background:var(--color-sand-50);border:1px solid var(--color-ink-100);border-radius:8px;padding:14px 16px;margin-bottom:16px;">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--color-ink-400);margin-bottom:6px;">
-                <i class="fas fa-comment"></i> Your Comments
-            </div>
-            <p style="font-size:13px;color:var(--color-ink-700);margin:0;white-space:pre-wrap;">{{ $commentText }}</p>
-        </div>
-        @endif
-
-        {{-- Reviewer role badge --}}
-        @php
-            $reviewerPivot = DB::table('projects_reviewers')
-                ->where('project_id', $project->id)
-                ->where('user_id', auth()->id())
-                ->first();
-        @endphp
-        @if($reviewerPivot && $reviewerPivot->role)
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 0 0;">
-            <span style="background:var(--color-brand-500);color:#fff;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">
-                {{ $reviewerPivot->role }}
+        <div class="vg-summary" style="margin-bottom:14px;">
+            <span class="vg-pill {{ $progressGrading->isAccepted == 1 ? 'vg-pill-ok' : 'vg-pill-no' }}">
+                <i class="fas {{ $progressGrading->isAccepted == 1 ? 'fa-check-circle' : 'fa-times-circle' }}"></i>
+                {{ $progressGrading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
             </span>
-            <span style="font-size:12px;color:var(--color-ink-400);">Graded as <strong>{{ $reviewerPivot->role }}</strong></span>
-        </div>
-        @endif
-    @else
-        {{-- No grade yet --}}
-        <div class="text-center py-4" style="background:var(--color-sand-50);border:1px solid var(--color-ink-100);border-radius:8px;margin-bottom:16px;">
-            <i class="fas fa-hourglass-half" style="font-size:32px;color:var(--color-ink-300);"></i>
-            <p style="color:var(--color-ink-500);margin:8px 0 0;font-size:13px;">
-                You have not submitted a grade for this project yet.
-            </p>
-            @if(in_array(optional($project->latestStatus)->status, ['Claimed', 'Graded']))
-            <a href="{{ route('projects.show', $project->id) }}" class="btn-primary btn-sm" style="margin-top:12px;">
-                <i class="fas fa-gavel"></i> Grade Now
-            </a>
+            @foreach($progressRows($progressGrading) as $r)
+            <div class="vg-row">
+                <span class="vg-label">{{ $r['label'] }}</span>
+                <span class="vg-value">{{ $r['word'] ? $r['word'] . ' (' . $r['rating'] . '/5)' : ($r['rating'] !== null ? $r['rating'] . '/5' : '—') }}</span>
+            </div>
+            @if($r['comments'])
+            <div class="vg-comment" style="padding-bottom:6px;">{{ $r['comments'] }}</div>
+            @endif
+            @endforeach
+            @if($progressGrading->ethical !== null)
+            <div class="vg-row">
+                <span class="vg-label">Ethical Approvals</span>
+                <span class="vg-value" style="color:{{ $progressGrading->ethical ? 'var(--success,#1f8a5f)' : 'var(--danger,#b3261e)' }};">{{ $progressGrading->ethical ? 'Yes' : 'No' }}</span>
+            </div>
+            @endif
+            @if($progressGrading->analysis)
+            <div class="vg-comment" style="padding-top:6px;border-top:1px solid var(--ink-100,#eeedf0);">
+                <span class="vg-label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;">Analysis</span>
+                {{ $progressGrading->analysis }}
+            </div>
+            @endif
+            @if($progressGrading->recommendation)
+            <div class="vg-comment" style="padding-top:6px;border-top:1px solid var(--ink-100,#eeedf0);">
+                <span class="vg-label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;">Recommendation</span>
+                {{ $progressGrading->recommendation }}
+            </div>
             @endif
         </div>
-    @endif
+        @endif
 
-    <div class="text-end" style="display:flex;justify-content:flex-end;gap:8px;padding-top:12px;border-top:1px solid var(--color-ink-100);">
+        {{-- ═══ Progress Report 2 ═══ --}}
+        @if($progress2Grading && $progress2Grading->publish !== 'pending' && $progress2Grading->isAccepted !== null)
+        <div class="vg-sub">
+            <span><i class="fas fa-chart-line"></i> Progress Report 2</span>
+            @if($progress2Grading->created_at)
+            <span class="vg-date"><i class="far fa-clock"></i> {{ $progress2Grading->created_at->format('d M Y') }}</span>
+            @endif
+        </div>
+        <div class="vg-summary" style="margin-bottom:14px;">
+            <span class="vg-pill {{ $progress2Grading->isAccepted == 1 ? 'vg-pill-ok' : 'vg-pill-no' }}">
+                <i class="fas {{ $progress2Grading->isAccepted == 1 ? 'fa-check-circle' : 'fa-times-circle' }}"></i>
+                {{ $progress2Grading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
+            </span>
+            @foreach($progressRows($progress2Grading) as $r)
+            <div class="vg-row">
+                <span class="vg-label">{{ $r['label'] }}</span>
+                <span class="vg-value">{{ $r['word'] ? $r['word'] . ' (' . $r['rating'] . '/5)' : ($r['rating'] !== null ? $r['rating'] . '/5' : '—') }}</span>
+            </div>
+            @if($r['comments'])
+            <div class="vg-comment" style="padding-bottom:6px;">{{ $r['comments'] }}</div>
+            @endif
+            @endforeach
+            @if($progress2Grading->ethical !== null)
+            <div class="vg-row">
+                <span class="vg-label">Ethical Approvals</span>
+                <span class="vg-value" style="color:{{ $progress2Grading->ethical ? 'var(--success,#1f8a5f)' : 'var(--danger,#b3261e)' }};">{{ $progress2Grading->ethical ? 'Yes' : 'No' }}</span>
+            </div>
+            @endif
+            @if($progress2Grading->analysis)
+            <div class="vg-comment" style="padding-top:6px;border-top:1px solid var(--ink-100,#eeedf0);">
+                <span class="vg-label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;">Analysis</span>
+                {{ $progress2Grading->analysis }}
+            </div>
+            @endif
+            @if($progress2Grading->recommendation)
+            <div class="vg-comment" style="padding-top:6px;border-top:1px solid var(--ink-100,#eeedf0);">
+                <span class="vg-label" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;">Recommendation</span>
+                {{ $progress2Grading->recommendation }}
+            </div>
+            @endif
+        </div>
+        @endif
+
+        {{-- ═══ Final Report ═══ --}}
+        @if($finalGrading && $finalGrading->publish !== 'pending' && $finalGrading->isAccepted !== null)
+        @php
+            $finalSections = [
+                'A' => ['label' => 'Achievements against objectives', 'grade' => $finalGrading->gradeA ?? null, 'comment' => $finalGrading->commentA ?? null],
+                'B' => ['label' => 'Publications & IP',              'grade' => $finalGrading->gradeB ?? null, 'comment' => $finalGrading->commentB ?? null],
+                'C' => ['label' => 'Student & Young Researcher Involvement', 'grade' => $finalGrading->gradeC ?? null, 'comment' => $finalGrading->commentC ?? null],
+                'D' => ['label' => 'Project Impact',                 'grade' => $finalGrading->gradeD ?? null, 'comment' => $finalGrading->commentD ?? null],
+            ];
+        @endphp
+        <div class="vg-sub" style="background:#e8f5ee;border-color:#a8e6b8;color:#2e7d32;">
+            <span><i class="fas fa-flag-checkered" style="color:#2e7d32;"></i> Final Report</span>
+            @if($finalGrading->created_at)
+            <span class="vg-date"><i class="far fa-clock"></i> {{ $finalGrading->created_at->format('d M Y') }}</span>
+            @endif
+        </div>
+        <div class="vg-summary">
+            <span class="vg-pill {{ $finalGrading->isAccepted == 1 ? 'vg-pill-ok' : 'vg-pill-no' }}">
+                <i class="fas {{ $finalGrading->isAccepted == 1 ? 'fa-check-circle' : 'fa-times-circle' }}"></i>
+                {{ $finalGrading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
+            </span>
+            @foreach($finalSections as $key => $s)
+            <div class="vg-row">
+                <span class="vg-label">{{ $key }}. {{ $s['label'] }}</span>
+                <span class="vg-value">{{ $s['grade'] !== null ? $s['grade'] . '/5' : '—' }}</span>
+            </div>
+            @if($s['comment'])
+            <div class="vg-comment" style="padding-bottom:6px;">{{ $s['comment'] }}</div>
+            @endif
+            @endforeach
+            <div class="vg-row">
+                <span class="vg-label">Total Score</span>
+                <span class="vg-value" style="font-size:15px;">{{ $finalGrading->total ?? '—' }}</span>
+            </div>
+        </div>
+        @endif
+
+        @endif
+    </div>
+
+    <div class="vg-footer">
         <button type="button" class="btn-secondary btn-sm" data-dismiss="modal">
             <i class="fas fa-times"></i> Close
         </button>
     </div>
 </div>
-</write_to_file>

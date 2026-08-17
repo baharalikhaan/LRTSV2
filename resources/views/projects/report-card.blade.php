@@ -3,515 +3,406 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project Report Card — {{ $project->old_project_id }}</title>
+    <title>Report Card — {{ $project->old_project_id }}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 11px; color: #333; line-height: 1.5; padding: 24px; background: #fff; }
-        
-        /* Print styles */
-        @media print {
-            body { padding: 0; font-size: 10px; }
-            .no-print { display: none !important; }
-            .page-break { page-break-before: always; }
-            table { page-break-inside: avoid; }
-            .section { page-break-inside: avoid; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-size: 10.5px; color: #3d3d3d; line-height: 1.45;
+            background: #f4f5f7; padding: 14px;
         }
-        
-        /* Header */
-        .header { border-bottom: 1px solid #ccc; padding-bottom: 12px; margin-bottom: 18px; }
-        .header h1 { font-size: 18px; font-weight: 700; color: #333; margin: 0 0 4px; }
-        .header .subtitle { font-size: 12px; color: #666; }
-        .header .meta { display: flex; gap: 16px; margin-top: 8px; font-size: 10px; color: #666; }
-        .header .meta span { display: inline-flex; align-items: center; gap: 4px; }
-        
-        /* Sections */
-        .section { margin-bottom: 18px; }
-        .section-title { font-size: 11px; font-weight: 700; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-        
-        /* Tables - hairline with rounded corners */
-        table { width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
-        th { text-align: left; padding: 5px 8px; font-weight: 600; font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px; color: #555; border-bottom: 1px solid #ddd; background: transparent; }
-        td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover { background: transparent; }
-        
-        /* Badges */
-        .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 8px; font-weight: 600; text-transform: uppercase; border: 1px solid; }
-        .badge-success { border-color: #2e7d32; color: #2e7d32; background: transparent; }
-        .badge-warning { border-color: #ef6c00; color: #ef6c00; background: transparent; }
-        .badge-danger { border-color: #c62828; color: #c62828; background: transparent; }
-        .badge-info { border-color: #1565c0; color: #1565c0; background: transparent; }
-        .badge-neutral { border-color: #888; color: #888; background: transparent; }
-        
-        /* Icons */
-        .icon { width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 3px; }
-        .icon-check { color: #2e7d32; }
-        .icon-cross { color: #c62828; }
-        .icon-pending { color: #ef6c00; }
-        
-        /* Grid */
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
-        
-        /* Info boxes - no shading */
-        .info-box { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
-        .info-box .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px; color: #888; font-weight: 600; }
-        .info-box .value { font-size: 11px; color: #333; font-weight: 500; margin-top: 2px; }
-        
-        /* Grade display */
-        .grade-box { text-align: center; padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
-        .grade-box .grade { font-size: 22px; font-weight: 700; color: #333; }
-        .grade-box .label { font-size: 9px; text-transform: uppercase; color: #888; margin-top: 2px; }
-        
-        /* Footer */
-        .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #ccc; font-size: 9px; color: #999; text-align: center; }
-        
-        /* Print button */
-        .print-btn { position: fixed; top: 20px; right: 20px; background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; z-index: 1000; }
-        .print-btn:hover { background: #555; }
+
+        /* ─── Print styles ─── */
+        @media print {
+            body { background: #fff; padding: 0; font-size: 10px; }
+            .no-print { display: none !important; }
+            .rc-page { box-shadow: none; border: none; margin: 0; }
+            .rc-section { page-break-inside: avoid; }
+            table { page-break-inside: avoid; }
+        }
+
+        /* ─── Invoice page ─── */
+        .rc-page {
+            max-width: 800px; margin: 0 auto;
+            background: #fff; border: 1px solid #e4e7eb;
+            border-radius: 8px; overflow: hidden;
+            box-shadow: 0 1px 8px rgba(0,0,0,.06);
+        }
+        .rc-page-inner { padding: 20px 26px; }
+
+        /* ─── Header ─── */
+        .rc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .rc-header-left { display: flex; align-items: center; gap: 10px; }
+        .rc-header-left img { width: 62px; height: auto; }
+        .rc-header-right { text-align: right; }
+        .rc-header-right .rc-doc-title {
+            font-size: 18px; font-weight: 600; letter-spacing: 1px;
+            color: #8d1b3d; text-transform: uppercase; line-height: 1.1;
+        }
+        .rc-header-right .rc-doc-sub {
+            font-size: 8px; color: #9a9ea5; text-transform: uppercase;
+            letter-spacing: 2px; font-weight: 500; margin-top: 3px;
+        }
+
+        /* ─── Project info table ─── */
+        .rc-info { width: 100%; border-collapse: collapse; margin-bottom: 14px; background: #fafbfc; }
+        .rc-info th {
+            text-align: left; padding: 6px 10px; font-weight: 600; font-size: 9.5px;
+            color: #8d1b3d; width: 120px; border: 1px solid #eceff1;
+        }
+        .rc-info td { padding: 6px 10px; border: 1px solid #eceff1; font-weight: 400; }
+
+        /* ─── Section headings ─── */
+        .rc-section { margin-bottom: 10px; }
+        .rc-section-title {
+            font-size: 10px; font-weight: 600; color: #8d1b3d;
+            padding: 3px 0; margin-bottom: 6px;
+            border-bottom: 1px solid #eee3e7;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .rc-section-title .rc-count {
+            font-size: 8px; font-weight: 500; color: #9a9ea5;
+            background: #f3f4f6; padding: 1px 6px; border-radius: 999px;
+        }
+
+        /* ─── Remarks tables (per reviewer) ─── */
+        .rc-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .rc-table th {
+            text-align: left; padding: 5px 8px; font-size: 8.5px;
+            font-weight: 600; color: #6b7078; border: 1px solid #eceff1;
+            background: #fafbfc;
+        }
+        .rc-table td { padding: 5px 8px; border: 1px solid #eceff1; vertical-align: top; }
+        .rc-table td.rc-crit { font-weight: 500; color: #3d3d3d; }
+        .rc-table td.rc-rating { font-weight: 600; color: #8d1b3d; white-space: nowrap; text-align: center; }
+        .rc-table tr.rc-rec td { background: #fafbfc; font-weight: 500; }
+        .rc-table .rc-ok { color: #2e8b57; font-weight: 600; }
+        .rc-table .rc-no { color: #c0392b; font-weight: 600; }
+
+        /* Rotated reviewer label */
+        .rc-reviewer {
+            writing-mode: vertical-rl; transform: rotate(180deg);
+            text-align: center; white-space: nowrap;
+            font-weight: 600; color: #8d1b3d; background: #fbeef1;
+            font-size: 8.5px; letter-spacing: .5px; width: 22px;
+            padding: 6px 3px; border-bottom: 1px solid #e9d3d9;
+        }
+
+        /* ─── Grid helpers ─── */
+        .rc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .rc-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .rc-box {
+            border: 1px solid #eceff1; border-radius: 6px; padding: 5px 8px;
+            background: #fafbfc;
+        }
+        .rc-box .rc-box-label {
+            font-size: 7.5px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: .3px; color: #9a9ea5; margin-bottom: 1px;
+        }
+        .rc-box .rc-box-value { font-size: 10px; font-weight: 500; color: #3d3d3d; }
+
+        /* ─── Status badge ─── */
+        .rc-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 999px;
+            font-size: 8.5px; font-weight: 600; border: 1px solid transparent;
+        }
+        .rc-badge-ok { background: #e8f5ee; color: #2e8b57; border-color: #cfeade; }
+        .rc-badge-no { background: #fdecec; color: #c0392b; border-color: #f6d3d4; }
+        .rc-badge-info { background: #eaf1fb; color: #3d6db5; border-color: #d3e0f4; }
+        .rc-badge-amber { background: #fdf6e6; color: #a67c18; border-color: #f3e3bd; }
+
+        /* ─── Summary row (QR + totals) ─── */
+        .rc-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+        .rc-summary-qr { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .rc-summary-qr img { width: 52px; height: 52px; border: 1px solid #eceff1; border-radius: 4px; }
+        .rc-summary-qr .rc-qr-label {
+            font-size: 6.5px; color: #9a9ea5; text-transform: uppercase;
+            letter-spacing: .5px; font-weight: 600; line-height: 1.2;
+        }
+        .rc-summary-table { border-collapse: collapse; flex: 1; max-width: 260px; }
+        .rc-summary-table td { padding: 5px 9px; border: 1px solid #eceff1; font-size: 9.5px; }
+        .rc-summary-table td:first-child {
+            background: #fafbfc; font-weight: 600; color: #6b7078; width: 120px;
+        }
+        .rc-summary-table td:last-child {
+            font-weight: 600; color: #8d1b3d; text-align: center;
+        }
+
+        /* ─── Notes / footer ─── */
+        .rc-notes {
+            margin-top: 10px; padding-top: 6px; border-top: 1px solid #eceff1;
+            font-size: 8.5px; color: #9a9ea5; line-height: 1.4;
+        }
+        .rc-notes b { color: #6b7078; font-weight: 600; }
+        .rc-footer {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-top: 6px; padding-top: 6px; border-top: 1px solid #eceff1;
+            font-size: 8px; color: #9a9ea5;
+        }
+        .rc-footer img { width: 32px; opacity: .5; }
+
+        /* ─── Print / action buttons ─── */
+        .rc-actions { position: fixed; top: 12px; right: 12px; display: flex; gap: 6px; z-index: 50; }
+        .rc-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            border: none; cursor: pointer; font-family: inherit;
+            padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 500;
+            box-shadow: 0 1px 6px rgba(0,0,0,.1); transition: transform .1s;
+        }
+        .rc-btn:hover { transform: translateY(-1px); }
+        .rc-btn-primary { background: #8d1b3d; color: #fff; }
+        .rc-btn-secondary { background: #fff; color: #6b7078; border: 1px solid #e4e7eb; }
     </style>
 </head>
 <body>
-    <button class="print-btn no-print" onclick="window.print()">
-        <i class="fas fa-print"></i> Print Report Card
-    </button>
-
-    {{-- Header --}}
-    <div class="header">
-        <h1>Project Report Card</h1>
-        <div class="subtitle">{{ $project->title }}</div>
-        <div class="meta">
-            <span><strong>ID:</strong> {{ $project->old_project_id }}</span>
-            <span><strong>Grant:</strong> {{ $project->grant->grant_name ?? $project->program->grant->grant_name ?? '—' }}</span>
-            <span><strong>Program:</strong> {{ $project->program->program_title ?? '—' }}</span>
-            <span><strong>LPI:</strong> {{ $project->lpi->name ?? '—' }} ({{ $project->lpi->email ?? '—' }})</span>
-            <span><strong>Date:</strong> {{ now()->format('M d, Y') }}</span>
-        </div>
+    <div class="rc-actions no-print">
+        <button class="rc-btn rc-btn-secondary" onclick="window.history.back()">&#8592; Back</button>
+        <button class="rc-btn rc-btn-primary" onclick="window.print()">&#128424; Print</button>
     </div>
 
-    {{-- Core Information --}}
-    <div class="section">
-        <div class="section-title">Core Information</div>
-        <div class="grid-3">
-            <div class="info-box">
-                <div class="label">Project Title</div>
-                <div class="value">{{ $project->title }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Program</div>
-                <div class="value">{{ $project->program->program_title ?? '—' }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Grant</div>
-                <div class="value">{{ $project->grant->grant_name ?? $project->program->grant->grant_name ?? '—' }}</div>
-            </div>
-        </div>
-        <div class="grid-3">
-            <div class="info-box">
-                <div class="label">Pillars</div>
-                <div class="value">{{ $project->pillars->pluck('pillar_name')->implode(', ') ?: '—' }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Colleges</div>
-                <div class="value">{{ $project->colleges->pluck('name')->implode(', ') ?: '—' }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Status</div>
-                <div class="value">
-                    @php $status = $project->latestStatus->status ?? 'Unknown'; @endphp
-                    <span class="badge {{ in_array($status, ['Graded', 'Completed']) ? 'badge-success' : (in_array($status, ['rejected', 'progress_rejected']) ? 'badge-danger' : 'badge-info') }}">
-                        {{ $status }}
-                    </span>
+    <div class="rc-page">
+        <div class="rc-page-inner">
+
+            {{-- ═══════════ HEADER ═══════════ --}}
+            <div class="rc-header">
+                <div class="rc-header-left">
+                    <img src="{{ asset('images/research_logo.png') }}" alt="Research Logo" onerror="this.style.display='none'">
+                </div>
+                <div class="rc-header-right">
+                    <div class="rc-doc-title">Report Card</div>
+                    <div class="rc-doc-sub">Project Evaluation</div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    {{-- Commitments --}}
-    @if($commitment)
-    <div class="section">
-        <div class="section-title">Commitments</div>
-        <div class="grid-3">
-            <div class="info-box">
-                <div class="label">Journal Articles (Q1-Q4)</div>
-                <div class="value">{{ ($commitment->q1article ?? 0) + ($commitment->q2article ?? 0) + ($commitment->q3article ?? 0) + ($commitment->q4article ?? 0) }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Conference Papers</div>
-                <div class="value">{{ $commitment->confArticle ?? 0 }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Books</div>
-                <div class="value">{{ ($commitment->books ?? 0) + ($commitment->editBooks ?? 0) }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Book Chapters</div>
-                <div class="value">{{ $commitment->chapters ?? 0 }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">IP Disclosure</div>
-                <div class="value">{{ $commitment->ip ?? 0 }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Patents</div>
-                <div class="value">{{ ($commitment->filedPatent ?? 0) + ($commitment->grantedPatent ?? 0) }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Open Source SW</div>
-                <div class="value">{{ $commitment->openSourceSW ?? 0 }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Startups</div>
-                <div class="value">{{ $commitment->startUp ?? 0 }}</div>
-            </div>
-            <div class="info-box">
-                <div class="label">Students</div>
-                <div class="value">M: {{ $commitment->master ?? 0 }} | UG: {{ $commitment->UG ?? 0 }} | PhD: {{ $commitment->Phd ?? 0 }}</div>
-            </div>
-        </div>
-    </div>
-    @endif
+            {{-- ═══════════ PROJECT INFO ═══════════ --}}
+            <table class="rc-info">
+                <tbody>
+                    <tr>
+                        <th>Project ID</th>
+                        <td>{{ $project->old_project_id ?? '—' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Project Title</th>
+                        <td>{{ $project->title }}</td>
+                    </tr>
+                </tbody>
+            </table>
 
-    {{-- Publications --}}
-    @php
-        $pubTypes = ['journal_q1','journal_q2','journal_q3','journal_q4','conference','book','edited_book','book_chapter'];
-        $publicationOutcomes = $outcomes->filter(fn($o) => in_array($o->type, $pubTypes));
-    @endphp
-    @if($publicationOutcomes->count())
-    <div class="section">
-        <div class="section-title">Publications ({{ $publicationOutcomes->count() }})</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Type</th>
-                    <th>Title</th>
-                    <th>Journal/Book</th>
-                    <th>Year</th>
-                    <th>DOI</th>
-                    <th>Verified</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($publicationOutcomes as $o)
-                <tr>
-                    <td>{{ $loop->iteration }}</td>
-                    <td><span class="badge badge-info">{{ strtoupper(str_replace('_', ' ', $o->type)) }}</span></td>
-                    <td>{{ $o->publication->publication_title ?? $o->identifier ?? '—' }}</td>
-                    <td>{{ $o->publication->journal ?? '—' }}</td>
-                    <td>{{ $o->publication->year ?? '—' }}</td>
-                    <td>{{ $o->publication->doi ?? '—' }}</td>
-                    <td>
-                        @if($o->publication)
-                            <span class="icon icon-check">✓</span>
-                        @else
-                            <span class="icon icon-pending">○</span>
-                        @endif
-                    </td>
-                </tr>
+            {{-- ═══════════ PROGRESS REPORT 1 REMARKS ═══════════ --}}
+            @if($progressGradings->count())
+            <div class="rc-section">
+                <div class="rc-section-title">Progress Report 1 Remarks <span class="rc-count">{{ $progressGradings->count() }} reviewer(s)</span></div>
+                @foreach($progressGradings as $g)
+                    <table class="rc-table">
+                        <tbody>
+                            <tr>
+                                <th class="rc-reviewer" rowspan="6" style="text-align:center;">Reviewer {{ $loop->iteration }}</th>
+                                <th style="width:24px;">#</th>
+                                <th style="width:230px;">Criteria</th>
+                                <th style="width:52px;">Rating</th>
+                                <th>Comment</th>
+                            </tr>
+                            <tr>
+                                <td>1</td>
+                                <td class="rc-crit">Progress Toward Achieving Outcomes</td>
+                                <td class="rc-rating">{{ $g->achievementsRatingRef->rating ?? $g->achievementsRating ?? '—' }}</td>
+                                <td>{{ $g->achievementsComments ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td class="rc-crit">Progress in Publications</td>
+                                <td class="rc-rating">{{ $g->publicationsRatingRef->rating ?? $g->publicationsRating ?? '—' }}</td>
+                                <td>{{ $g->publicationsComments ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td class="rc-crit">Student Involvement &amp; Capacity Building</td>
+                                <td class="rc-rating">{{ $g->studentsRatingRef->rating ?? $g->studentsRating ?? '—' }}</td>
+                                <td>{{ $g->studentsComments ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td class="rc-crit">Budget Utilization</td>
+                                <td class="rc-rating">{{ $g->budgetRatingRef->rating ?? $g->budgetRating ?? '—' }}</td>
+                                <td>{{ $g->budgetComments ?? '—' }}</td>
+                            </tr>
+                            <tr class="rc-rec">
+                                <td>5</td>
+                                <td class="rc-crit">Recommendation for Continuation</td>
+                                <td colspan="2">
+                                    <span class="{{ $g->isAccepted == 1 ? 'rc-ok' : 'rc-no' }}">
+                                        {{ $g->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 @endforeach
-            </tbody>
-        </table>
-    </div>
-    @endif
+            </div>
+            @endif
 
-    {{-- Students --}}
-    @if($students->count())
-    <div class="section">
-        <div class="section-title">Students ({{ $students->count() }})</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Type</th>
-                    <th>Student ID</th>
-                    <th>Name</th>
-                    <th>Major</th>
-                    <th>College</th>
-                    <th>Days</th>
-                    <th>Verified</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($students as $s)
-                <tr>
-                    <td>{{ $loop->iteration }}</td>
-                    <td><span class="badge badge-info">{{ $s->type }}</span></td>
-                    <td>{{ $s->std_id ?? '—' }}</td>
-                    <td>{{ $s->details->full_name ?? '—' }}</td>
-                    <td>{{ $s->details->major ?? '—' }}</td>
-                    <td>{{ $s->details->college ?? '—' }}</td>
-                    <td>{{ $s->days ?? '—' }}</td>
-                    <td>
-                        @if($s->details)
-                            <span class="icon icon-check">✓</span>
-                        @else
-                            <span class="icon icon-pending">○</span>
-                        @endif
-                    </td>
-                </tr>
+            {{-- ═══════════ PROGRESS REPORT 2 REMARKS ═══════════ --}}
+            @if($progress2Gradings->count())
+            <div class="rc-section">
+                <div class="rc-section-title">Progress Report 2 Remarks <span class="rc-count">{{ $progress2Gradings->count() }} reviewer(s)</span></div>
+                @foreach($progress2Gradings as $g)
+                    <table class="rc-table">
+                        <tbody>
+                            <tr>
+                                <th class="rc-reviewer" rowspan="6" style="text-align:center;">Reviewer {{ $loop->iteration }}</th>
+                                <th style="width:24px;">#</th>
+                                <th style="width:230px;">Criteria</th>
+                                <th style="width:52px;">Rating</th>
+                                <th>Comment</th>
+                            </tr>
+                            <tr>
+                                <td>1</td>
+                                <td class="rc-crit">Progress Toward Achieving Outcomes</td>
+                                <td class="rc-rating">{{ $g->achievementsRatingRef->rating ?? $g->achievementsRating ?? '—' }}</td>
+                                <td>{{ $g->achievementsComments ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td class="rc-crit">Progress in Publications</td>
+                                <td class="rc-rating">{{ $g->publicationsRatingRef->rating ?? $g->publicationsRating ?? '—' }}</td>
+                                <td>{{ $g->publicationsComments ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td class="rc-crit">Student Involvement &amp; Capacity Building</td>
+                                <td class="rc-rating">{{ $g->studentsRatingRef->rating ?? $g->studentsRating ?? '—' }}</td>
+                                <td>{{ $g->studentsComments ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td class="rc-crit">Budget Utilization</td>
+                                <td class="rc-rating">{{ $g->budgetRatingRef->rating ?? $g->budgetRating ?? '—' }}</td>
+                                <td>{{ $g->budgetComments ?? '—' }}</td>
+                            </tr>
+                            <tr class="rc-rec">
+                                <td>5</td>
+                                <td class="rc-crit">Recommendation for Continuation</td>
+                                <td colspan="2">
+                                    <span class="{{ $g->isAccepted == 1 ? 'rc-ok' : 'rc-no' }}">
+                                        {{ $g->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 @endforeach
-            </tbody>
-        </table>
-    </div>
-    @endif
+            </div>
+            @endif
 
-    {{-- Researchers --}}
-    @if($researchers->count())
-    <div class="section">
-        <div class="section-title">Researchers ({{ $researchers->count() }})</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Category</th>
-                    <th>Days</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($researchers as $r)
-                <tr>
-                    <td>{{ $loop->iteration }}</td>
-                    <td>{{ $r->name ?? '—' }}</td>
-                    <td>{{ $r->category ?? '—' }}</td>
-                    <td>{{ $r->days ?? '—' }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-    </div>
-    @endif
-
-    {{-- Progress Grading --}}
-    @if($progressGrading && $progressGrading->publish !== 'pending')
-    <div class="section">
-        <div class="section-title">Progress Report Grading</div>
-        <div class="grid-2">
-            <div>
-                <div class="info-box">
-                    <div class="label">Status</div>
-                    <div class="value">
-                        <span class="badge {{ $progressGrading->isAccepted == 1 ? 'badge-success' : 'badge-danger' }}">
-                            {{ $progressGrading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
+            {{-- ═══════════ FINAL REPORT EVALUATION ═══════════ --}}
+            @if($finalGradings->count())
+            <div class="rc-section">
+                <div class="rc-section-title">Final Report Evaluation <span class="rc-count">{{ $finalGradings->count() }} reviewer(s)</span></div>
+                @foreach($finalGradings as $g)
+                    @php
+                        $grades = [$g->gradeA ?? 0, $g->gradeB ?? 0, $g->gradeC ?? 0, $g->gradeD ?? 0];
+                        $sumGrades = array_sum($grades);
+                        $avgGrades = count($grades) ? round($sumGrades / count($grades), 2) : 0;
+                    @endphp
+                    <table class="rc-table">
+                        <tbody>
+                            <tr>
+                                <th class="rc-reviewer" rowspan="5" style="text-align:center;">Reviewer {{ $loop->iteration }}</th>
+                                <th style="width:24px;">#</th>
+                                <th style="width:230px;">Criteria</th>
+                                <th style="width:52px;">Score</th>
+                                <th>Comment</th>
+                            </tr>
+                            <tr>
+                                <td>1</td>
+                                <td class="rc-crit">Achievements against Objectives</td>
+                                <td class="rc-rating">{{ $g->gradeA ?? '—' }}/5</td>
+                                <td>{{ $g->commentA ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td class="rc-crit">Publications &amp; IP</td>
+                                <td class="rc-rating">{{ $g->gradeB ?? '—' }}/5</td>
+                                <td>{{ $g->commentB ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td class="rc-crit">Student &amp; Young Researcher Involvement</td>
+                                <td class="rc-rating">{{ $g->gradeC ?? '—' }}/5</td>
+                                <td>{{ $g->commentC ?? '—' }}</td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td class="rc-crit">Project Impact</td>
+                                <td class="rc-rating">{{ $g->gradeD ?? '—' }}/5</td>
+                                <td>{{ $g->commentD ?? '—' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div style="display:flex;justify-content:flex-end;gap:12px;margin:-3px 0 10px;font-size:9.5px;">
+                        <span><b>Sum:</b> <span style="color:#8d1b3d;font-weight:600;">{{ $sumGrades }}</span></span>
+                        <span><b>Average:</b> <span style="color:#8d1b3d;font-weight:600;">{{ $avgGrades }}</span></span>
+                        <span>
+                            <b>Status:</b>
+                            @if($g->isAccepted == 1)
+                                <span class="rc-badge rc-badge-ok">Accepted</span>
+                            @else
+                                <span class="rc-badge rc-badge-no">Rejected</span>
+                            @endif
                         </span>
                     </div>
+                @endforeach
+            </div>
+            @endif
+
+            {{-- ═══════════ SUMMARY ═══════════ --}}
+            <div class="rc-summary">
+                <div class="rc-summary-qr">
+                    @php
+                        $qrUrl = route('projects.report-card', $project->id);
+                        $qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' . urlencode($qrUrl);
+                    @endphp
+                    <img src="{{ $qrImg }}" alt="Verification QR" onerror="this.style.display='none'">
+                    <div class="rc-qr-label">Scan to<br>Verify</div>
                 </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Section</th>
-                            <th>Rating</th>
-                            <th>Comments</th>
-                        </tr>
-                    </thead>
+                <table class="rc-summary-table">
                     <tbody>
                         <tr>
-                            <td>Achievements</td>
-                            <td><strong>{{ $progressGrading->achievementsRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progressGrading->achievementsComments ?? '—' }}</td>
+                            <td>Document ID</td>
+                            <td>{{ $project->old_project_id ?? '—' }}</td>
                         </tr>
                         <tr>
-                            <td>Publications</td>
-                            <td><strong>{{ $progressGrading->publicationsRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progressGrading->publicationsComments ?? '—' }}</td>
+                            <td>Overall Status</td>
+                            <td>
+                                @php
+                                    $overallOk = ($finalGradings->count() && $finalGradings->first()->isAccepted == 1)
+                                        || ($finalGradings->isEmpty() && $progressGradings->count() && $progressGradings->first()->isAccepted == 1);
+                                @endphp
+                                <span class="rc-badge {{ $overallOk ? 'rc-badge-ok' : 'rc-badge-amber' }}">
+                                    {{ $finalGradings->count() ? ($finalGradings->first()->isAccepted == 1 ? 'Accepted' : 'Rejected') : ($progressGradings->count() ? ($progressGradings->first()->isAccepted == 1 ? 'Accepted' : 'Rejected') : 'In Progress') }}
+                                </span>
+                            </td>
                         </tr>
                         <tr>
-                            <td>Students</td>
-                            <td><strong>{{ $progressGrading->studentsRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progressGrading->studentsComments ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>Budget</td>
-                            <td><strong>{{ $progressGrading->budgetRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progressGrading->budgetComments ?? '—' }}</td>
+                            <td>Generated On</td>
+                            <td>{{ now()->format('d M Y, h:i A') }}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <div>
-                <div class="info-box">
-                    <div class="label">Ethical Approval</div>
-                    <div class="value">
-                        <span class="badge {{ $progressGrading->ethical ? 'badge-success' : 'badge-neutral' }}">
-                            {{ $progressGrading->ethical ? 'Yes' : 'No' }}
-                        </span>
-                    </div>
-                </div>
-                @if($progressGrading->analysis)
-                <div class="info-box">
-                    <div class="label">Analysis</div>
-                    <div class="value">{{ $progressGrading->analysis }}</div>
-                </div>
-                @endif
-                @if($progressGrading->comments)
-                <div class="info-box">
-                    <div class="label">Comments</div>
-                    <div class="value">{{ $progressGrading->comments }}</div>
-                </div>
-                @endif
-                @if($progressGrading->recommendation)
-                <div class="info-box">
-                    <div class="label">Recommendation</div>
-                    <div class="value">{{ $progressGrading->recommendation }}</div>
-                </div>
-                @endif
-            </div>
-        </div>
-    </div>
-    @endif
 
-    {{-- Progress Report 2 Grading --}}
-    @if(isset($progress2Grading) && $progress2Grading && $progress2Grading->publish !== 'pending')
-    <div class="section">
-        <div class="section-title">Progress Report 2 Grading</div>
-        <div class="grid-2">
-            <div>
-                <div class="info-box">
-                    <div class="label">Status</div>
-                    <div class="value">
-                        <span class="badge {{ $progress2Grading->isAccepted == 1 ? 'badge-success' : 'badge-danger' }}">
-                            {{ $progress2Grading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
-                        </span>
-                    </div>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Section</th>
-                            <th>Rating</th>
-                            <th>Comments</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Achievements</td>
-                            <td><strong>{{ $progress2Grading->achievementsRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progress2Grading->achievementsComments ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>Publications</td>
-                            <td><strong>{{ $progress2Grading->publicationsRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progress2Grading->publicationsComments ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>Students</td>
-                            <td><strong>{{ $progress2Grading->studentsRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progress2Grading->studentsComments ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>Budget</td>
-                            <td><strong>{{ $progress2Grading->budgetRating ?? '—' }}/5</strong></td>
-                            <td>{{ $progress2Grading->budgetComments ?? '—' }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+            {{-- ═══════════ NOTES ═══════════ --}}
+            <div class="rc-notes">
+                <b>NOTES:</b> Please do not share the details contained within this document with unauthorized individuals.
             </div>
-            <div>
-                <div class="info-box">
-                    <div class="label">Ethical Approval</div>
-                    <div class="value">
-                        <span class="badge {{ $progress2Grading->ethical ? 'badge-success' : 'badge-neutral' }}">
-                            {{ $progress2Grading->ethical ? 'Yes' : 'No' }}
-                        </span>
-                    </div>
-                </div>
-                @if($progress2Grading->analysis)
-                <div class="info-box">
-                    <div class="label">Analysis</div>
-                    <div class="value">{{ $progress2Grading->analysis }}</div>
-                </div>
-                @endif
-                @if($progress2Grading->comments)
-                <div class="info-box">
-                    <div class="label">Comments</div>
-                    <div class="value">{{ $progress2Grading->comments }}</div>
-                </div>
-                @endif
-                @if($progress2Grading->recommendation)
-                <div class="info-box">
-                    <div class="label">Recommendation</div>
-                    <div class="value">{{ $progress2Grading->recommendation }}</div>
-                </div>
-                @endif
-            </div>
-        </div>
-    </div>
-    @endif
 
-    {{-- Final Grading --}}
-    @if($finalGrading && $finalGrading->publish !== 'pending')
-    <div class="section page-break">
-        <div class="section-title">Final Report Grading</div>
-        <div class="grid-2">
-            <div>
-                <div class="info-box">
-                    <div class="label">Status</div>
-                    <div class="value">
-                        <span class="badge {{ $finalGrading->isAccepted == 1 ? 'badge-success' : 'badge-danger' }}">
-                            {{ $finalGrading->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
-                        </span>
-                    </div>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Section</th>
-                            <th>Grade</th>
-                            <th>Comments</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>A. Achievements</td>
-                            <td><strong>{{ $finalGrading->gradeA ?? '—' }}/5</strong></td>
-                            <td>{{ $finalGrading->commentA ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>B. Publications</td>
-                            <td><strong>{{ $finalGrading->gradeB ?? '—' }}/5</strong></td>
-                            <td>{{ $finalGrading->commentB ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>C. Students</td>
-                            <td><strong>{{ $finalGrading->gradeC ?? '—' }}/5</strong></td>
-                            <td>{{ $finalGrading->commentC ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>D. Impact</td>
-                            <td><strong>{{ $finalGrading->gradeD ?? '—' }}/5</strong></td>
-                            <td>{{ $finalGrading->commentD ?? '—' }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+            {{-- ═══════════ FOOTER ═══════════ --}}
+            <div class="rc-footer">
+                <span>Research Tracking System &middot; Project Report Card</span>
+                <img src="{{ asset('images/research_logo.png') }}" alt="" onerror="this.style.display='none'">
             </div>
-            <div style="text-align: center;">
-                <div class="grade-box">
-                    <div class="grade">{{ $finalGrading->total ?? '—' }}</div>
-                    <div class="label">Total Score</div>
-                </div>
-                <div style="margin-top: 12px;">
-                    <div class="info-box">
-                        <div class="label">Score A (Achievements)</div>
-                        <div class="value">{{ $finalGrading->scoreA ?? '—' }} / {{ $finalGrading->autoGradeA ?? '—' }}</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="label">Score B (Publications)</div>
-                        <div class="value">{{ $finalGrading->scoreB ?? '—' }} / {{ $finalGrading->autoGradeB ?? '—' }}</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="label">Score C (Students)</div>
-                        <div class="value">{{ $finalGrading->scoreC ?? '—' }} / {{ $finalGrading->autoGradeC ?? '—' }}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    @endif
 
-    {{-- Footer --}}
-    <div class="footer">
-        Generated on {{ now()->format('M d, Y \a\t H:i') }} | Research Tracking System
+        </div>
     </div>
 </body>
 </html>

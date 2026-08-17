@@ -23,4 +23,29 @@ class ProgressReportGrading extends Model
     {
         return $this->belongsTo(Project::class);
     }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function achievementsRatingRef()
+    {
+        return $this->belongsTo(Rating::class, 'achievementsRating');
+    }
+
+    public function publicationsRatingRef()
+    {
+        return $this->belongsTo(Rating::class, 'publicationsRating');
+    }
+
+    public function studentsRatingRef()
+    {
+        return $this->belongsTo(Rating::class, 'studentsRating');
+    }
+
+    public function budgetRatingRef()
+    {
+        return $this->belongsTo(Rating::class, 'budgetRating');
+    }
 }

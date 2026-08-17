@@ -14,6 +14,7 @@
             'accepted'                  => 'fas fa-check-circle',
             'graded'                    => 'fas fa-star',
             'report-card'               => 'fas fa-file-alt',
+            'view-grade'                => 'fas fa-star',
             'final-report'              => 'fas fa-paper-plane',
             'review-rejection'          => 'fas fa-balance-scale',
             'open-grading'              => 'fas fa-clipboard-check',
@@ -60,9 +61,13 @@
                     <i class="{{ $actIcon }}"></i> {{ $actLabel }}
                 </button>
             </form>
-        @elseif($act['action'] === 'report-card' && !auth()->user()->isReviewer())
+        @elseif($act['action'] === 'report-card')
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'report-card', 'lg')">
                 <i class="{{ $actIcon }}"></i> {{ $actLabel }}
+            </button>
+        @elseif($act['action'] === 'view-grade')
+            <button type="button" class="{{ $priClass }} btn-sm open-grade-modal" title="{{ $tooltip }}" data-project-id="{{ $project->id ?? '' }}" data-project-title="{{ $project->project_title ?? $project->title ?? '' }}">
+                <i class="fas fa-star"></i> {{ $actLabel }}
             </button>
         @elseif(in_array($act['action'], ['progress-grade', 'final-grade']))
             <a href="{{ route('projects.grading', $project->id ?? '') }}" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" style="text-decoration:none;">

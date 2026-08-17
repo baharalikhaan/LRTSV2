@@ -92,7 +92,7 @@ class HomeController extends Controller
             return $s === Project::STATUS_GRADED;
         })->count();
 
-        return view('home', [
+        return view('dashboard.admin', [
             'activeRole'          => 'Admin',
             'statusCounts'        => $statusCounts,
             'statusLabels'        => $statusLabels,
@@ -373,7 +373,7 @@ class HomeController extends Controller
         }
         usort($pillarsStats, fn($a, $b) => strcmp($a['name'], $b['name']));
 
-        return view('home', [
+        return view('dashboard.lpi', [
             'activeRole'              => 'LPI',
             'myProjects'              => $myProjects,
             'statuses'                => $statuses,
@@ -444,7 +444,48 @@ class HomeController extends Controller
               ->orWhere('audience', 'Reviewer');
         })->latest()->take(6)->get();
 
-        return view('home', [
+        // ── Reviewer ratings given by admins per research call ───────────
+        $ratings = \App\Models\ReviewerRating::where('reviewer_id', $user->id)
+            ->with('program.cycle')
+            ->get();
+
+        // Attach computed average per research call
+        $ratingRows = $ratings->map(function ($r) {
+            $vals = [
+                (int) $r->conflict,
+                (int) $r->responsiveness,
+                (int) $r->comprehensiveness,
+                (int) $r->no_reviewers,
+                (int) $r->behaviour,
+            ];
+            $rated = array_filter($vals, fn($v) => $v > 0);
+            $avg = count($rated) > 0 ? array_sum($rated) / count($rated) : 0;
+            return [
+                'program' => $r->program->program_title ?? '—',
+                'cycle'   => $r->program->cycle->title ?? '—',
+                'conflict' => $vals[0],
+                'responsiveness' => $vals[1],
+                'comprehensiveness' => $vals[2],
+                'no_reviewers' => $vals[3],
+                'behaviour' => $vals[4],
+                'average' => round($avg, 1),
+            ];
+        });
+
+        $overallAverage = 0;
+        if ($ratingRows->count() > 0) {
+            $overallAverage = round($ratingRows->avg('average'), 1);
+        }
+
+        // ── Project review breakdown for stat cards ──────────────────────
+        $acceptedCount = $assignedProjects->filter(function ($p) {
+            return $p->pivot->proposalstatus === 'accepted';
+        })->count();
+        $reviewedCount = $graded;
+        $pendingCount  = $assignedProjects->count() - $acceptedCount;
+        $inProgressCount = $acceptedCount - $graded;
+
+        return view('dashboard.reviewer', [
             'activeRole'            => 'Reviewer',
             'assignedProjects'      => $assignedProjects,
             'statuses'              => $statuses,
@@ -452,6 +493,12 @@ class HomeController extends Controller
             'pendingProposals'      => $pendingProposals,
             'pendingGradings'       => $pendingGradings,
             'gradedCount'           => $graded,
+            'acceptedCount'         => $acceptedCount,
+            'reviewedCount'         => $reviewedCount,
+            'pendingCount'          => $pendingCount,
+            'inProgressCount'       => $inProgressCount,
+            'ratingRows'            => $ratingRows,
+            'overallAverage'        => $overallAverage,
             'reviewerAnnouncements' => $reviewerAnnouncements,
             'announcements'         => $this->globalAnnouncements(),
         ]);

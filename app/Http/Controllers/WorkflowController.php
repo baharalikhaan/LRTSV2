@@ -47,16 +47,26 @@ class WorkflowController extends Controller
         ])->findOrFail($projectId);
 
         $commitment = $project->commitments()->first();
-        $finalGrading = \App\Models\FinalReportGrading::where('project_id', $projectId)->first();
-        $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $projectId)->first();
-        $progress2Grading = \App\Models\ProgressReportGrading::where('project_id', $projectId)
-            ->where('report_type', 'progress2')->first();
+        $finalGradings = \App\Models\FinalReportGrading::with('user')
+            ->where('project_id', $projectId)->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
+        $progressGradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+            ->where('project_id', $projectId)
+            ->where(function ($q) {
+                $q->where('report_type', 'progress')->orWhereNull('report_type');
+            })
+            ->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
+        $progress2Gradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+            ->where('project_id', $projectId)->where('report_type', 'progress2')
+            ->where('publish', '!=', 'pending')
+            ->orderBy('user_id')->get();
         $outcomes = $project->outcomes()->get();
         $students = $project->students()->get();
         $researchers = $project->researchers()->get();
 
         return view('workflow.modals.report-card', compact(
-            'project', 'commitment', 'finalGrading', 'progressGrading', 'progress2Grading',
+            'project', 'commitment', 'finalGradings', 'progressGradings', 'progress2Gradings',
             'outcomes', 'students', 'researchers'
         ));
     }
@@ -90,16 +100,26 @@ class WorkflowController extends Controller
                 ])->findOrFail($projectId);
 
                 $commitment = $project->commitments()->first();
-                $finalGrading = \App\Models\FinalReportGrading::where('project_id', $projectId)->first();
-                $progressGrading = \App\Models\ProgressReportGrading::where('project_id', $projectId)->first();
-                $progress2Grading = \App\Models\ProgressReportGrading::where('project_id', $projectId)
-                    ->where('report_type', 'progress2')->first();
+                $finalGradings = \App\Models\FinalReportGrading::with('user')
+                    ->where('project_id', $projectId)->where('publish', '!=', 'pending')
+                    ->orderBy('user_id')->get();
+                $progressGradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+                    ->where('project_id', $projectId)
+                    ->where(function ($q) {
+                        $q->where('report_type', 'progress')->orWhereNull('report_type');
+                    })
+                    ->where('publish', '!=', 'pending')
+                    ->orderBy('user_id')->get();
+                $progress2Gradings = \App\Models\ProgressReportGrading::with(['user', 'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef'])
+                    ->where('project_id', $projectId)->where('report_type', 'progress2')
+                    ->where('publish', '!=', 'pending')
+                    ->orderBy('user_id')->get();
                 $outcomes = $project->outcomes()->get();
                 $students = $project->students()->get();
                 $researchers = $project->researchers()->get();
 
                 $html = view('workflow.modals.report-card', compact(
-                    'project', 'commitment', 'finalGrading', 'progressGrading', 'progress2Grading',
+                    'project', 'commitment', 'finalGradings', 'progressGradings', 'progress2Gradings',
                     'outcomes', 'students', 'researchers'
                 ))->render();
                 break;
@@ -421,7 +441,33 @@ class WorkflowController extends Controller
             ]);
         }
 
-        $html = view('workflow.modals.view-grade', compact('project'))->render();
+        // Load this reviewer's grading records for each report stage
+        $userId = auth()->id();
+        $progressGrading = \App\Models\ProgressReportGrading::with([
+            'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef',
+        ])
+            ->where('project_id', $projectId)
+            ->where('user_id', $userId)
+            ->where(function ($q) {
+                $q->where('report_type', 'progress')->orWhereNull('report_type');
+            })
+            ->first();
+
+        $progress2Grading = \App\Models\ProgressReportGrading::with([
+            'achievementsRatingRef', 'publicationsRatingRef', 'studentsRatingRef', 'budgetRatingRef',
+        ])
+            ->where('project_id', $projectId)
+            ->where('user_id', $userId)
+            ->where('report_type', 'progress2')
+            ->first();
+
+        $finalGrading = \App\Models\FinalReportGrading::where('project_id', $projectId)
+            ->where('user_id', $userId)
+            ->first();
+
+        $html = view('workflow.modals.view-grade', compact(
+            'project', 'progressGrading', 'progress2Grading', 'finalGrading'
+        ))->render();
 
         return response()->json([
             'success' => true,
