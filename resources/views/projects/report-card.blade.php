@@ -5,173 +5,239 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Report Card — {{ $project->old_project_id }}</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            font-size: 10.5px; color: #3d3d3d; line-height: 1.45;
-            background: #f4f5f7; padding: 14px;
+        :root {
+            --ink: #1b1b1b;
+            --gray: #6b6b6b;
+            --hairline: #e6e6e4;
+            --bg-row: #f7f7f6;
+            --accent: #8d1b3d;
+            --accent-soft: #f6f1f3;
+            --ok: #2e7d57;
+            --ok-tint: #eef7f2;
+            --no: #b8432f;
+            --no-tint: #faf1ef;
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        @page { size: A4; margin: 13mm 12mm; }
+
+        body {
+            font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 10px; color: var(--ink); line-height: 1.5;
+            background: #ececea; padding: 24px 12px;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+
+        /* ─── A4 page ─── */
+        .rc-page {
+            width: 210mm; max-width: 100%; min-height: 297mm;
+            margin: 0 auto; background: #fff;
+            box-shadow: 0 3px 18px rgba(0,0,0,.12);
+            display: flex; flex-direction: column;
+        }
+        .rc-page-inner { padding: 0 30px 24px; flex: 1; }
 
         /* ─── Print styles ─── */
         @media print {
-            body { background: #fff; padding: 0; font-size: 10px; }
+            body { background: #fff; padding: 0; font-size: 9.5px; }
             .no-print { display: none !important; }
-            .rc-page { box-shadow: none; border: none; margin: 0; }
-            .rc-section { page-break-inside: avoid; }
-            table { page-break-inside: avoid; }
+            .rc-page { box-shadow: none; width: 100%; min-height: 0; }
+            .rc-section, table, .rc-verdict { page-break-inside: avoid; }
         }
-
-        /* ─── Invoice page ─── */
-        .rc-page {
-            max-width: 800px; margin: 0 auto;
-            background: #fff; border: 1px solid #e4e7eb;
-            border-radius: 8px; overflow: hidden;
-            box-shadow: 0 1px 8px rgba(0,0,0,.06);
-        }
-        .rc-page-inner { padding: 20px 26px; }
 
         /* ─── Header ─── */
-        .rc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-        .rc-header-left { display: flex; align-items: center; gap: 10px; }
-        .rc-header-left img { width: 62px; height: auto; }
-        .rc-header-right { text-align: right; }
-        .rc-header-right .rc-doc-title {
-            font-size: 18px; font-weight: 600; letter-spacing: 1px;
-            color: #8d1b3d; text-transform: uppercase; line-height: 1.1;
+        .rc-header {
+            padding: 22px 0 12px;
+            display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+            border-bottom: 1.5px solid var(--ink);
+            position: relative;
         }
-        .rc-header-right .rc-doc-sub {
-            font-size: 8px; color: #9a9ea5; text-transform: uppercase;
-            letter-spacing: 2px; font-weight: 500; margin-top: 3px;
+        .rc-header::after {
+            content: ''; position: absolute; left: 0; right: 0; bottom: -4px;
+            height: 1px; background: var(--hairline);
         }
+        .rc-header-brand { display: flex; align-items: center; gap: 11px; }
+        .rc-header-brand img { width: 46px; height: auto; }
+        .rc-brand-name { font-size: 13.5px; font-weight: 600; letter-spacing: .2px; }
+        .rc-brand-sub { font-size: 8px; color: var(--gray); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 2px; }
+        .rc-header-doc { text-align: right; }
+        .rc-doc-label { font-size: 8px; color: var(--gray); text-transform: uppercase; letter-spacing: 2px; }
+        .rc-doc-title {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 24px; font-weight: 700; letter-spacing: 1px;
+            text-transform: uppercase; color: var(--ink); line-height: 1.15; margin: 2px 0;
+        }
+        .rc-doc-ref { font-size: 9px; color: var(--gray); }
 
-        /* ─── Project info table ─── */
-        .rc-info { width: 100%; border-collapse: collapse; margin-bottom: 14px; background: #fafbfc; }
-        .rc-info th {
-            text-align: left; padding: 6px 10px; font-weight: 600; font-size: 9.5px;
-            color: #8d1b3d; width: 120px; border: 1px solid #eceff1;
+        /* ─── Meta strip ─── */
+        .rc-meta {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            padding: 7px 0; margin: 14px 0 16px;
+            border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline);
+            font-size: 9px; color: var(--gray);
         }
-        .rc-info td { padding: 6px 10px; border: 1px solid #eceff1; font-weight: 400; }
+        .rc-meta b { font-weight: 600; color: var(--ink); }
+        .rc-meta .rc-confidential { letter-spacing: 1.5px; text-transform: uppercase; font-size: 8px; }
+
+        /* ─── Project info ─── */
+        .rc-info { width: 100%; border-collapse: collapse; margin-bottom: 18px; border: 1px solid var(--hairline); }
+        .rc-info th {
+            text-align: left; padding: 6px 12px; font-weight: 600; font-size: 8px;
+            color: var(--ink); width: 140px; letter-spacing: .4px; text-transform: uppercase;
+            background: var(--bg-row); border-bottom: 1px solid var(--hairline);
+        }
+        .rc-info td { padding: 6px 12px; border-bottom: 1px solid var(--hairline); background: #fff; font-size: 10px; font-weight: 400; }
+        .rc-info tr:last-child th, .rc-info tr:last-child td { border-bottom: none; }
 
         /* ─── Section headings ─── */
-        .rc-section { margin-bottom: 10px; }
+        .rc-section { margin-bottom: 15px; }
         .rc-section-title {
-            font-size: 10px; font-weight: 600; color: #8d1b3d;
-            padding: 3px 0; margin-bottom: 6px;
-            border-bottom: 1px solid #eee3e7;
-            display: flex; align-items: center; justify-content: space-between;
+            display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+            font-size: 10px; font-weight: 600; color: var(--ink);
+            text-transform: uppercase; letter-spacing: .8px;
+            margin-bottom: 8px; padding-bottom: 5px;
+            border-bottom: 1px solid var(--hairline);
         }
         .rc-section-title .rc-count {
-            font-size: 8px; font-weight: 500; color: #9a9ea5;
-            background: #f3f4f6; padding: 1px 6px; border-radius: 999px;
+            font-size: 8px; font-weight: 500; color: var(--gray);
+            background: var(--bg-row); padding: 2px 9px; border-radius: 2px;
+            margin-left: auto;
         }
 
-        /* ─── Remarks tables (per reviewer) ─── */
-        .rc-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        /* ─── Remarks tables ─── */
+        .rc-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 1px solid var(--hairline); }
         .rc-table th {
-            text-align: left; padding: 5px 8px; font-size: 8.5px;
-            font-weight: 600; color: #6b7078; border: 1px solid #eceff1;
-            background: #fafbfc;
+            text-align: left; padding: 5px 9px; font-size: 7.5px;
+            font-weight: 600; color: var(--ink); letter-spacing: .4px; text-transform: uppercase;
+            border: 1px solid var(--hairline); background: var(--bg-row);
         }
-        .rc-table td { padding: 5px 8px; border: 1px solid #eceff1; vertical-align: top; }
-        .rc-table td.rc-crit { font-weight: 500; color: #3d3d3d; }
-        .rc-table td.rc-rating { font-weight: 600; color: #8d1b3d; white-space: nowrap; text-align: center; }
-        .rc-table tr.rc-rec td { background: #fafbfc; font-weight: 500; }
-        .rc-table .rc-ok { color: #2e8b57; font-weight: 600; }
-        .rc-table .rc-no { color: #c0392b; font-weight: 600; }
+        .rc-table td { padding: 5px 9px; border: 1px solid var(--hairline); vertical-align: top; background: #fff; }
+        .rc-table td.rc-crit { font-weight: 500; font-size: 9.5px; }
+        .rc-table td.rc-num { color: var(--gray); font-weight: 400; }
+        .rc-table td.rc-rating { font-weight: 600; color: var(--accent); white-space: nowrap; text-align: center; }
+        .rc-table tr.rc-rec td { background: var(--accent-soft); font-weight: 500; }
+        .rc-table .rc-ok { color: var(--ok); font-weight: 600; }
+        .rc-table .rc-no { color: var(--no); font-weight: 600; }
 
         /* Rotated reviewer label */
         .rc-reviewer {
             writing-mode: vertical-rl; transform: rotate(180deg);
             text-align: center; white-space: nowrap;
-            font-weight: 600; color: #8d1b3d; background: #fbeef1;
-            font-size: 8.5px; letter-spacing: .5px; width: 22px;
-            padding: 6px 3px; border-bottom: 1px solid #e9d3d9;
+            font-weight: 500; color: var(--ink); background: var(--bg-row);
+            font-size: 8px; letter-spacing: .5px; width: 24px;
+            border: 1px solid var(--hairline) !important; vertical-align: middle;
         }
 
-        /* ─── Grid helpers ─── */
-        .rc-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-        .rc-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-        .rc-box {
-            border: 1px solid #eceff1; border-radius: 6px; padding: 5px 8px;
-            background: #fafbfc;
-        }
-        .rc-box .rc-box-label {
-            font-size: 7.5px; font-weight: 600; text-transform: uppercase;
-            letter-spacing: .3px; color: #9a9ea5; margin-bottom: 1px;
-        }
-        .rc-box .rc-box-value { font-size: 10px; font-weight: 500; color: #3d3d3d; }
-
-        /* ─── Status badge ─── */
+        /* ─── Badges ─── */
         .rc-badge {
-            display: inline-block; padding: 2px 8px; border-radius: 999px;
-            font-size: 8.5px; font-weight: 600; border: 1px solid transparent;
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 1px 9px; border-radius: 2px;
+            font-size: 8px; font-weight: 500; border: 1px solid var(--hairline);
         }
-        .rc-badge-ok { background: #e8f5ee; color: #2e8b57; border-color: #cfeade; }
-        .rc-badge-no { background: #fdecec; color: #c0392b; border-color: #f6d3d4; }
-        .rc-badge-info { background: #eaf1fb; color: #3d6db5; border-color: #d3e0f4; }
-        .rc-badge-amber { background: #fdf6e6; color: #a67c18; border-color: #f3e3bd; }
+        .rc-badge::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+        .rc-badge-ok { background: var(--ok-tint); color: var(--ok); border-color: #d8e8df; }
+        .rc-badge-no { background: var(--no-tint); color: var(--no); border-color: #ebd8d3; }
+        .rc-badge-amber { background: var(--bg-row); color: var(--gray); border-color: var(--hairline); }
 
-        /* ─── Summary row (QR + totals) ─── */
-        .rc-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
-        .rc-summary-qr { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-        .rc-summary-qr img { width: 52px; height: 52px; border: 1px solid #eceff1; border-radius: 4px; }
-        .rc-summary-qr .rc-qr-label {
-            font-size: 6.5px; color: #9a9ea5; text-transform: uppercase;
-            letter-spacing: .5px; font-weight: 600; line-height: 1.2;
+        /* ─── Final evaluation totals ─── */
+        .rc-totals { display: flex; justify-content: flex-end; gap: 8px; margin: -2px 0 12px; }
+        .rc-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            border: 1px solid var(--hairline); background: var(--bg-row);
+            color: var(--ink); border-radius: 2px;
+            padding: 2px 10px; font-size: 8.5px; font-weight: 500;
         }
-        .rc-summary-table { border-collapse: collapse; flex: 1; max-width: 260px; }
-        .rc-summary-table td { padding: 5px 9px; border: 1px solid #eceff1; font-size: 9.5px; }
-        .rc-summary-table td:first-child {
-            background: #fafbfc; font-weight: 600; color: #6b7078; width: 120px;
+        .rc-chip b { color: var(--accent); font-weight: 600; }
+
+        /* ─── Summary / verdict ─── */
+        .rc-verdict {
+            display: flex; align-items: stretch; margin-top: 6px;
+            border: 1px solid var(--hairline); border-top: 2px solid var(--accent);
         }
-        .rc-summary-table td:last-child {
-            font-weight: 600; color: #8d1b3d; text-align: center;
+        .rc-verdict-side {
+            flex: 0 0 116px; padding: 12px 10px;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px;
+            border-right: 1px solid var(--hairline);
         }
+        .rc-verdict-side img { width: 58px; height: 58px; border: 1px solid var(--hairline); }
+        .rc-qr-label { font-size: 7px; text-transform: uppercase; letter-spacing: 1px; color: var(--gray); }
+        .rc-verdict-main { flex: 1; padding: 10px 14px; display: flex; flex-direction: column; justify-content: center; }
+        .rc-verdict-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--hairline); font-size: 9.5px; }
+        .rc-verdict-row:last-child { border-bottom: none; }
+        .rc-verdict-row .rc-label { font-weight: 500; color: var(--gray); text-transform: uppercase; letter-spacing: .4px; font-size: 8px; }
+        .rc-verdict-row .rc-value { font-weight: 500; color: var(--ink); text-align: right; }
+        .rc-verdict-row .rc-badge { font-size: 8.5px; }
 
         /* ─── Notes / footer ─── */
         .rc-notes {
-            margin-top: 10px; padding-top: 6px; border-top: 1px solid #eceff1;
-            font-size: 8.5px; color: #9a9ea5; line-height: 1.4;
+            margin-top: 13px; padding: 7px 12px;
+            border: 1px solid var(--hairline); background: var(--bg-row);
+            font-size: 8.5px; color: var(--gray); line-height: 1.5;
         }
-        .rc-notes b { color: #6b7078; font-weight: 600; }
+        .rc-notes b { color: var(--ink); font-weight: 600; }
         .rc-footer {
             display: flex; align-items: center; justify-content: space-between;
-            margin-top: 6px; padding-top: 6px; border-top: 1px solid #eceff1;
-            font-size: 8px; color: #9a9ea5;
+            margin-top: 13px; padding-top: 8px; border-top: 1px solid var(--ink);
+            font-size: 8px; color: var(--gray);
         }
-        .rc-footer img { width: 32px; opacity: .5; }
+        .rc-footer img { width: 28px; opacity: .45; }
 
-        /* ─── Print / action buttons ─── */
-        .rc-actions { position: fixed; top: 12px; right: 12px; display: flex; gap: 6px; z-index: 50; }
+        /* ─── Action buttons ─── */
+        .rc-actions { position: fixed; top: 14px; right: 14px; display: flex; gap: 8px; z-index: 50; }
         .rc-btn {
             display: inline-flex; align-items: center; gap: 6px;
-            border: none; cursor: pointer; font-family: inherit;
-            padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 500;
-            box-shadow: 0 1px 6px rgba(0,0,0,.1); transition: transform .1s;
+            border: 1px solid var(--hairline); cursor: pointer; font-family: inherit;
+            padding: 7px 15px; border-radius: 4px; font-size: 11px; font-weight: 500;
+            box-shadow: 0 1px 6px rgba(0,0,0,.08); transition: transform .12s;
         }
         .rc-btn:hover { transform: translateY(-1px); }
-        .rc-btn-primary { background: #8d1b3d; color: #fff; }
-        .rc-btn-secondary { background: #fff; color: #6b7078; border: 1px solid #e4e7eb; }
+        .rc-btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .rc-btn-secondary { background: #fff; color: var(--gray); }
     </style>
 </head>
 <body>
     <div class="rc-actions no-print">
         <button class="rc-btn rc-btn-secondary" onclick="window.history.back()">&#8592; Back</button>
-        <button class="rc-btn rc-btn-primary" onclick="window.print()">&#128424; Print</button>
+        <button class="rc-btn rc-btn-primary" onclick="window.print()">&#128424; Print / Save PDF</button>
     </div>
 
     <div class="rc-page">
+        <div class="rc-header">
+            <div class="rc-header-brand">
+                <img src="{{ asset('images/research_logo.png') }}" alt="Research Logo" onerror="this.style.display='none'">
+                <div>
+                    <div class="rc-brand-name">Research Tracking System</div>
+                    <div class="rc-brand-sub">Institutional Research &amp; Innovation</div>
+                </div>
+            </div>
+            <div class="rc-header-doc">
+                <div class="rc-doc-label">Evaluation Report</div>
+                <div class="rc-doc-title">Report Card</div>
+                <div class="rc-doc-ref">Ref: {{ $project->old_project_id ?? '—' }}</div>
+            </div>
+        </div>
+
         <div class="rc-page-inner">
 
-            {{-- ═══════════ HEADER ═══════════ --}}
-            <div class="rc-header">
-                <div class="rc-header-left">
-                    <img src="{{ asset('images/research_logo.png') }}" alt="Research Logo" onerror="this.style.display='none'">
-                </div>
-                <div class="rc-header-right">
-                    <div class="rc-doc-title">Report Card</div>
-                    <div class="rc-doc-sub">Project Evaluation</div>
-                </div>
+            {{-- ═══════════ META STRIP ═══════════ --}}
+            @php
+                $hasFinal = $finalGradings->count() > 0;
+                $hasProgress = $progressGradings->count() > 0;
+                $finalAccepted = $hasFinal && $finalGradings->first()->isAccepted == 1;
+                $progressAccepted = $hasProgress && $progressGradings->first()->isAccepted == 1;
+                $overallLabel = $hasFinal ? ($finalAccepted ? 'Accepted' : 'Rejected')
+                    : ($hasProgress ? ($progressAccepted ? 'Accepted' : 'Rejected') : 'In Progress');
+                $overallOk = $hasFinal ? $finalAccepted : $progressAccepted;
+            @endphp
+            <div class="rc-meta">
+                <span><b>Project ID:</b> {{ $project->old_project_id ?? '—' }}</span>
+                <span><b>Generated:</b> {{ now()->format('d M Y, h:i A') }}</span>
+                <span>
+                    <b>Status:</b>
+                    <span class="rc-badge {{ $overallOk ? 'rc-badge-ok' : ($overallLabel === 'Rejected' ? 'rc-badge-no' : 'rc-badge-amber') }}">{{ $overallLabel }}</span>
+                </span>
+                <span class="rc-confidential">Confidential</span>
             </div>
 
             {{-- ═══════════ PROJECT INFO ═══════════ --}}
@@ -203,34 +269,34 @@
                                 <th>Comment</th>
                             </tr>
                             <tr>
-                                <td>1</td>
+                                <td class="rc-num">1</td>
                                 <td class="rc-crit">Progress Toward Achieving Outcomes</td>
                                 <td class="rc-rating">{{ $g->achievementsRatingRef->rating ?? $g->achievementsRating ?? '—' }}</td>
                                 <td>{{ $g->achievementsComments ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>2</td>
+                                <td class="rc-num">2</td>
                                 <td class="rc-crit">Progress in Publications</td>
                                 <td class="rc-rating">{{ $g->publicationsRatingRef->rating ?? $g->publicationsRating ?? '—' }}</td>
                                 <td>{{ $g->publicationsComments ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>3</td>
+                                <td class="rc-num">3</td>
                                 <td class="rc-crit">Student Involvement &amp; Capacity Building</td>
                                 <td class="rc-rating">{{ $g->studentsRatingRef->rating ?? $g->studentsRating ?? '—' }}</td>
                                 <td>{{ $g->studentsComments ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>4</td>
+                                <td class="rc-num">4</td>
                                 <td class="rc-crit">Budget Utilization</td>
                                 <td class="rc-rating">{{ $g->budgetRatingRef->rating ?? $g->budgetRating ?? '—' }}</td>
                                 <td>{{ $g->budgetComments ?? '—' }}</td>
                             </tr>
                             <tr class="rc-rec">
-                                <td>5</td>
+                                <td class="rc-num">5</td>
                                 <td class="rc-crit">Recommendation for Continuation</td>
                                 <td colspan="2">
-                                    <span class="{{ $g->isAccepted == 1 ? 'rc-ok' : 'rc-no' }}">
+                                    <span class="rc-badge {{ $g->isAccepted == 1 ? 'rc-badge-ok' : 'rc-badge-no' }}">
                                         {{ $g->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
                                     </span>
                                 </td>
@@ -256,34 +322,34 @@
                                 <th>Comment</th>
                             </tr>
                             <tr>
-                                <td>1</td>
+                                <td class="rc-num">1</td>
                                 <td class="rc-crit">Progress Toward Achieving Outcomes</td>
                                 <td class="rc-rating">{{ $g->achievementsRatingRef->rating ?? $g->achievementsRating ?? '—' }}</td>
                                 <td>{{ $g->achievementsComments ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>2</td>
+                                <td class="rc-num">2</td>
                                 <td class="rc-crit">Progress in Publications</td>
                                 <td class="rc-rating">{{ $g->publicationsRatingRef->rating ?? $g->publicationsRating ?? '—' }}</td>
                                 <td>{{ $g->publicationsComments ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>3</td>
+                                <td class="rc-num">3</td>
                                 <td class="rc-crit">Student Involvement &amp; Capacity Building</td>
                                 <td class="rc-rating">{{ $g->studentsRatingRef->rating ?? $g->studentsRating ?? '—' }}</td>
                                 <td>{{ $g->studentsComments ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>4</td>
+                                <td class="rc-num">4</td>
                                 <td class="rc-crit">Budget Utilization</td>
                                 <td class="rc-rating">{{ $g->budgetRatingRef->rating ?? $g->budgetRating ?? '—' }}</td>
                                 <td>{{ $g->budgetComments ?? '—' }}</td>
                             </tr>
                             <tr class="rc-rec">
-                                <td>5</td>
+                                <td class="rc-num">5</td>
                                 <td class="rc-crit">Recommendation for Continuation</td>
                                 <td colspan="2">
-                                    <span class="{{ $g->isAccepted == 1 ? 'rc-ok' : 'rc-no' }}">
+                                    <span class="rc-badge {{ $g->isAccepted == 1 ? 'rc-badge-ok' : 'rc-badge-no' }}">
                                         {{ $g->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
                                     </span>
                                 </td>
@@ -314,35 +380,35 @@
                                 <th>Comment</th>
                             </tr>
                             <tr>
-                                <td>1</td>
+                                <td class="rc-num">1</td>
                                 <td class="rc-crit">Achievements against Objectives</td>
                                 <td class="rc-rating">{{ $g->gradeA ?? '—' }}/5</td>
                                 <td>{{ $g->commentA ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>2</td>
+                                <td class="rc-num">2</td>
                                 <td class="rc-crit">Publications &amp; IP</td>
                                 <td class="rc-rating">{{ $g->gradeB ?? '—' }}/5</td>
                                 <td>{{ $g->commentB ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>3</td>
+                                <td class="rc-num">3</td>
                                 <td class="rc-crit">Student &amp; Young Researcher Involvement</td>
                                 <td class="rc-rating">{{ $g->gradeC ?? '—' }}/5</td>
                                 <td>{{ $g->commentC ?? '—' }}</td>
                             </tr>
                             <tr>
-                                <td>4</td>
+                                <td class="rc-num">4</td>
                                 <td class="rc-crit">Project Impact</td>
                                 <td class="rc-rating">{{ $g->gradeD ?? '—' }}/5</td>
                                 <td>{{ $g->commentD ?? '—' }}</td>
                             </tr>
                         </tbody>
                     </table>
-                    <div style="display:flex;justify-content:flex-end;gap:12px;margin:-3px 0 10px;font-size:9.5px;">
-                        <span><b>Sum:</b> <span style="color:#8d1b3d;font-weight:600;">{{ $sumGrades }}</span></span>
-                        <span><b>Average:</b> <span style="color:#8d1b3d;font-weight:600;">{{ $avgGrades }}</span></span>
-                        <span>
+                    <div class="rc-totals">
+                        <span class="rc-chip"><b>Sum:</b> {{ $sumGrades }}</span>
+                        <span class="rc-chip"><b>Average:</b> {{ $avgGrades }}</span>
+                        <span class="rc-chip">
                             <b>Status:</b>
                             @if($g->isAccepted == 1)
                                 <span class="rc-badge rc-badge-ok">Accepted</span>
@@ -355,40 +421,30 @@
             </div>
             @endif
 
-            {{-- ═══════════ SUMMARY ═══════════ --}}
-            <div class="rc-summary">
-                <div class="rc-summary-qr">
+            {{-- ═══════════ SUMMARY / VERDICT ═══════════ --}}
+            <div class="rc-verdict">
+                <div class="rc-verdict-side">
                     @php
                         $qrUrl = route('projects.report-card', $project->id);
                         $qrImg = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' . urlencode($qrUrl);
                     @endphp
                     <img src="{{ $qrImg }}" alt="Verification QR" onerror="this.style.display='none'">
-                    <div class="rc-qr-label">Scan to<br>Verify</div>
+                    <div class="rc-qr-label">Scan to Verify</div>
                 </div>
-                <table class="rc-summary-table">
-                    <tbody>
-                        <tr>
-                            <td>Document ID</td>
-                            <td>{{ $project->old_project_id ?? '—' }}</td>
-                        </tr>
-                        <tr>
-                            <td>Overall Status</td>
-                            <td>
-                                @php
-                                    $overallOk = ($finalGradings->count() && $finalGradings->first()->isAccepted == 1)
-                                        || ($finalGradings->isEmpty() && $progressGradings->count() && $progressGradings->first()->isAccepted == 1);
-                                @endphp
-                                <span class="rc-badge {{ $overallOk ? 'rc-badge-ok' : 'rc-badge-amber' }}">
-                                    {{ $finalGradings->count() ? ($finalGradings->first()->isAccepted == 1 ? 'Accepted' : 'Rejected') : ($progressGradings->count() ? ($progressGradings->first()->isAccepted == 1 ? 'Accepted' : 'Rejected') : 'In Progress') }}
-                                </span>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>Generated On</td>
-                            <td>{{ now()->format('d M Y, h:i A') }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="rc-verdict-main">
+                    <div class="rc-verdict-row">
+                        <span class="rc-label">Document ID</span>
+                        <span class="rc-value">{{ $project->old_project_id ?? '—' }}</span>
+                    </div>
+                    <div class="rc-verdict-row">
+                        <span class="rc-label">Overall Status</span>
+                        <span class="rc-badge {{ $overallOk ? 'rc-badge-ok' : ($overallLabel === 'Rejected' ? 'rc-badge-no' : 'rc-badge-amber') }}">{{ $overallLabel }}</span>
+                    </div>
+                    <div class="rc-verdict-row">
+                        <span class="rc-label">Generated On</span>
+                        <span class="rc-value">{{ now()->format('d M Y, h:i A') }}</span>
+                    </div>
+                </div>
             </div>
 
             {{-- ═══════════ NOTES ═══════════ --}}
@@ -399,6 +455,7 @@
             {{-- ═══════════ FOOTER ═══════════ --}}
             <div class="rc-footer">
                 <span>Research Tracking System &middot; Project Report Card</span>
+                <span>Page 1 of 1</span>
                 <img src="{{ asset('images/research_logo.png') }}" alt="" onerror="this.style.display='none'">
             </div>
 
