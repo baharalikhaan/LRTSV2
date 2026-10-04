@@ -1,0 +1,420 @@
+================================================================================
+LRTS V2 — FULL APPLICATION AUDIT REPORT
+Generated: October 2026
+================================================================================
+
+MECHANICAL CHECKS
+-----------------
+- 175 PHP files: syntax clean (php -l)
+- Test suite: 9/9 passed (php artisan test)
+- All Blade views compile successfully (php artisan view:cache)
+
+================================================================================
+1. BROKEN ROUTES (crash / 500 when hit)
+================================================================================
+
+- GET /progress/{id} (progress.show) -> ProgressController::show() DOES NOT EXIST
+  -> 500 on hit. Location: routes/web.php:367
+- announcements.edit -> AnnouncementController::edit() does not exist.
+- route('cycles.*') — 6 names (cycles.show/store/update/edit/index/cycles.index)
+  used in cycles/index.blade.php, cycles/show.blade.php and CycleController.php,
+  but NO cycles routes exist anywhere -> fatal if rendered.
+- route('reports.student-grant-summary') used in
+  resources/views/reports/student-grant-summary.blade.php:8,23 — method
+  ReportController@studentGrantSummary exists (line 264) and view exists,
+  but NO route defined.
+- route('verification.resend') used in resources/views/auth/verify.blade.php:19
+  but Auth::routes() is called WITHOUT ['verify' => true] (routes/web.php:36).
+- route('tags.destroy') / tags.update / tags.store used in
+  resources/views/tags/index.blade.php:54,91,92 but NO tags routes defined.
+- route('users') used at UserController.php:76,118,130 — correct name is
+  users.index.
+- Live routes pointing to MISSING blade views (500 when opened):
+  * programs.create  -> ProgramController.php:62   (view missing)
+  * programs.edit    -> ProgramController.php:476  (view missing)
+  * users.create     -> UserController.php:44      (view missing)
+  * users.edit       -> UserController.php:82      (view missing)
+  * scores.edit      -> ScoreController.php:47     (view missing)
+
+================================================================================
+2. SECURITY HOLES (most serious)
+================================================================================
+
+A. Public / unauthenticated access (no auth middleware at all)
+
+- /serveFile2 has NO authentication — routes/web.php:206-301
+  Any anonymous visitor can exfiltrate ALL stored PDFs (proposals, progress,
+  final, ETHICAL APPROVALS) via ?submission_id=N; ?file= variant can reveal
+  root-level files under storage/app/.
+
+- Grant / Pillar / College / Cycle / CycleConfig CRUD is FULLY PUBLIC AND
+  ANONYMOUS — routes/web.php:61-69,116,141,150-186 — controllers have no
+  constructors/guards. Impact: anyone can create/modify/delete grants,
+  pillars, colleges, cycles — AND via ProgramController::update() (:479-506)
+  and destroy() (:531-534) change/delete program DEADLINES, silently
+  bypassing the entire isTypeLocked/isDataLocked/enforceDataOpen machinery
+  (ProgressController:595-722).
+
+- Admin AI settings public — AdminAiController.php has no guards;
+  routes/web.php:133-136. index() (:216-226) renders the Gemini API key to
+  anyone; saveSettings/savePrompt/resetPrompt (:231-268) let anyone overwrite
+  key/prompt/mode.
+
+- WorkflowController has no constructor; /workflow route group
+  (routes/web.php:334-344) has NO middleware:
+  * modal(), showAssignForm/showReviewForm/showAcceptProposalForm/
+    showProgressForm/showReportCardForm — unauthenticated users can render
+    report-card HTML including grading scores, comments and rejections
+    (WorkflowController.php:16-137).
+  * assignReviewers() (:224-274) — NO admin check: any user (or anonymous
+    POST) can wipe all reviewers (DELETE projects_reviewers :253) and
+    self-assign on any project, unconditionally recording status 'Assigned'
+    (:267) even on Claimed/Graded projects.
+  * recordAndRedirect() (:193-218) — no availableActions validation; any
+    user can record registered/assigned/progress_added on any project.
+  * transition()/submitProgressReview() dereference auth()->user() with no
+    middleware -> unauthenticated callers get 500 instead of 401.
+
+- ProgramController::uploadProposals / uploadSingleProposal / create / edit /
+  store UNGUARDED — only visibilityIndex (:20) and toggleVisibility (:47)
+  have inline isAdmin() checks. uploadProposals (:625+) imports proposal ZIPs.
+
+B. Authenticated but wrong-role access
+
+- ProjectController::bulkAssign missing admin check — ProjectController.php:
+  398-425. Any LPI/Reviewer can assign reviewers (incl. themselves) to any
+  project; chain: GradingController::isAssignedReviewer then passes and they
+  can grade a project they were never assigned to.
+
+- ReviewerGradingController guard wrong for purpose — requires only
+  isReviewer() (:19-28) but routes are labelled "Reviewer Grading (Admin)".
+  Any plain Reviewer can view all reviewers, another reviewer's grades, and
+  saveRatings (:167-196) writing performance ratings for ANY reviewer_id +
+  program_id. Fix: require isAdmin().
+
+- FileExplorerController auth-only (:13-16) — any authenticated user can
+  browse and bulk-download ZIP archives of every project's PDF set.
+
+- ScoreController missing admin check (:10-13) — any user can create/update/
+  delete grading score weights that drive autoGrades in GradingController.
+
+- Standard password login IGNORES is_active — LoginController has no gate,
+  while SAML SSO does check it (EventServiceProvider.php:53). Deactivated
+  users can still log in via /login with full access.
+
+C. IDOR / ownership gaps (authenticated, correct role family)
+
+- ProgressController::updateProgress (and add, addFinalReport) leak any
+  project's data: check only activeRole LPI, never checks project->lpi_id
+  (unlike authorizeLpi used in POST endpoints :743-757). Location:
+  ProgressController.php:30-51.
+
+- GradingController::updateVerification is a GLOBAL IDOR (:546-574) — takes
+  type in {outcome,student,researcher} + arbitrary ids and updates
+  verifcation_by_reviewer on ANY rows in the DB, no assignment check.
+
+- ProgressController::authorizeLpi null-lpi loophole (:755) — any LPI-role
+  user authorized on UNCLAIMED projects.
+
+- RegisterWizardController::uploadProposal() (:137-173) — no ownership or
+  registration-state check; any user can overwrite any project's proposal
+  PDF. saveAll() (:212-280) sets lpi_id to current user with no
+  ownership/role/active-program check — any user can register/claim ANY
+  project.
+
+================================================================================
+3. DATA-SAVING BUGS
+================================================================================
+
+ 1. DUPLICATE SUBMISSION ROWS — ProgressController save() (lines 213-227):
+    comment says "Delete existing report" but only the FILE is unlinked (and
+    only when filename differs); the DB row is never deleted, then a new row
+    is create()d on every save. Same bug in saveFinalReport() lines 818-832
+    for readiness/final. Every LPI save that includes a file adds a duplicate
+    row; unordered ->first() reads then break v1/v2 logic and reviewer views.
+
+ 2. INVALID ENUM — save() lines 195-197 writes
+    'verifcation_by_system' => false into an
+    enum('verified','not-verified','pending') column (migration
+    2026_07_28_000001_create_all_tables.php:277). false -> SQL error 1265
+    (strict mode) or garbage. Everything else writes 'pending'.
+
+ 3. ACCEPTED GRADINGS WIPED — save() unconditionally calls
+    archiveAndResetGrading (lines 232-240); isTypeLocked('progress') does NOT
+    consider STATUS_PROGRESS_REVIEWED/accepted grading. After reviewer
+    acceptance, the LPI can still save again before the deadline, archiving
+    the accepted grading and reopening the reviewer's form blank.
+
+ 4. STUDENT ROWS DROPPED BY MASS ASSIGNMENT — saveSingleStudent() lines
+    1169-1175 inserts user_id/type/std_id/days/score — NONE are in
+    ProjectStudent::$fillable (model lists project_id, student_name,
+    student_id, college, department, role, nationality, verifcation_*).
+    saveStudents() lines 1396-1400 inserts student_name/student_id — these
+    are NOT columns in project_students (schema: user_id NOT NULL, type enum,
+    std_id, days, score, nationality) and role is not fillable. Personnel-tab
+    save is broken or silently writes empty values.
+
+ 5. SIS API FAILURE FABRICATES "Test Student" AS VERIFIED —
+    app/Models/ProjectStudentDetail.php:106-112 fetchFromApi() catches any
+    Throwable and falls back to hardcoded getTestResponse()
+    ("Test Student / Computer Science / Engineering"). saveSingleStudent()
+    therefore saves fake details and the UI shows a green "Verified" badge
+    (add-progress.blade.php:2507). Bogus rows persisted in production.
+
+ 6. DUPLICATE PUBLICATION ROWS — fetchPublicationFromApi() lines 1103-1113
+    always inserts a NEW project_publications row; no lookup by DOI/outcome_id
+    on verify/re-save -> duplicates; Outcome::publication() hasOne picks an
+    arbitrary one.
+
+ 7. READINESS FILES DELETABLE AT ANY TIME — deleteFile() lines 482-483:
+    $canDelete = true unconditionally for readiness, even after final_added,
+    rejection, or grading (while UPLOADING readiness IS locked). A graded
+    review's readiness evidence can be silently removed post-grade.
+
+ 8. DEADLINE EDITS CAN'T BE CLEARED — ProgramController::update() lines
+    493-498: array_filter strips blank (null-cast) inputs so removing
+    prog_rpt_deadline / final_rpt_deadline once set is impossible; an
+    unreachable deadline stays in force forever.
+
+ 9. PROGRAM DELETE NOT TRANSACTIONAL + FILE LEAKS — ProgramController::
+    destroy() 542-568: loops deletes without DB::transaction -> mid-loop
+    failure leaves half-deleted program dataset; only proposal PDFs deleted,
+    progress/final/readiness files leak on disk forever.
+
+10. PILLAR_IDS UNVALIDATED — UserController.php:68-70,108-112 ($request->
+    pillar_ids passed straight to sync(); nonexistent ids cause FK 500s).
+    Also qu_id validated as 'email' — suspicious; rejects valid plain IDs.
+
+11. NO DUPLICATE-CYCLE PROTECTION — CycleConfigController.php:18-23 — no
+    unique validation (nor index) on year+title; duplicate-year configs make
+    getStorageDir() ambiguous.
+
+12. GRADING SAVE NON-TRANSACTIONAL — GradingController.php:356-398 (progress)
+    and :482-526 (final): updateOrCreate + recordStatus are separate
+    unwrapped writes; a failure between leaves published/rejected grading
+    with no workflow status (or vice-versa).
+
+13. FINAL GRADING KEYED ON project_id ONLY — GradingController.php:482-505
+    updateOrCreate(['project_id' ...]) with no user_id: admin edit silently
+    overwrites reviewer's row (and shifts user_id provenance); downstream
+    WorkflowController::viewGrade:455-457 filters by current user id ->
+    original reviewer's View Grades returns nothing. Contradicts progress
+    grading which keys on (project_id, user_id, report_type).
+
+14. AGING UPLOAD VERSION ISSUES
+    - uploadFile() v1 replacement path uses unordered ->first() (lines
+      313-347, 367, 393): when both v1 and v2 rows exist (post-rejection),
+      only whichever row first() returns is deleted -> orphaned stale row/
+      download link.
+    - uploadFile() resubmission trigger (ProgressController.php:379) lacks a
+      report_type filter: a progress-2 rejection can promote an ordinary
+      progress-1 re-upload to "v2" and archive the ACCEPTED progress-1
+      grading.
+    - AdminUploadController::storeReport() (376-402): always writes
+      version=1; deletes entire existing submission via unordered ->first();
+      does NOT call archiveAndResetGrading() -> admin re-upload after
+      rejection replaces PDF but grading row stays rejected/read-only,
+      diverging from LPI flow. No file-size validation (vs 10 MB elsewhere).
+    - AdminUploadController::upload(): progress2 with extended_progress=
+      false is SILENTLY skipped (no error) -> user believes it uploaded
+      (success message shown).
+    - Form-based save() writes version-less v1 filename after rejection ->
+      dangling v2 row pointing at overwritten/deleted file (save() lines
+      218-227 vs uploadFile 377-403).
+    - saveOutcomes() delete-and-reinsert (line 888) nulls
+      project_publications.outcome_id (FK nullOnDelete) and destroys
+      verification state on each bulk save; saveSingleOutcome() (957-979)
+      not transactional — API fetch + publication insert precede outcome
+      insert; failure orphans the publication row.
+
+15. DOUBLE-SUBMIT RISKS
+    - confirmFinalSubmit() (add-progress.blade.php:1941-1943) calls
+      form.submit() without disabling anything -> duplicate
+      STATUS_FINAL_ADDED rows / duplicate submissions on double-click.
+    - RegisterWizard: registration guard (hasStatus REGISTERED) executes
+      BEFORE the transaction and STATUS_REGISTERED is recorded inside it;
+      concurrent submits can both pass -> duplicate commitments rows.
+
+================================================================================
+4. WORKFLOW LOGIC BUGS
+================================================================================
+
+ 1. BOGUS STATUS 'claim' — WorkflowController.php:157 ('claim' => 'claim')
+    + :181: transition() has no special handling for 'claim' (comment says it
+    is handled in submitProposalDecision, but it is not). Writes status
+    'claim' — not any defined constant; absent from statusLabels()
+    (Project.php:330-349), lifecycle map (Project.php:738) and Project-
+    Controller branches -> dead-end state.
+
+ 2. SECOND PROPOSAL REJECTION NEVER RECORDED -> ADMIN DEADLOCK —
+    WorkflowController.php:336-342 + app/Models/Project.php:476-486.
+    if (!$project->hasStatus(STATUS_PROPOSAL_REJECTED)) records rejection
+    only the FIRST time. Round 2 (reviewer A rejected, admin reassigns,
+    reviewer B rejects) is suppressed -> current_status stays 'Assigned' ->
+    availableActions() sets $adminLocked = true and hides ALL admin actions
+    INCLUDING Assign Reviewer (:484, requires !$hasReviewerEntry which is
+    true after B's row deleted). Project stuck: no reviewer, no workflow
+    buttons; only bulk-assign page can rescue it. Status history also loses
+    the second rejection.
+
+ 3. PR2 GRADING FORM NEVER REOPENS AFTER REJECTION —
+    resources/views/grading/grading-page.blade.php:32-34 vs :19-20.
+    $isProgress2Step excludes hasStatus(STATUS_PROGRESS2_REJECTED) (PERMANENT
+    check) while progress-1 (:19) and final (:20) correctly do not exclude
+    theirs. After a report-type progress-2 rejection: admin sends to LPI ->
+    LPI uploads v2 (ProgressController.php:421-425 archiveAndResetGrading
+    resets publish='pending') -> gradedProgress2 false (:942),
+    hasActiveProgress2 false (:946) -> read-only hasRejection branch
+    (:982-984, :1146-1152) says form "will reopen once the LPI resubmits" —
+    but it never does. Reviewer CANNOT grade PR2 through the UI.
+
+ 4. UN-ASSIGN REVIEWER EMAIL NEVER SENT — WorkflowController.php:574-597
+    (+ helper :671-699): transaction deletes projects_reviewers row FIRST
+    (:576-578) then sendNotificationToReviewers() (:589) reads
+    $project->reviewers via now-empty pivot -> loop never executes. The
+    reviewerUser is fetched BEFORE delete (:569-572) but only used as a
+    null-check, not as recipient. Silent un-assignment, no email/log.
+
+ 5. LPI NEVER EMAILED ON DIRECT REJECTION — GradingController.php:386-391:
+    rejecting records only a status; LPI emailed only later via admin's
+    reviewProgressRejection (:523-530) — for ethical/Other rejections that
+    admin step never runs (v2.3.0 reviewer re-grades in place) -> LPI never
+    emailed at all.
+
+ 6. RECORD-AND-REDIRECT UNGUARDED + FALSE SUCCESS — WorkflowController.php:
+    193-218 — no availableActions validation; its only UI callers
+    (workflow-actions.blade.php:54-63, actions accepted/graded) match NO
+    statusMap key -> silently "succeed" with a false "Status updated
+    successfully" flash.
+
+ 7. GRADING ROWS LOADED WITHOUT USER SCOPING OR ORDERING —
+    GradingController.php:83-91: FinalReportGrading::where('project_id',
+    $id)->first() and the progress query have no user_id filter and no
+    orderBy. After a proposal-rejection reassignment, the NEW reviewer's
+    page loads the OLD reviewer's row; if it is publish='rejected' with
+    ethical/other type, an "Edit Grading" form pre-filled with ANOTHER
+    reviewer's ratings saves under the new reviewer's id -> two published
+    rows both listed on report card.
+
+ 8. DEADLINE / TIMEZONE ISSUES
+    - Deadline-day exclusion: forms lock as soon as wall clock passes
+      deadline (greaterThan) — ProgressController.php:691,
+      GradingController.php:341,465, Program.php:65. Deadlines entered as
+      dates get midnight semantics -> deadline DATE ITSELF already
+      "passed" at 00:00+eps; users report locked on deadline day.
+    - config/app.php:70 timezone = 'UTC'; no Doha (+03) offset anywhere.
+    - 'Extend Progress Report' admin page cannot actually EXTEND the
+      progress-1 deadline: effectiveDeadline() (ProgressController.php:
+      595-616) always uses original prog_rpt_deadline; extended_progress
+      only toggles progress2.
+    - Readiness deadline display mismatch: loadFormData advertises readiness
+      deadline as prog_rpt2_deadline (ProgressController.php:111-114) but
+      isTypeLocked (:693-696) gates readiness on FINAL deadline + final
+      resubmission state.
+
+ 9. OTHER
+    - submitProgressReview is a dead, weak endpoint (:358-412): no blade
+      calls /workflow/submit-progress-review; accept path records
+      progress_reviewed without checking a submission exists / proposal
+      claimed / extended_progress enabled; reject metadata omits
+      rejection_type -> forces admin-review flow by default.
+    - submitGrade finalizes with no graded data (GradingController.php:
+      590-616): can mark project Graded with no grading record (no
+      publish/isAccepted check). Route unused by UI — latent.
+    - Publish vocabulary mismatch: progress validates publish in
+      {accepted,rejected,reserved,pending} (:289,293) while final validates
+      only {accepted,rejected,pending} (:434,438); views offer only
+      accepted/rejected — 'reserved' unreachable/inconsistent.
+    - StatusHistory orders by created_at only (hasUnreviewedRejection,
+      isRejectionHold, archiveAndResetGrading): two rows same second resolve
+      nondeterministically, unlike latestStatus which uses latestOfMany().
+    - HomeController::switchRole (:692-697) accepts ANY role string into
+      session; User::activeRole() re-validates, but any controller reading
+      session('active_role') directly would be spoofable.
+    - Dual pillar sources of truth — users.pillars string + accessor
+      (User.php:151-163) vs pillars() belongsToMany (User.php:175-178);
+      controllers read both. Name collision: $this->pillars resolves to the
+      DB column; if dropped, accessor crashes.
+    - UserController::type unvalidated (free string) — typo creates a role
+      nobody can use; composite roles not enumerated (e.g.
+      'Admin+SomethingElse' becomes half-Admin via subRoles()).
+    - ProfileController::update allows changing password without confirm
+      current password (:31-38).
+    - SAML: SamlAuthenticate ships strict=false, wantAssertionsSigned=false,
+      hardcoded fallback IdP cert; TrustProxies trusts nothing (breaks
+      secure cookie/redirect behind TLS-terminating proxy); TrustHosts
+      disabled in Kernel (:17).
+    - UserController::destroy has no self-delete / last-admin-delete guard
+      (:121-131).
+    - CSV header/column mismatch in ReportController::programReportCsv
+      (88-120): 9 deadline cells declared but only 3 printed; export rows
+      shift.
+    - Excel import header heuristic (ProgramController.php:109) silently
+      drops the first DATA row when old_project_id happens to be
+      non-numeric (e.g. '2021/001' style) — confirmed datapoint loss.
+    - ProjectController::updateProgress comments say "LPI/admin" but code
+      rejects Admin active-role sessions (:37,43 admin must switch to LPI
+      sub-role) — inversion of documented intent.
+    - Outcomes/contributions dual stores: saveOutcomes normalizes
+      contribution-type outcomes into project_outcomes while
+      saveContributions writes the same data into project_contributions;
+      reviewers/grading may read one stale table.
+
+================================================================================
+5. DEAD CODE
+================================================================================
+
+Whole features (no routes anywhere):
+- CycleController + models/views (cycles/index.blade.php, show.blade.php)
+  — all methods unreachable; blades would fatal on missing cycles.* routes.
+- TagController + tags/index.blade.php + partials/modal-form tags usage.
+
+Orphaned views:
+- resources/views/about/index.blade.php (route + controller method removed).
+- resources/views/announcements/create.blade.php (no create() method/route;
+  contains broken route('announcements')).
+- resources/views/partials/announcements-panel.blade.php (never included).
+- resources/views/auth/verify.blade.php (verify routes not enabled; refs
+  missing verification.resend).
+
+Unrouted / unreachable controller methods:
+- GradingController::gradingPage (:252), ::finalGradingPage (:257).
+- ProjectController::myProjects (:343) — projects/my route is a closure.
+- WorkflowController::showAssignForm / showReviewForm /
+  showAcceptProposalForm / showProgressForm / showReportCardForm
+  (:16-71) — dead; modal() re-implements the dispatch inline.
+- ScoreController::index (:19) — route scores.index is a closure redirect.
+
+Uninvoked JS:
+- openSingleUploadModal() — projects/available.blade.php:405
+- openRegisterWizard() — projects/available.blade.php:497
+- hideModal() — programs/index.blade.php:757
+- openSingleUploadModalForProgram() — programs/index.blade.php:824
+
+Misc dead endpoints:
+- progress/save-students bulk route never called by JS (per-row endpoint is
+  the real path); hidden inputs students[new][*] in main form silently
+  ignored.
+
+Verified clean: all mail classes + their blade views exist; no app/
+Notifications orphans; no @extends/@include/@section mismatches; User role
+helpers (isAdmin/isLPI/isReviewer/canSwitchRole/activeRole) all defined with
+no inverted logic; Announcement/Budget/Email/Gauge/Teams/AdminUpload/Report
+constructors correctly auth+admin-guarded; saveProgressGrade correctly
+blocks grading before submission/deadline (GradingController.php:322-346);
+CSRF enforced everywhere; /setup deploy-key gate sound (uses hash_equals).
+
+================================================================================
+RECOMMENDED FIX PRIORITY
+================================================================================
+
+P0 — SECURITY: add auth + isAdmin guards (section 2), protect /serveFile2,
+     check is_active at login, ownership checks on wizard/progress access.
+P1 — BREAKING: fix broken routes (section 1) — remove dead routes and define
+     reports.student-grant-summary.
+P1 — DATA: duplicate submission rows, enum/value bugs, transaction wrapping,
+     final-grading overwrite (section 3).
+P2 — WORKFLOW: 'claim' status, double-rejection deadlock, PR2 reopen,
+     missing emails (section 4).
+P3 — CLEANUP: delete dead code (section 5).
+================================================================================

@@ -1,0 +1,27 @@
+array(1) {
+  [0]=>
+  string(11) "layouts.app"
+}
+array(4) {
+  [0]=>
+  string(4) "home"
+  [1]=>
+  string(15) "dashboard.admin"
+  [2]=>
+  string(13) "dashboard.lpi"
+  [3]=>
+  string(18) "dashboard.reviewer"
+}
+array(5) {
+  [0]=>
+  string(11) "layouts/app"
+  [1]=>
+  string(4) "home"
+  [2]=>
+  string(15) "dashboard/admin"
+  [3]=>
+  string(13) "dashboard/lpi"
+  [4]=>
+  string(18) "dashboard/reviewer"
+}
+bool(true)

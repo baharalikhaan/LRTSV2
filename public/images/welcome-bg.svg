@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <!-- Brand ramp: --brand-800 → --brand-600 → --brand-500 -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4c0c21"/>
+      <stop offset="45%" stop-color="#7a1636"/>
+      <stop offset="100%" stop-color="#8d1b3d"/>
+    </linearGradient>
+    <linearGradient id="wave1" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02"/>
+    </linearGradient>
+    <!-- Gold ramp: --gold-500 → --gold-400 -->
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#cf9a2f" stop-opacity="0.60"/>
+      <stop offset="100%" stop-color="#e3b04b" stop-opacity="0.12"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+
+  <!-- flowing waves -->
+  <path d="M0,720 C320,620 540,840 900,780 C1280,715 1500,520 1920,600 L1920,1080 L0,1080 Z" fill="url(#wave1)"/>
+  <path d="M0,820 C380,730 640,950 1040,870 C1420,795 1620,650 1920,720 L1920,1080 L0,1080 Z" fill="#350818" opacity="0.18"/>
+  <path d="M0,910 C420,830 700,1010 1120,940 C1520,875 1700,780 1920,830 L1920,1080 L0,1080 Z" fill="url(#wave1)"/>
+
+  <!-- gold accent ribbon (--gold-500) -->
+  <path d="M0,240 C300,180 520,320 860,280 C1220,235 1440,90 1920,160"
+        fill="none" stroke="url(#gold)" stroke-width="3"/>
+
+  <!-- subtle dot grid -->
+  <g fill="#faf7f0" opacity="0.06">
+    <circle cx="120" cy="120" r="3"/><circle cx="220" cy="120" r="3"/><circle cx="320" cy="120" r="3"/>
+    <circle cx="120" cy="220" r="3"/><circle cx="220" cy="220" r="3"/><circle cx="320" cy="220" r="3"/>
+    <circle cx="120" cy="320" r="3"/><circle cx="220" cy="320" r="3"/><circle cx="320" cy="320" r="3"/>
+    <circle cx="1640" cy="880" r="3"/><circle cx="1740" cy="880" r="3"/><circle cx="1840" cy="880" r="3"/>
+    <circle cx="1640" cy="960" r="3"/><circle cx="1740" cy="960" r="3"/><circle cx="1840" cy="960" r="3"/>
+  </g>
+
+  <!-- translucent rings (sand + gold) -->
+  <circle cx="1650" cy="200" r="180" fill="none" stroke="#faf7f0" stroke-opacity="0.07" stroke-width="2"/>
+  <circle cx="1650" cy="200" r="120" fill="none" stroke="#e3b04b" stroke-opacity="0.14" stroke-width="2"/>
+  <circle cx="240" cy="880" r="140" fill="none" stroke="#faf7f0" stroke-opacity="0.05" stroke-width="2"/>
+</svg>
