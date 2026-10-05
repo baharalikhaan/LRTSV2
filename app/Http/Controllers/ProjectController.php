@@ -450,17 +450,16 @@ class ProjectController extends Controller
         // 1. Not assigned yet (no reviewer)
         // 2. Assigned (reviewer assigned, awaiting claim)
         // 3. Proposal rejected (reviewer rejected, needs reassignment)
+        // 4. Progress rejected (report rejected, may need reassignment)
         $query = Project::with('program.grant', 'reviewers', 'latestStatus')
             ->where(function ($q) {
                 // Not assigned yet
                 $q->whereDoesntHave('reviewers')
-                  // Assigned but not yet claimed (latest status is 'Assigned')
+                  // Latest status is one of the states that need reviewer
+                  // attention (awaiting claim, proposal rejected, or a
+                  // rejected progress report).
                   ->orWhere(function ($q2) {
-                      $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status = 'Assigned' AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
-                  })
-                  // Proposal rejected (latest status is 'proposal_rejected')
-                  ->orWhere(function ($q2) {
-                      $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status = 'proposal_rejected' AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
+                      $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status IN ('Assigned', 'proposal_rejected', 'progress_rejected') AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
                   });
             });
 
