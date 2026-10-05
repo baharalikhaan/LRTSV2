@@ -332,8 +332,8 @@ class AdminUploadController extends Controller
      */
     private function storeProposal(Project $project, $file): void
     {
-        $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
-        $safeName = $oldId . '_proposal.pdf';
+        $oldId = $project->getFileSafeOldProjectId();
+        $safeName = $oldId . '.pdf';
 
         $dir = $project->getStorageDir('proposals');
         $fullDir = storage_path('app/' . $dir);
@@ -358,7 +358,7 @@ class AdminUploadController extends Controller
      */
     private function storeReport(Project $project, string $type, $file, $user): void
     {
-        $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+        $oldId = $project->getFileSafeOldProjectId();
 
         $typeFolderMap = [
             'progress'  => 'progress_reports',

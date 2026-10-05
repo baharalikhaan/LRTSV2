@@ -260,7 +260,7 @@
             </div>
             <div style="padding:16px 28px;">
                 {{-- Statistics Cards --}}
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;">
                     <div style="background:linear-gradient(135deg,#ede9fe,#ddd6fe);border-radius:10px;padding:14px 12px;text-align:center;">
                         <div style="font-size:22px;font-weight:700;color:#6d28d9;" id="statTotalInExcel">0</div>
                         <div style="font-size:10px;font-weight:600;color:#7c3aed;text-transform:uppercase;letter-spacing:.04em;">In Excel</div>
@@ -268,6 +268,10 @@
                     <div style="background:linear-gradient(135deg,#d1fae5,#a7f3d0);border-radius:10px;padding:14px 12px;text-align:center;">
                         <div style="font-size:22px;font-weight:700;color:#059669;" id="statImported">0</div>
                         <div style="font-size:10px;font-weight:600;color:#047857;text-transform:uppercase;letter-spacing:.04em;">Imported</div>
+                    </div>
+                    <div style="background:linear-gradient(135deg,#dbeafe,#bfdbfe);border-radius:10px;padding:14px 12px;text-align:center;">
+                        <div style="font-size:22px;font-weight:700;color:#1d4ed8;" id="statProposalsMatched">0</div>
+                        <div style="font-size:10px;font-weight:600;color:#1e40af;text-transform:uppercase;letter-spacing:.04em;">Proposals Matched</div>
                     </div>
                     <div id="statMissingCard" style="background:linear-gradient(135deg,#fee2e2,#fecaca);border-radius:10px;padding:14px 12px;text-align:center;">
                         <div style="font-size:22px;font-weight:700;color:#dc2626;" id="statMissingPdf">0</div>
@@ -286,6 +290,15 @@
                         </button>
                     </div>
                     <div id="missingPdfList" style="max-height:200px;overflow-y:auto;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 0;"></div>
+                </div>
+
+                {{-- Unmatched Proposal Files --}}
+                <div id="unmatchedPdfSection" style="display:none;margin-top:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <i class="fas fa-file-circle-xmark" style="color:#dc2626;font-size:13px;"></i>
+                        <span style="font-size:12px;font-weight:600;color:#991b1b;">Unmatched Files in ZIP (no project found)</span>
+                    </div>
+                    <div id="unmatchedPdfList" style="max-height:160px;overflow-y:auto;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 0;"></div>
                 </div>
 
                 {{-- Errors --}}
@@ -321,8 +334,9 @@
             </div>
             <div class="modal-body" style="padding:20px 24px;">
                 <p style="font-size:13px;color:#64748b;margin:0 0 16px;">
-                    Upload a ZIP or RAR archive containing proposal PDFs. Files must be named as 
-                    <code>{project_id}_Application.pdf</code> or <code>{project_id}.pdf</code>.
+                    Upload a ZIP or RAR archive containing proposal PDFs. Files should be named as
+                    <code>{project_id}.pdf</code>. The project id is used as-is with any "/"
+                    removed (e.g. <code>QUIKT-CENG-26/27-1014</code> → <code>QUIKT-CENG-2627-1014.pdf</code>).
                 </p>
                 
                 <div id="bulkUploadProgramId" style="display:none;"></div>
@@ -998,8 +1012,9 @@ function submitBulkUpload() {
             $('#uploadProgressText').text('Upload complete!');
             var resultHtml = '<div style="background:#d1fae5;border:1px solid #a8e6b8;border-radius:8px;padding:12px 16px;font-size:13px;color:#065f46;">'
                 + '<i class="fas fa-check-circle" style="margin-right:6px;"></i>'
-                + '<strong>' + (resp.matched || 0) + '</strong> proposal(s) matched and uploaded.'
-                + (resp.skippedExisting ? ' <strong>' + resp.skippedExisting + '</strong> already existed (skipped).' : '')
+                + '<strong>' + (resp.matched || 0) + '</strong> proposal(s) matched.'
+                + (resp.newlyMatched ? ' ' + resp.newlyMatched + ' newly linked.' : '')
+                + (resp.skippedExisting ? ' ' + resp.skippedExisting + ' already linked (skipped).' : '')
                 + (resp.unmatched && resp.unmatched.length > 0
                     ? '<div style="margin-top:8px;font-size:11px;color:#991b1b;"><strong>Unmatched (' + resp.unmatched.length + '):</strong><br>' + resp.unmatched.slice(0, 10).join(', ') + (resp.unmatched.length > 10 ? '...' : '') + '</div>'
                     : '')
@@ -1021,6 +1036,8 @@ function showImportResultModal(resp) {
     var totalInExcel = resp.totalInExcel || 0;
     var imported = resp.importCount || 0;
     var missingCount = resp.missingPdfCount || 0;
+    var proposalsMatched = resp.proposalsMatched || 0;
+    var proposalsUnmatched = resp.proposalsUnmatched || [];
     var errors = resp.importErrors || [];
     var missingPdfs = resp.projectsWithoutPdf || [];
 
@@ -1033,6 +1050,7 @@ function showImportResultModal(resp) {
     // Set statistics
     $('#statTotalInExcel').text(totalInExcel);
     $('#statImported').text(imported);
+    $('#statProposalsMatched').text(proposalsMatched);
     $('#statMissingPdf').text(missingCount);
 
     // Color the missing card based on count
@@ -1046,6 +1064,21 @@ function showImportResultModal(resp) {
         $('#statMissingCard div:first-child').css('color', '#dc2626');
         $('#statMissingCard div:last-child').css('color', '#b91c1c');
         $('#statMissingCard div:last-child').text('MISSING PDF');
+    }
+
+    // Unmatched proposal files (present in ZIP but no matching project)
+    if (proposalsUnmatched.length > 0) {
+        var unHtml = '';
+        proposalsUnmatched.slice(0, 10).forEach(function(f) {
+            unHtml += '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid #fca5a5;font-size:11px;">'
+                + '<i class="fas fa-file-pdf" style="color:#b91c1c;font-size:12px;"></i>'
+                + '<span style="color:#7f1d1d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + f + '</span>'
+                + '</div>';
+        });
+        $('#unmatchedPdfList').html(unHtml);
+        $('#unmatchedPdfSection').show();
+    } else {
+        $('#unmatchedPdfSection').hide();
     }
 
     // Show missing PDF list
@@ -1179,7 +1212,9 @@ function submitBulkUpload() {
             $('#uploadProgressText').text('Upload complete!');
             var resultHtml = '<div style="background:#d1fae5;border:1px solid #a8e6b8;border-radius:8px;padding:12px 16px;font-size:13px;color:#065f46;">'
                 + '<i class="fas fa-check-circle" style="margin-right:6px;"></i>'
-                + '<strong>' + (resp.matched || 0) + '</strong> proposal(s) matched and uploaded successfully.'
+                + '<strong>' + (resp.matched || 0) + '</strong> proposal(s) matched.'
+                + (resp.newlyMatched ? ' ' + resp.newlyMatched + ' newly linked.' : '')
+                + (resp.skippedExisting ? ' ' + resp.skippedExisting + ' already linked (skipped).' : '')
                 + (resp.unmatched && resp.unmatched.length > 0
                     ? '<div style="margin-top:8px;font-size:11px;color:#991b1b;"><strong>Unmatched files (' + resp.unmatched.length + '):</strong><br>' + resp.unmatched.slice(0, 10).join(', ') + (resp.unmatched.length > 10 ? '...' : '') + '</div>'
                     : '')

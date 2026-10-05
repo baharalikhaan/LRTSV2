@@ -77,7 +77,7 @@
                         $flowStatus = $cp->currentWorkflowStatus();
                         $isClaimedByOther = $isRegistered && !$isOwned && $flowStatus === \App\Models\Project::STATUS_CLAIMED;
                         $activeRole = $user->activeRole();
-                        $canRegister = $activeRole === 'LPI';
+                        $canRegister = $activeRole === 'LPI' || $activeRole === 'Admin';
                         $programInactive = $cp->program && !$cp->programIsActive();
                         $availActions = $cp->availableActions($user);
 

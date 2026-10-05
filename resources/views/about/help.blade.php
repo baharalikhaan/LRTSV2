@@ -410,7 +410,8 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 
-{{-- AI Assistant Chat Widget --}}
+{{-- AI Assistant Chat Widget (hidden entirely when the admin switches it off in settings) --}}
+@if(\App\Models\AiSetting::get('assistant_enabled', '1') === '1')
 <div id="aiChatFab" onclick="toggleAiChat()" title="Ask AI Assistant">
     <i class="fas fa-robot"></i>
 </div>
@@ -439,6 +440,7 @@
         <button type="submit" id="aiChatSend" title="Send"><i class="fas fa-paper-plane"></i></button>
     </form>
 </div>
+@endif
 
 @push('styles')
 <style>

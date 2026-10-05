@@ -94,6 +94,11 @@ class EmailTemplateController extends Controller
      */
     public function destroy(EmailTemplate $emailTemplate)
     {
+        if ($emailTemplate->key) {
+            return redirect()->route('email-templates.index')
+                ->with('error', 'System notification templates cannot be deleted.');
+        }
+
         $emailTemplate->delete();
 
         return redirect()->route('email-templates.index')->with('success', 'Template deleted.');
@@ -115,9 +120,9 @@ class EmailTemplateController extends Controller
             '*link*'           => url('/projects'),
         ];
 
-        $subject = $emailTemplate->subject;
-        $body    = $emailTemplate->render($sampleData);
-        $sig     = $emailTemplate->signature;
+        $subject = $emailTemplate->renderSubject($sampleData);
+        $body    = $emailTemplate->renderBody($sampleData);
+        $sig     = $emailTemplate->renderSignature($sampleData);
 
         return response()->json([
             'subject' => $subject,

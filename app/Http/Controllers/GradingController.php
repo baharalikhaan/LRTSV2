@@ -105,7 +105,7 @@ class GradingController extends Controller
 
         // LPI submission gates — check file existence instead of status
         // (buttons removed, files uploaded directly)
-        $proposalExists = !empty($project->proposal_filename) && file_exists(storage_path('app/' . $project->getStorageFilename('proposal')));
+        $proposalExists = $this->proposalFileExists($project);
         $progressSubmitted = $submissions->where('type', 'progress')->count() > 0;
         $progress2Submitted = $project->extended_progress ? $submissions->where('type', 'progress2')->count() > 0 : false;
         $finalSubmitted    = $submissions->where('type', 'final')->count() > 0;
@@ -406,6 +406,11 @@ class GradingController extends Controller
             return $row;
         });
 
+        // Notify the LPI when a progress report is graded (accepted).
+        if ($saveAction === 'submit' && $userSelection === 'accepted') {
+            $this->notifyLpiReportGraded($project->fresh(), $user, 'progress_graded');
+        }
+
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => 'Progress grade saved successfully.']);
         }
@@ -540,6 +545,11 @@ class GradingController extends Controller
             }
         }
 
+        // Notify the LPI when the final report is graded (accepted).
+        if ($saveAction === 'submit' && $userSelection === 'accepted') {
+            $this->notifyLpiReportGraded($project->fresh(), $user, 'final_graded');
+        }
+
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true, 'message' => 'Final grade saved successfully.']);
         }
@@ -645,5 +655,54 @@ class GradingController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Grade submitted successfully. Project marked as Graded.']);
+    }
+
+    /**
+     * Send the report-graded notification to the project's LPI
+     * (automatic; gated by MAIL_ENABLED inside EventMailService).
+     */
+    private function notifyLpiReportGraded(Project $project, $actor, string $eventKey): void
+    {
+        $lpi = $project->lpi;
+        if (!$lpi) {
+            return;
+        }
+
+        app(\App\Services\EventMailService::class)->send(
+            $eventKey,
+            $lpi,
+            $project,
+            $actor instanceof User ? $actor : $lpi
+        );
+    }
+
+    /**
+     * Whether a proposal PDF actually exists on disk for the project.
+     * Mirrors the resolution order used by serveFile2 / serveProposal:
+     * canonical <id>.pdf first, then legacy <id>_proposal/_Application names
+     * and the stored proposal_filename value.
+     */
+    private function proposalFileExists(Project $project): bool
+    {
+        $dir = storage_path('app/' . $project->getStorageDir('proposals'));
+        $oldId = $project->getFileSafeOldProjectId();
+
+        $candidates = [
+            $dir . '/' . $oldId . '.pdf',
+            $dir . '/' . $oldId . '_proposal.pdf',
+            $dir . '/' . $oldId . '_Application.pdf',
+        ];
+
+        if (!empty($project->proposal_filename)) {
+            $candidates[] = $dir . '/' . $project->proposal_filename;
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if (file_exists($candidate)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

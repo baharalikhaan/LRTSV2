@@ -32,6 +32,7 @@ class SystemSettingsController extends Controller
             'autoGradeVisibility' => AiSetting::get('auto_grade_visibility', '1'),
             'scores' => \App\Models\Score::orderBy('value', 'desc')->get(),
             'settings' => [
+                'assistant_enabled' => AiSetting::get('assistant_enabled', '1'),
                 'api_key' => AiSetting::get('api_key', ''),
                 'model'   => AiSetting::get('model', 'gemini-2.5-flash'),
                 'mode'    => AiSetting::get('mode', 'static'),

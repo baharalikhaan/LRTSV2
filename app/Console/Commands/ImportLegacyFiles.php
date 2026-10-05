@@ -138,7 +138,10 @@ class ImportLegacyFiles extends Command
 
             $cleanOldId = str_replace(['/', '\\'], '', $rawOldId);
             $versionSuffix = $version > 0 ? '_v' . $version : '';
-            $targetFileName = $cleanOldId . '_' . $type . $versionSuffix . '.pdf';
+            // Proposals are stored as just the file-safe id; other reports keep <id>_<type>.
+            $targetFileName = $type === 'proposal'
+                ? $cleanOldId . '.pdf'
+                : $cleanOldId . '_' . $type . $versionSuffix . '.pdf';
 
             $targetDir = 'uploads/' . $prog->cycle_year . '/' . $prog->grant_code . '/' . $typeFolder;
             $fullTargetDir = $storageBase . '/' . $prog->cycle_year . '/' . $prog->grant_code . '/' . $typeFolder;
@@ -308,8 +311,8 @@ class ImportLegacyFiles extends Command
             $base = substr($base, 0, -strlen($vm[0]));
         }
 
-        // Remove " Application" and " Application - Copy" suffixes
-        $base = preg_replace('/\s+Application(\s*-\s*Copy)?$/i', '', $base);
+        // Strip " Application" / " proposal" and " Application - Copy" suffixes
+        $base = preg_replace('/\s*[-_]?\s*(Application|proposal)(\s*-\s*Copy)?$/i', '', $base);
 
         // Remove trailing _1, _2, _3 for ethical approvals
         if ($type === 'ethical' && preg_match('/_\d+$/', $base)) {

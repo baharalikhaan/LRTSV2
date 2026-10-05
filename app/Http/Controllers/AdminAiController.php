@@ -254,6 +254,7 @@ PROMPT;
     public function index()
     {
         $settings = [
+            'assistant_enabled' => AiSetting::get('assistant_enabled', '1'),
             'api_key' => AiSetting::get('api_key', ''),
             'model'   => AiSetting::get('model', 'gemini-2.5-flash'),
             'mode'    => AiSetting::get('mode', 'static'),
@@ -272,11 +273,13 @@ PROMPT;
             'api_key' => 'required|string',
             'model'   => 'required|string',
             'mode'    => 'required|in:static,dynamic',
+            'assistant_enabled' => 'nullable|in:1,0',
         ]);
 
         AiSetting::set('api_key', $request->input('api_key'));
         AiSetting::set('model', $request->input('model'));
         AiSetting::set('mode', $request->input('mode'));
+        AiSetting::set('assistant_enabled', $request->boolean('assistant_enabled') ? '1' : '0');
 
         return redirect()->route('admin.system-settings', ['tab' => 'ai'])->with('success', 'AI settings saved.');
     }

@@ -36,8 +36,9 @@ class RegisterWizardController extends Controller
         }
 
         $user = auth()->user();
-        if ($confProject->lpi_id !== null && $confProject->lpi_id !== $user->id) {
-            return response()->json(['error' => 'This project has already been claimed by another PI.'], 422);
+        // Admin registering on behalf of an LPI bypasses the ownership check
+        if (!$user->isAdmin() && $confProject->lpi_id !== null && $confProject->lpi_id !== $user->id) {
+            return response()->json(['error' => 'This project has already been claimed by another LPI.'], 422);
         }
 
         $pillars = Pillar::selectRaw('MIN(id) as id, pillar')
@@ -72,8 +73,9 @@ class RegisterWizardController extends Controller
         }
 
         $user = auth()->user();
-        if ($confProject->lpi_id !== null && $confProject->lpi_id !== $user->id) {
-            return redirect()->back()->with('error', 'This project has already been claimed by another PI.');
+        // Admin registering on behalf of an LPI bypasses the ownership check
+        if (!$user->isAdmin() && $confProject->lpi_id !== null && $confProject->lpi_id !== $user->id) {
+            return redirect()->back()->with('error', 'This project has already been claimed by another LPI.');
         }
 
         $pillars = Pillar::selectRaw('MIN(id) as id, pillar')
@@ -100,21 +102,23 @@ class RegisterWizardController extends Controller
      * Tries multiple naming conventions so already-imported projects with
      * legacy filename values still display correctly:
      *   1. proposal_filename column (as stored)
-     *   2. <old_id>_proposal.pdf
-     *   3. <old_id>_Application.pdf
+     *   2. <old_id>.pdf
+     *   3. <old_id>_proposal.pdf
+     *   4. <old_id>_Application.pdf
      */
     public function serveProposal($id)
     {
         $project = Project::findOrFail($id);
 
         $dir = $project->getStorageDir('proposals');
-        $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+        $oldId = $project->getFileSafeOldProjectId();
 
         $candidates = [];
 
         if ($project->proposal_filename) {
             $candidates[] = $project->proposal_filename;
         }
+        $candidates[] = $oldId . '.pdf';
         $candidates[] = $oldId . '_proposal.pdf';
         $candidates[] = $oldId . '_Application.pdf';
 
@@ -144,8 +148,8 @@ class RegisterWizardController extends Controller
             return response()->json(['error' => 'This project has already been registered.'], 422);
         }
         $user = auth()->user();
-        if ($project->lpi_id !== null && $project->lpi_id !== $user->id) {
-            return response()->json(['error' => 'This project has already been claimed by another PI.'], 422);
+        if (!$user->isAdmin() && $project->lpi_id !== null && $project->lpi_id !== $user->id) {
+            return response()->json(['error' => 'This project has already been claimed by another LPI.'], 422);
         }
 
         $validated = $request->validate([
@@ -155,9 +159,9 @@ class RegisterWizardController extends Controller
         $file = $request->file('proposal_file');
         $originalName = $file->getClientOriginalName();
 
-        // Deterministic filename: <old_project_id>_proposal.pdf
-        $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
-        $safeName = $oldId . '_proposal.pdf';
+        // Deterministic filename: the file-safe project id (no suffix).
+        $oldId = $project->getFileSafeOldProjectId();
+        $safeName = $oldId . '.pdf';
 
         $dir = $project->getStorageDir('proposals');
         $file->storeAs($dir, $safeName);
@@ -228,22 +232,43 @@ class RegisterWizardController extends Controller
         $user = auth()->user();
 
         // Ownership parity with wizard()/registerPage(): allow only if the
-        // project is unclaimed (registerer sets lpi_id) or claimed by self.
-        // Also block manipulation when the program is inactive.
-        if ($project->lpi_id !== null && $project->lpi_id !== $user->id) {
-            return response()->json(['error' => 'This project has already been claimed by another PI.'], 422);
+        // project is unclaimed or claimed by self, OR the acting user is an
+        // Admin registering on behalf of an LPI (their binding then comes
+        // from the PI email the wizard collects — see below). Block when the
+        // program is inactive.
+        if (!$user->isAdmin() && $project->lpi_id !== null && $project->lpi_id !== $user->id) {
+            return response()->json(['error' => 'This project has already been claimed by another LPI.'], 422);
         }
         if (!$project->programIsActive()) {
             return response()->json(['error' => 'This program is no longer active. Projects under this program cannot be registered or manipulated.'], 422);
         }
 
         DB::transaction(function () use ($validated, $project, $user) {
+            // Admin registering on behalf of the LPI: bind the project to the
+            // REAL lead PI (resolved from the PI email the wizard collects),
+            // never to the admin's own account. Self-registration (LPI) keeps
+            // the current behavior (lpi_id = auth user).
+            $lpiUser = $user;
+            $piEmail = strtolower(trim((string) $validated['pi_email']));
+            if ($user->isAdmin() && $piEmail !== strtolower(trim((string) $user->email))) {
+                $lpiUser = \App\Models\User::whereRaw('LOWER(email) = ?', [$piEmail])->first();
+                if (!$lpiUser) {
+                    $lpiUser = \App\Models\User::create([
+                        'name'      => $validated['pi_name'] ?: $piEmail,
+                        'email'     => $validated['pi_email'],
+                        'type'      => 'LPI',
+                        'is_active' => true,
+                        'password'  => bcrypt(\Illuminate\Support\Str::random(16)),
+                    ]);
+                }
+            }
+
             // 1. Update project details and mark as registered
             $project->update([
                 'title' => $validated['project_title_en'],
                 'author' => $validated['pi_name'],
                 'email' => $validated['pi_email'],
-                'lpi_id' => $user->id,
+                'lpi_id' => $lpiUser->id,
                 'college_decision' => 'pending',
             ]);
 
@@ -298,6 +323,12 @@ class RegisterWizardController extends Controller
             // 6. Record registration status
             $project->recordStatus(Project::STATUS_REGISTERED, null, $user->id);
         });
+
+        // Notify the LPI that their registration is confirmed (automatic).
+        $lpi = $project->fresh()->lpi;
+        if ($lpi) {
+            app(\App\Services\EventMailService::class)->send('project_registered', $lpi, $project, $user);
+        }
 
         return response()->json([
             'success' => true,

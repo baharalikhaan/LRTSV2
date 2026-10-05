@@ -262,10 +262,11 @@ class ProjectController extends Controller
         }
 
         // Check the logged-in user hasn't already registered this project
+        // (Admin registering on behalf of an LPI bypasses the ownership check)
         $user = auth()->user();
-        if ($confProject->lpi_id !== null && $confProject->lpi_id !== $user->id) {
+        if (!$user->isAdmin() && $confProject->lpi_id !== null && $confProject->lpi_id !== $user->id) {
             return redirect()->route('projects.available')
-                ->with('error', 'This project has already been claimed by another PI.');
+                ->with('error', 'This project has already been claimed by another LPI.');
         }
 
         $pillars = Pillar::orderBy('name')->get();
@@ -333,6 +334,12 @@ class ProjectController extends Controller
                 'is_met' => false,
             ]);
         });
+
+        // Notify the LPI that their registration is confirmed (automatic).
+        $lpi = $project->fresh()->lpi;
+        if ($lpi) {
+            app(\App\Services\EventMailService::class)->send('project_registered', $lpi, $project, $user);
+        }
 
         return redirect()->route('projects.available')
             ->with('success', 'Project registered successfully.');

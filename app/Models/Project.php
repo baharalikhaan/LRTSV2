@@ -247,19 +247,36 @@ class Project extends Model
     }
 
     /**
+     * Filesystem-safe project id: the old_project_id with path separators
+     * (notably "/") removed. Used for every stored document filename.
+     */
+    public function getFileSafeOldProjectId(): string
+    {
+        return str_replace(['/', '\\'], '', (string) ($this->old_project_id ?: $this->id));
+    }
+
+    /**
      * Get the full storage filename for a given document type.
      * type = proposal | progress | readiness | final
      * Optionally pass a version number for versioned files (e.g. progress resubmission).
+     *
+     * Proposals are stored as just the file-safe project id (e.g. "<id>.pdf");
+     * all other documents are "<id>_<type>[_vN].pdf".
      */
     public function getStorageFilename(string $type, ?int $version = null): string
     {
-        $oldId = str_replace('/', '', $this->old_project_id ?? $this->id);
+        $oldId = $this->getFileSafeOldProjectId();
         $typeFolder = $type === 'proposal' ? 'proposals'
             : ($type === 'progress' ? 'progress_reports'
             : ($type === 'progress2' ? 'progress_reports'
             : ($type === 'readiness' ? 'readiness_reports'
             : ($type === 'ethical' ? 'ethical_approvals' : 'final_reports'))));
         $versionSuffix = $version ? '_v' . $version : '';
+
+        if ($type === 'proposal') {
+            return $this->getStorageDir($typeFolder) . '/' . $oldId . $versionSuffix . '.pdf';
+        }
+
         return $this->getStorageDir($typeFolder) . '/' . $oldId . '_' . $type . $versionSuffix . '.pdf';
     }
 

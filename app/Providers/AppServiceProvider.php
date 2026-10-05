@@ -92,15 +92,24 @@ class AppServiceProvider extends ServiceProvider
             $spKey     = $this->envFileValue('SAML_Auth_SP_PRIVATEKEY', env('SAML_Auth_SP_PRIVATEKEY', ''));
         }
 
+        // Optional explicit SP identity overrides (legacy SAML2_Auth_SP_* parity).
+        // Leave blank to derive from the request host (normal /Auth/* routes),
+        // or pin to the registered RP trust on QU ADFS (e.g. the legacy app's
+        // https://rts.qu.edu.qa endpoints) when the SP identity must match a
+        // registered host regardless of the serving URL.
+        $spEntity = $this->envFileValue('SAML_Auth_SP_ENTITYID', env('SAML_Auth_SP_ENTITYID', ''));
+        $spAcs    = $this->envFileValue('SAML_Auth_SP_ACS_URL', env('SAML_Auth_SP_ACS_URL', ''));
+        $spSls    = $this->envFileValue('SAML_Auth_SP_SLS_URL', env('SAML_Auth_SP_SLS_URL', ''));
+
         $samlIdpSettings = [
             'strict'  => false,
             'debug'   => env('APP_DEBUG', false),
             'sp'      => [
                 'x509cert'  => $spCert,
                 'privateKey' => $spKey,
-                'entityId'  => '',
-                'assertionConsumerService' => ['url' => ''],
-                'singleLogoutService'      => ['url' => ''],
+                'entityId'  => $spEntity,
+                'assertionConsumerService' => ['url' => $spAcs],
+                'singleLogoutService'      => ['url' => $spSls],
             ],
             'idp'      => [
                 'entityId'            => $idpEntity,

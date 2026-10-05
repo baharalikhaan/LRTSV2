@@ -113,7 +113,7 @@ class FileExplorerController extends Controller
             return back()->with('error', 'No files found for this project.');
         }
 
-        $oldId  = str_replace('/', '', $project->old_project_id ?? $project->id);
+        $oldId  = $project->getFileSafeOldProjectId();
         $zipName = "project_{$oldId}.zip";
         $zipPath = storage_path("app/{$zipName}");
 
@@ -147,7 +147,7 @@ class FileExplorerController extends Controller
         $zip = new ZipArchive;
         if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
             foreach ($program->projects as $project) {
-                $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+                $oldId = $project->getFileSafeOldProjectId();
                 $files = $this->getProjectFiles($project);
                 foreach ($files as $file) {
                     $hasFiles = true;
@@ -175,13 +175,42 @@ class FileExplorerController extends Controller
      */
     private function getProjectFiles(Project $project): \Illuminate\Support\Collection
     {
-        $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+        $oldId = $project->getFileSafeOldProjectId();
         $files = collect();
 
         foreach (self::TYPES as $type => $typeFolder) {
             $dir = storage_path('app/' . $project->getStorageDir($typeFolder));
 
             if (!is_dir($dir)) {
+                continue;
+            }
+
+            // Proposals are stored under the canonical file-safe id only
+            // (<id>.pdf), while other documents use <id>_<type>[_vN].pdf.
+            // Legacy proposal names (_proposal / _Application) are also accepted.
+            if ($type === 'proposal') {
+                $candidates = [
+                    $dir . '/' . $oldId . '.pdf',
+                    $dir . '/' . $oldId . '_proposal.pdf',
+                    $dir . '/' . $oldId . '_Application.pdf',
+                ];
+                // Include the stored name from the DB column if present.
+                if (!empty($project->proposal_filename)) {
+                    $candidates[] = $dir . '/' . $project->proposal_filename;
+                }
+
+                foreach (array_unique($candidates) as $candidate) {
+                    if (file_exists($candidate)) {
+                        $files->push([
+                            'full_path'  => $candidate,
+                            'name'       => basename($candidate),
+                            'type_folder'=> $typeFolder,
+                            'type'       => $type,
+                        ]);
+                        break;
+                    }
+                }
+
                 continue;
             }
 

@@ -238,6 +238,17 @@ class ProgramController extends Controller
                             }
                         }
 
+                        // Notify the LPI about the newly imported project (automatic,
+                        // only on first creation so re-imports don't spam).
+                        if ($project->wasRecentlyCreated && $matchedUser) {
+                            app(\App\Services\EventMailService::class)->send(
+                                'project_imported',
+                                $matchedUser,
+                                $project->fresh(),
+                                auth()->user()
+                            );
+                        }
+
                         // Process pillars
                         if (!empty($pillarsRaw)) {
                             $pillarValues = array_map('trim', preg_split('/[\r\n]+/', $pillarsRaw));
@@ -329,6 +340,9 @@ class ProgramController extends Controller
         }
 
         // Process Proposals ZIP
+        $proposalsMatched = 0;
+        $proposalsSkipped = 0;
+        $proposalsUnmatched = [];
         if ($request->hasFile('proposals_zip')) {
             $zipFile = $request->file('proposals_zip');
 
@@ -337,40 +351,42 @@ class ProgramController extends Controller
             $grantCode = $program->grant ? $program->grant->grant_code : 'unknown';
             $extractPath = storage_path('app/uploads/' . $cycleYear . '/' . $grantCode . '/proposals/');
 
+            // Stage PDFs in a temp dir first; only matched files are copied into
+            // the proposals folder, so unmatched files are never stored.
+            $stagingPath = storage_path('app/temp/proposals_' . uniqid());
+            if (!is_dir($stagingPath)) {
+                mkdir($stagingPath, 0755, true);
+            }
+
             try {
                 $zip = new \ZipArchive();
                 if ($zip->open($zipFile->getRealPath()) === true) {
-                    // Ensure the directory exists
-                    if (!is_dir($extractPath)) {
-                        mkdir($extractPath, 0755, true);
-                    }
-                    $zip->extractTo($extractPath);
+                    $zip->extractTo($stagingPath);
                     $zip->close();
 
-                    $files = scandir($extractPath);
-                    foreach ($files as $file) {
-                        if ($file === '.' || $file === '..') continue;
-                        $filenameWithoutExt = pathinfo($file, PATHINFO_FILENAME);
+                    // Build the match index once and reuse it for every extracted file.
+                    $matchIndex = $this->buildProposalMatchIndex($program);
 
-                        // Proposal files use the conf-tool naming <old_id>_Application.pdf,
-                        // so strip the "_Application" suffix to match the project's old_project_id.
-                        $candidateId = $filenameWithoutExt;
-                        $candidateId = preg_replace('/_Application$/i', '', $candidateId);
+                    foreach ($this->stagedPdfFiles($stagingPath) as $staged) {
+                        $file = basename($staged);
 
-                        $updated = \App\Models\Project::where('old_project_id', $candidateId)
-                            ->where('program_id', $program->id)
-                            ->update(['proposal_filename' => $file]);
-
-                        // Fallback: try matching the full filename without extension too
-                        if ($updated === 0 && $candidateId !== $filenameWithoutExt) {
-                            \App\Models\Project::where('old_project_id', $filenameWithoutExt)
-                                ->where('program_id', $program->id)
-                                ->update(['proposal_filename' => $file]);
+                        // Match the PDF to a project by its file-safe id and
+                        // store it under the canonical id-only name.
+                        $result = $this->matchProposalToProject($file, $program, $matchIndex, $staged, $extractPath);
+                        if ($result === 'matched') {
+                            $proposalsMatched++;
+                        } elseif ($result === 'already') {
+                            $proposalsSkipped++;
+                        } else {
+                            $proposalsUnmatched[] = $file;
                         }
                     }
                 }
             } catch (\Exception $e) {
                 $errors[] = "ZIP extraction error: " . $e->getMessage();
+            } finally {
+                // Discard staged files (unmatched ones included).
+                $this->cleanupDir($stagingPath);
             }
         }
 
@@ -399,6 +415,9 @@ class ProgramController extends Controller
                 'importErrors' => $errors,
                 'projectsWithoutPdf' => $projectsWithoutPdf,
                 'missingPdfCount' => $missingPdfCount,
+                'proposalsMatched' => $proposalsMatched,
+                'proposalsSkipped' => $proposalsSkipped,
+                'proposalsUnmatched' => $proposalsUnmatched,
             ]);
         }
 
@@ -538,10 +557,21 @@ class ProgramController extends Controller
         // the transaction would leave the disk inconsistent if it failed.
         $filesToDelete = [];
         foreach ($program->projects as $project) {
-            if ($project->proposal_filename && $proposalsDir && is_dir($proposalsDir)) {
-                $proposalPath = $proposalsDir . '/' . $project->proposal_filename;
-                if (file_exists($proposalPath)) {
-                    $filesToDelete[] = $proposalPath;
+            if ($proposalsDir && is_dir($proposalsDir)) {
+                // Prefer the stored name, and also cover the canonical file-safe
+                // name plus legacy variants in case the column is empty/stale.
+                $oldId = $project->getFileSafeOldProjectId();
+                $candidates = array_filter([
+                    $project->proposal_filename ? $proposalsDir . '/' . $project->proposal_filename : null,
+                    $oldId ? $proposalsDir . '/' . $oldId . '.pdf' : null,
+                    $oldId ? $proposalsDir . '/' . $oldId . '_proposal.pdf' : null,
+                    $oldId ? $proposalsDir . '/' . $oldId . '_Application.pdf' : null,
+                ]);
+
+                foreach (array_unique($candidates) as $proposalPath) {
+                    if (file_exists($proposalPath)) {
+                        $filesToDelete[] = $proposalPath;
+                    }
                 }
             }
             foreach ($project->submissions as $submission) {
@@ -661,34 +691,46 @@ class ProgramController extends Controller
         $unmatched = [];
         $skippedExisting = 0;
 
+        // Build once; reused for every extracted PDF.
+        $matchIndex = $this->buildProposalMatchIndex($program);
+
+        // Staging directory: PDFs are extracted here first and only moved into
+        // the proposals folder once they match a project. Unmatched files are
+        // left in the temp dir and deleted with it, so they are never stored.
+        $stagingPath = storage_path('app/temp/proposals_' . uniqid());
+        if (!is_dir($stagingPath)) {
+            mkdir($stagingPath, 0755, true);
+        }
+
         if ($extension === 'zip') {
             $zip = new \ZipArchive();
             if ($zip->open($file->getRealPath()) === true) {
-                // First pass: extract all PDF files only
+                // First pass: extract all PDF files only into staging
                 for ($i = 0; $i < $zip->numFiles; $i++) {
                     $entryName = $zip->getNameIndex($i);
                     if (pathinfo($entryName, PATHINFO_EXTENSION) === 'pdf' && !str_starts_with($entryName, '__MACOSX')) {
-                        $zip->extractTo($extractPath, $entryName);
-                        Log::info("ZIP extracted: {$entryName}");
+                        $zip->extractTo($stagingPath, $entryName);
+                        Log::info("ZIP extracted to staging: {$entryName}");
                     }
                 }
                 $zip->close();
 
-                // Second pass: match files to projects
-                $files = scandir($extractPath);
-                foreach ($files as $f) {
-                    if ($f === '.' || $f === '..' || pathinfo($f, PATHINFO_EXTENSION) !== 'pdf') continue;
+                // Second pass: match files to projects; matched ones get copied
+                // into the proposals folder under the canonical id name.
+                foreach ($this->stagedPdfFiles($stagingPath) as $staged) {
+                    $f = basename($staged);
 
-                    $result = $this->matchProposalToProject($f, $program, $extractPath);
+                    $result = $this->matchProposalToProject($f, $program, $matchIndex, $staged, $extractPath);
                     if ($result === 'matched') {
                         $matched++;
-                    } elseif ($result === 'exists') {
+                    } elseif ($result === 'already') {
                         $skippedExisting++;
                     } else {
                         $unmatched[] = $f;
                     }
                 }
             } else {
+                $this->cleanupDir($stagingPath);
                 return response()->json(['error' => 'Failed to open ZIP file.'], 422);
             }
         } elseif ($extension === 'rar') {
@@ -703,18 +745,17 @@ class ProgramController extends Controller
             $rarFile = $tempPath . '/archive.rar';
             $output = [];
             $returnCode = 0;
-            exec("unar -o {$extractPath} {$rarFile} 2>&1", $output, $returnCode);
+            exec("unar -o {$stagingPath} {$rarFile} 2>&1", $output, $returnCode);
 
             if ($returnCode === 0) {
-                // Match files to projects
-                $files = scandir($extractPath);
-                foreach ($files as $f) {
-                    if ($f === '.' || $f === '..' || pathinfo($f, PATHINFO_EXTENSION) !== 'pdf') continue;
+                // Match files to projects; matched ones get copied in.
+                foreach ($this->stagedPdfFiles($stagingPath) as $staged) {
+                    $f = basename($staged);
 
-                    $result = $this->matchProposalToProject($f, $program, $extractPath);
+                    $result = $this->matchProposalToProject($f, $program, $matchIndex, $staged, $extractPath);
                     if ($result === 'matched') {
                         $matched++;
-                    } elseif ($result === 'exists') {
+                    } elseif ($result === 'already') {
                         $skippedExisting++;
                     } else {
                         $unmatched[] = $f;
@@ -724,6 +765,7 @@ class ProgramController extends Controller
                 // Cleanup temp
                 array_map('unlink', glob("{$tempPath}/*"));
                 rmdir($tempPath);
+                $this->cleanupDir($stagingPath);
                 return response()->json(['error' => 'Failed to extract RAR file. Make sure unrar is installed.'], 422);
             }
 
@@ -732,14 +774,26 @@ class ProgramController extends Controller
             rmdir($tempPath);
         }
 
-        $message = "{$matched} proposal(s) uploaded successfully.";
+        // Discard everything left in staging (unmatched / non-matched files).
+        $this->cleanupDir($stagingPath);
+
+        $totalMatched = $matched + $skippedExisting;
+
+        $message = "{$totalMatched} proposal(s) matched.";
+        if ($matched > 0) {
+            $message .= " {$matched} newly linked";
+        }
         if ($skippedExisting > 0) {
-            $message .= " {$skippedExisting} already had proposals (skipped).";
+            $message .= ($matched > 0 ? ', ' : ' ') . "{$skippedExisting} already linked (skipped)";
+        }
+        if ($totalMatched > 0) {
+            $message .= '.';
         }
 
         return response()->json([
             'success' => true,
-            'matched' => $matched,
+            'matched' => $totalMatched,
+            'newlyMatched' => $matched,
             'skippedExisting' => $skippedExisting,
             'unmatched' => $unmatched,
             'message' => $message,
@@ -756,46 +810,197 @@ class ProgramController extends Controller
     }
 
     /**
-     * Match a proposal filename to a project and update if no existing proposal.
-     * Returns 'matched', 'exists', or 'unmatched'.
+     * Build a lookup of normalized project-id keys => projects for a program.
+     * Multiple keys are indexed per project so filenames that had to replace
+     * or drop filesystem-illegal characters (notably "/") still resolve.
+     *
+     * @return array<string, \App\Models\Project[]>
      */
-    private function matchProposalToProject(string $filename, Program $program, string $extractPath): string
+    private function buildProposalMatchIndex(Program $program): array
+    {
+        $index = [];
+
+        $projects = \App\Models\Project::where('program_id', $program->id)->get();
+
+        foreach ($projects as $project) {
+            foreach ($this->proposalMatchKeys((string) $project->old_project_id) as $key) {
+                $index[$key][] = $project;
+            }
+        }
+
+        return $index;
+    }
+
+    /**
+     * Normalized comparison keys for a project id / proposal filename.
+     * Handles ids containing "/" by trying the slash replaced with "-",
+     * removed, and an alphanumeric-only compact form.
+     *
+     * @return string[]
+     */
+    private function proposalMatchKeys(string $value): array
+    {
+        $value = trim($value);
+
+        $keys = [
+            strtolower($value),
+            strtolower(str_replace(['/', '\\'], '-', $value)),
+            strtolower(str_replace(['/', '\\'], '', $value)),
+            strtolower(preg_replace('/[^a-zA-Z0-9]+/', '', $value)),
+        ];
+
+        return array_values(array_unique(array_filter($keys, fn ($k) => $k !== '')));
+    }
+
+    /**
+     * Match a proposal filename to a project and update if no existing proposal.
+     * Returns 'matched' (newly linked), 'already' (matched but a proposal was
+     * already linked), or 'unmatched'.
+     *
+     * Accepted filename conventions (all matched by the file-safe project id):
+     *   <old_id>.pdf | <old_id>_Application.pdf | <old_id>_proposal.pdf
+     * Whatever the incoming name, the file is stored under the canonical
+     * file-safe project id (e.g. "QUIKT-CENG-2627-1014.pdf") and
+     * proposal_filename is set to that standardized name.
+     *
+     * @param  array<string, \App\Models\Project[]>  $matchIndex
+     * @param  string|null  $sourcePath  Staged PDF to place when a project matches.
+     * @param  string|null  $destDir     Proposals folder to place it in.
+     */
+    private function matchProposalToProject(string $filename, Program $program, array $matchIndex, ?string $sourcePath = null, ?string $destDir = null): string
     {
         $filenameWithoutExt = pathinfo($filename, PATHINFO_FILENAME);
 
-        // Try matching: {old_project_id}_Application.pdf or {old_project_id}.pdf
-        $candidateId = preg_replace('/_Application$/i', '', $filenameWithoutExt);
+        // Strip optional "Application" / "proposal" (+ " - Copy") suffixes.
+        $candidateId = preg_replace('/\s*[-_]?\s*(Application|proposal)(\s*-\s*Copy)?$/i', '', trim($filenameWithoutExt));
 
-        // Get all project IDs for this program to check against
-        $projectIds = \App\Models\Project::where('program_id', $program->id)
-            ->pluck('old_project_id')
-            ->toArray();
+        $candidates = $candidateId !== $filenameWithoutExt
+            ? [$candidateId, $filenameWithoutExt]
+            : [$filenameWithoutExt];
 
-        Log::info("PDF match: Checking '{$filename}' (candidate: '{$candidateId}') against " . count($projectIds) . " projects");
+        $tried = [];
+        $alreadyLinked = false;
 
-        $project = \App\Models\Project::where('old_project_id', $candidateId)
-            ->where('program_id', $program->id)
-            ->first();
+        foreach ($candidates as $candidate) {
+            foreach ($this->proposalMatchKeys($candidate) as $key) {
+                if (isset($tried[$key])) {
+                    continue;
+                }
+                $tried[$key] = true;
 
-        if (!$project && $candidateId !== $filenameWithoutExt) {
-            $project = \App\Models\Project::where('old_project_id', $filenameWithoutExt)
-                ->where('program_id', $program->id)
-                ->first();
-        }
+                if (empty($matchIndex[$key])) {
+                    continue;
+                }
 
-        if ($project) {
-            // Skip if project already has a proposal
-            if (!empty($project->proposal_filename)) {
-                Log::info("PDF match: '{$filename}' matched project '{$candidateId}' but already has proposal");
-                return 'exists';
+                foreach ($matchIndex[$key] as $project) {
+                    // Always store/match under the canonical file-safe id.
+                    $storedName = $project->getFileSafeOldProjectId() . '.pdf';
+                    $current = $project->proposal_filename;
+
+                    if (empty($current) || $current !== $storedName) {
+                        // Only write the file to disk when it actually matched.
+                        if ($sourcePath !== null && $destDir !== null) {
+                            $this->placeProposalFile($sourcePath, $destDir, $storedName);
+                        }
+
+                        Log::info("PDF match: '{$filename}' MATCHED project (ID: {$project->id}, old: {$project->old_project_id}) -> stored as '{$storedName}'");
+                        $project->update(['proposal_filename' => $storedName]);
+
+                        return 'matched';
+                    }
+
+                    // Project already points at this exact canonical file. If the
+                    // file is missing on disk, restore it from the staged copy.
+                    if ($sourcePath !== null && $destDir !== null) {
+                        $destPath = $destDir . '/' . $storedName;
+                        if (!file_exists($destPath)) {
+                            $this->placeProposalFile($sourcePath, $destDir, $storedName);
+                            Log::info("PDF match: '{$filename}' restored missing file for project (ID: {$project->id}) as '{$storedName}'");
+                            return 'matched';
+                        }
+                    }
+                    $alreadyLinked = true;
+                }
             }
-            Log::info("PDF match: '{$filename}' MATCHED project '{$candidateId}' (ID: {$project->id})");
-            $project->update(['proposal_filename' => $filename]);
-            return 'matched';
         }
 
-        Log::info("PDF match: '{$filename}' UNMATCHED - no project found with ID '{$candidateId}'");
+        if ($alreadyLinked) {
+            Log::info("PDF match: '{$filename}' already linked to a project (canonical name)");
+            return 'already';
+        }
+
+        Log::info("PDF match: '{$filename}' UNMATCHED - no project matched candidate '{$candidateId}'");
         return 'unmatched';
+    }
+
+    /**
+     * List PDF files (recursively) inside a staging directory.
+     *
+     * @return string[] Absolute paths
+     */
+    private function stagedPdfFiles(string $dir): array
+    {
+        $result = [];
+        $items = scandir($dir);
+        if ($items === false) {
+            return $result;
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+            $path = $dir . '/' . $item;
+
+            if (is_dir($path)) {
+                $result = array_merge($result, $this->stagedPdfFiles($path));
+            } elseif (strtolower(pathinfo($item, PATHINFO_EXTENSION)) === 'pdf') {
+                $result[] = $path;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Copy a staged proposal into the proposals folder under its canonical name,
+     * replacing any previous file of the same name.
+     */
+    private function placeProposalFile(string $sourcePath, string $destDir, string $storedName): void
+    {
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+
+        $destPath = $destDir . '/' . $storedName;
+        if (file_exists($destPath)) {
+            @unlink($destPath);
+        }
+
+        @copy($sourcePath, $destPath);
+    }
+
+    /**
+     * Recursively delete a directory and its contents.
+     */
+    private function cleanupDir(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $items = scandir($dir);
+        if ($items !== false) {
+            foreach ($items as $item) {
+                if ($item === '.' || $item === '..') continue;
+                $path = $dir . '/' . $item;
+                if (is_dir($path)) {
+                    $this->cleanupDir($path);
+                } else {
+                    @unlink($path);
+                }
+            }
+        }
+
+        @rmdir($dir);
     }
 
     /**
@@ -824,7 +1029,10 @@ class ProgramController extends Controller
         }
 
         $file = $request->file('pdf');
-        $filename = $project->old_project_id . '_Application.pdf';
+
+        // Use the deterministic storage name (filesystem-safe: "/" stripped) so
+        // the served path matches getStorageFilename()/serveProposal().
+        $filename = basename($project->getStorageFilename('proposal'));
 
         // Delete old proposal if exists
         if ($project->proposal_filename) {

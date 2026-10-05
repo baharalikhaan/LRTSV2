@@ -16,6 +16,13 @@
 </div>
 @endif
 
+@if($template->key)
+<div class="fluent-alert" style="margin-bottom:16px;background:var(--brand-50,#fbeef1);border:1px solid var(--brand-200,#e8a4b8);">
+    <i class="fas fa-robot"></i>
+    System template for automatic notifications (<code>{{ $template->key }}</code>). You can edit the subject, body and signature; the notification is sent when the matching event occurs.
+</div>
+@endif
+
 <form method="POST" action="{{ route('email-templates.update', $template->id) }}">
     @csrf @method('PUT')
     <div style="display:grid; grid-template-columns:2fr 1fr; gap:20px; align-items:start;">

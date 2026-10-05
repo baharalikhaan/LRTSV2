@@ -1,0 +1,52 @@
+form {
+    position:relative; 
+    left: 400px;
+    top: 40px; 
+    padding: 20px;
+}
+  
+  .form-group {
+    width: 40%;
+  }
+  
+  input, select {
+    width: 100%;
+    padding: 12px 20px;
+    margin: 8px 0;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  
+  button {
+    position:relative; 
+    top: 100px;
+    width: 40%;
+    background-color: #222622;
+    color: white;
+    padding: 14px 20px;
+    margin: 8px 0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  button:hover {
+    background-color: #45a049;
+  }
+  img {
+    display: inline-block;
+    width: 200px;
+    margin: 40px;
+    position: relative;
+    left:300px
+}
+.btn{
+    margin: 3px;
+    position: relative;
+    left: 600px;
+    bottom: 50px;
+    border: 2px solid black;
+    width: 3%;
+    border-radius: 20%;
+}

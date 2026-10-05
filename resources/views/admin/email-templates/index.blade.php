@@ -49,7 +49,11 @@
                 @forelse($templates as $t)
                 <tr>
                     <td>
-                        <div style="font-weight:500;">{{ $t->name }}</div>
+                        <div style="font-weight:500;">{{ $t->name }}
+                            @if($t->key)
+                                <span class="pill primary" style="font-size:10px;margin-left:6px;" title="System template used for automatic notifications (key: {{ $t->key }})">System</span>
+                            @endif
+                        </div>
                         @if($t->signature)
                             <div style="font-size:11px; color:var(--color-ink-400); margin-top:2px;">
                                 <i class="fas fa-signature" style="font-size:10px;"></i> Has signature
@@ -84,6 +88,7 @@
                                 data-bs-toggle="tooltip">
                                 <i class="fas fa-edit" style="font-size:11px;"></i> Edit
                             </a>
+                            @unless($t->key)
                             <form action="{{ route('email-templates.destroy', $t->id) }}" method="POST" class="d-inline delete-form">
                                 @csrf
                                 @method('DELETE')
@@ -94,6 +99,7 @@
                                     <i class="fas fa-trash" style="font-size:11px;"></i> Delete
                                 </button>
                             </form>
+                            @endunless
                         </div>
                     </td>
                 </tr>

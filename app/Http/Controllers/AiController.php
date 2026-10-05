@@ -27,6 +27,12 @@ class AiController extends Controller
             'history' => 'nullable|array|max:10',
         ]);
 
+        // Admin kill-switch: AI Assistant can be disabled from the settings
+        // (System Settings → AI tab: "Enable AI Assistant").
+        if (AiSetting::get('assistant_enabled', '1') !== '1') {
+            return response()->json(['error' => 'The AI Assistant has been disabled by the administrator.'], 503);
+        }
+
         $apiKey = AiSetting::get('api_key');
         if (!$apiKey) {
             return response()->json(['error' => 'AI service not configured.'], 503);

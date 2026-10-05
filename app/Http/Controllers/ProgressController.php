@@ -225,7 +225,7 @@ class ProgressController extends Controller
 
             // Save file submissions (progress report only — readiness/final are in final step)
             if ($request->hasFile('submissions')) {
-                $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+                $oldId = $project->getFileSafeOldProjectId();
                 foreach ($request->file('submissions') as $type => $file) {
                     if ($file === null) continue;
                     // Only save progress type files here
@@ -262,6 +262,9 @@ class ProgressController extends Controller
             // so a rejected final/progress2 grading is not reopened by mistake.
             $this->archiveAndResetGrading($project->id, 'progress');
         });
+
+        // Confirm to the LPI that their progress report was submitted (automatic).
+        $this->notifyLpiProgressUpdated($project->fresh(), $user);
 
         // Handle both AJAX and standard form submission
         if ($request->wantsJson() || $request->ajax()) {
@@ -395,7 +398,7 @@ class ProgressController extends Controller
         }
 
         // Map to submission type and version
-        $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+        $oldId = $project->getFileSafeOldProjectId();
 
         if ($type === 'ethical') {
             // Ethical approval: MULTIPLE files allowed — each upload appends a
@@ -582,6 +585,9 @@ class ProgressController extends Controller
             $project->recordStatus(Project::STATUS_PROGRESS2_ADDED, [
                 'triggered_by' => 'progress2',
             ], $user->id);
+
+            // Confirm to the LPI that progress report 2 was submitted (automatic).
+            $this->notifyLpiProgressUpdated($project->fresh(), $user);
         }
 
         // Render the download link HTML snippet
@@ -965,7 +971,7 @@ class ProgressController extends Controller
 
         DB::transaction(function () use ($project, $validated, $user, $request) {
             if ($request->hasFile('submissions')) {
-                $oldId = str_replace('/', '', $project->old_project_id ?? $project->id);
+                $oldId = $project->getFileSafeOldProjectId();
                 foreach ($request->file('submissions') as $type => $file) {
                     if ($file === null) continue;
                     if (!in_array($type, ['readiness', 'final'])) continue;
@@ -1683,6 +1689,25 @@ class ProgressController extends Controller
             'success' => true,
             'message' => 'Contributions saved successfully.',
         ]);
+    }
+
+    /**
+     * Send the "progress updated" confirmation to the project's LPI
+     * (automatic; gated by MAIL_ENABLED inside EventMailService).
+     */
+    private function notifyLpiProgressUpdated(Project $project, $actor): void
+    {
+        $lpi = $project->lpi;
+        if (!$lpi) {
+            return;
+        }
+
+        app(\App\Services\EventMailService::class)->send(
+            'progress_updated',
+            $lpi,
+            $project,
+            $actor instanceof \App\Models\User ? $actor : $lpi
+        );
     }
 
 }

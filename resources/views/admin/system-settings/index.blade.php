@@ -143,6 +143,19 @@
     <div class="panel-body">
         <form method="POST" action="{{ route('admin.ai-settings.save') }}">
             @csrf
+            {{-- ── Assistant on/off switch ── --}}
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--ink-50,#f5f4f2);border:1px solid var(--ink-100,#eceef2);border-radius:8px;margin-bottom:16px;">
+                <label class="form-check form-switch" style="margin:0;display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="hidden" name="assistant_enabled" value="0">
+                    <input type="checkbox" name="assistant_enabled" value="1" class="form-check-input"
+                           {{ ($settings['assistant_enabled'] ?? '1') === '1' ? 'checked' : '' }}
+                           style="width:36px;height:20px;margin-left:0;cursor:pointer;">
+                    <span style="font-size:12.5px;font-weight:600;color:var(--ink-700);">Enable AI Assistant</span>
+                </label>
+                <span style="font-size:11.5px;color:var(--ink-400);">
+                    When OFF, the Gemini chat widget is removed from the Help Center and <code>/ai/chat</code> answers are disabled for everyone.
+                </span>
+            </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px;">
                 <div>
                     <label style="font-size:12px;font-weight:600;color:var(--ink-600);display:block;margin-bottom:4px;">

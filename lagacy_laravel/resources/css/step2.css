@@ -1,0 +1,46 @@
+
+    #box-form {
+        font-family: "Times New Roman", Times, serif;
+        border-radius: 15px;
+        height: 70%;
+        margin: 0 auto;
+        position: relative;
+    }
+
+    .input {
+        margin: 0 auto;
+        position: relative;
+        width: 100%;
+        font-size: 100%;
+        font-weight:bold;
+    }
+
+    #next {
+        margin: auto;
+        display: block;
+        width: 20%;
+        height: 6%;
+        border: 3px solid teal;
+        border-radius: 5px;
+    }
+
+    #header {
+        background-color: teal;
+        font-weight: bold;
+        border-radius: 2px;
+        width: 100%;
+        height: 8%;
+    }
+
+    .h5 {
+        color: beige;
+        padding-top: 8px;
+    }
+
+    #icons {
+        font-size: 130%;
+    }
+
+    #act {
+        color: teal;
+    }

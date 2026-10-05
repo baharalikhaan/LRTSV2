@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\EmailSendLog;
 use App\Mail\GenericEmailMail;
+use App\Services\EventMailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -292,6 +293,14 @@ class WorkflowController extends Controller
             ], auth()->id());
         });
 
+        // Notify the assigned reviewer (automatic; gated by MAIL_ENABLED).
+        foreach ($reviewerIds as $reviewerId) {
+            $reviewer = User::find($reviewerId);
+            if ($reviewer) {
+                app(EventMailService::class)->send('reviewer_assigned', $reviewer, $project, auth()->user());
+            }
+        }
+
         return response()->json(['success' => true, 'message' => 'Reviewer assigned successfully.']);
     }
 
@@ -330,6 +339,12 @@ class WorkflowController extends Controller
                 $project->recordStatus(Project::STATUS_CLAIMED, [
                     'triggered_by'  => 'claim',
                 ], $user->id);
+            }
+
+            // Notify the LPI that their proposal was accepted.
+            $lpi = $project->lpi;
+            if ($lpi) {
+                app(EventMailService::class)->send('proposal_accepted', $lpi, $project, $user);
             }
 
             return response()->json(['success' => true, 'message' => 'Proposal accepted successfully.']);
@@ -371,6 +386,14 @@ class WorkflowController extends Controller
                 ], $user->id);
             }
         });
+
+        // Notify the LPI that their proposal was rejected (back to admin queue).
+        $lpi = $project->fresh()->lpi;
+        if ($lpi) {
+            app(EventMailService::class)->send('proposal_rejected', $lpi, $project, $user, [
+                '*reason*' => $validated['reject_reason'] ?? '',
+            ]);
+        }
 
         return response()->json([
             'success' => true,

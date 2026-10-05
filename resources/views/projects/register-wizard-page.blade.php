@@ -716,15 +716,15 @@
                     <div class="cmp-section">
                         <div class="cmp-section-header">
                             <i class="fas fa-user"></i>
-                            <h4>Principal Investigator</h4>
+                            <h4>Lead Principal Investigator (LPI)</h4>
                         </div>
                         <div class="cmp-form-group">
-                            <label>PI Name</label>
+                            <label>LPI Name</label>
                             <input type="text" class="cmp-input" readonly
                                    value="{{ $confProject->lpi->name ?? $confProject->pi_name ?? $confProject->author ?? '—' }}">
                         </div>
                         <div class="cmp-form-group">
-                            <label>PI Email</label>
+                            <label>LPI Email</label>
                             <input type="text" class="cmp-input" readonly
                                    value="{{ $confProject->lpi->email ?? $confProject->pi_email ?? $confProject->email ?? '—' }}">
                         </div>
@@ -989,8 +989,8 @@
         // ── Project Info ──
         let projInfoContent = '';
         projInfoContent += buildRow('Project Title', projTitle);
-        projInfoContent += buildRow('PI Name', piName);
-        projInfoContent += buildRow('PI Email', piEmail);
+projInfoContent += buildRow('LPI Name', piName);
+projInfoContent += buildRow('LPI Email', piEmail);
         projInfoContent += buildRow('College', collegeLabel);
         projInfoContent += buildRow('Pillars', pillarLabels.length ? pillarLabels.join(', ') : '—');
         html += buildSection('Project Info', 'fa-file-alt', projInfoContent);
