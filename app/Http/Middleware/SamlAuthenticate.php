@@ -77,6 +77,9 @@ class SamlAuthenticate
                 'wantMessagesSigned'    => false,
                 'wantAssertionsSigned'  => false,
                 'wantNameIdEncrypted'   => false,
+                // See AppServiceProvider: QU ADFS may omit the NameID, and we
+                // authenticate by the 'email id' attribute, so don't require it.
+                'wantNameId'            => false,
                 'requestedAuthnContext' => true,
             ],
             'contactPerson' => [

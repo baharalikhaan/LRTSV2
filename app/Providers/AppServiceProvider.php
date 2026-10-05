@@ -126,6 +126,12 @@ class AppServiceProvider extends ServiceProvider
                 'wantMessagesSigned'    => false,
                 'wantAssertionsSigned'  => false,
                 'wantNameIdEncrypted'   => false,
+                // QU ADFS may omit <saml:Subject><saml:NameID> for this RP;
+                // the app authenticates by the 'email id' attribute instead,
+                // so a NameID is not required. Defaulting to true makes the
+                // toolkit reject a valid assertion with
+                // "NameID not found in the assertion of the Response".
+                'wantNameId'            => false,
                 'requestedAuthnContext' => true,
             ],
             'contactPerson' => [

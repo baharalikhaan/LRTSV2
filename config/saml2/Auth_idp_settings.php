@@ -108,6 +108,9 @@ return array(
         'wantMessagesSigned'    => false,
         'wantAssertionsSigned'  => false,
         'wantNameIdEncrypted'   => false,
+        // QU ADFS may omit the NameID; authentication is by the 'email id'
+        // attribute, so a NameID is not required.
+        'wantNameId'            => false,
         'requestedAuthnContext' => true,
     ),
 
