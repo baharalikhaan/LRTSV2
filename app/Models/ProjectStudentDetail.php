@@ -87,29 +87,71 @@ class ProjectStudentDetail extends Model
             return self::parseApiResponse($data, $studentId);
         }
 
+        $url = config('services.student_api.url', 'http://quapxweb1.qu.edu.qa/sisapx/qusis/student_info/std');
+        $secKey = config('services.student_api.sec_key', 'STD@R');
+
         try {
             $client = new \GuzzleHttp\Client([
                 'verify' => false,
                 'timeout' => 10,
             ]);
 
-            $response = $client->request('GET', config('services.student_api.url', 'http://quapxweb1.qu.edu.qa/sisapx/qusis/student_info/std'), [
+            $response = $client->request('GET', $url, [
                 'headers' => [
-                    'sec_key' => config('services.student_api.sec_key', 'STD@R'),
+                    'sec_key' => $secKey,
                     'st_id' => $studentId,
                 ],
             ]);
 
-            $data = json_decode($response->getBody()->getContents(), true);
+            $status = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            $data = json_decode($body, true);
 
-            return self::parseApiResponse($data, $studentId);
+            // The API replied but the payload was not usable JSON.
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
+                \Log::warning('Student API returned an invalid (non-JSON) response', [
+                    'student_id'  => $studentId,
+                    'url'         => $url,
+                    'http_status' => $status,
+                    'json_error'  => json_last_error_msg(),
+                    'body'        => \Illuminate\Support\Str::limit($body, 1000),
+                ]);
+                return null;
+            }
+
+            $parsed = self::parseApiResponse($data, $studentId);
+
+            // The API replied 200 but had no student record for this id.
+            if (!$parsed) {
+                \Log::warning('Student API returned no student record', [
+                    'student_id'  => $studentId,
+                    'url'         => $url,
+                    'http_status' => $status,
+                    'body'        => \Illuminate\Support\Str::limit($body, 1000),
+                ]);
+            }
+
+            return $parsed;
+        } catch (\GuzzleHttp\Exception\RequestException $e) {
+            // HTTP-level failure (4xx/5xx) — the response object is available.
+            $resp = $e->getResponse();
+            \Log::warning('Student API request failed (HTTP error)', [
+                'student_id'  => $studentId,
+                'url'         => $url,
+                'http_status' => $resp ? $resp->getStatusCode() : null,
+                'reason'      => $resp ? $resp->getReasonPhrase() : null,
+                'body'        => $resp ? \Illuminate\Support\Str::limit((string) $resp->getBody(), 1000) : null,
+                'error'       => $e->getMessage(),
+            ]);
+            return null;
         } catch (\Throwable $e) {
-            \Log::warning('Student API failed for ID: ' . $studentId . ' - ' . $e->getMessage());
-
-            // API failure must NOT be treated as a verified student record —
-            // the caller persists whatever we return, so returning the
-            // hardcoded test response would store fake student details and
-            // mark the row "Verified" in production.
+            // Connection / DNS / timeout / TLS or any other failure.
+            \Log::warning('Student API request failed', [
+                'student_id' => $studentId,
+                'url'        => $url,
+                'exception'  => get_class($e),
+                'error'      => $e->getMessage(),
+            ]);
             return null;
         }
     }

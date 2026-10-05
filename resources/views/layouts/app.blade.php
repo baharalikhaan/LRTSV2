@@ -1290,6 +1290,7 @@ $(document).on('click', '.open-grade-modal', function() {
                             'SSO login fixed — QU ADFS assertions that omit the SAML NameID are now accepted (wantNameId disabled); authentication uses the "email id" attribute, so the previous "NameID not found in the assertion of the Response" error no longer blocks login',
                             'Registration wizard submit fixed — submitting no longer hangs: event emails are now delivered after the HTTP response (a slow/unreachable SMTP host used to block the request for ~20s), the submit handler is a dependency-free fetch with a guaranteed re-enable on any error, agreement is validated in-page, and a successful submit smoothly redirects to the project list',
                             'SSO matching now uses the QU ID — the QU ADFS "email id" attribute is matched against users.qu_id (the QU university ID-based address) first, falling back to the email column for accounts without a QU ID',
+                            'Student SIS API diagnostics — failures when adding/verifying a student during progress update are now logged with full detail (request URL, HTTP status and response body, JSON errors, or the connection/DNS exception), instead of a single terse line',
                         ],
                     ],
                     [
