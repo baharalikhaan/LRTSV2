@@ -56,7 +56,10 @@ return [
             'encryption' => env('MAIL_ENCRYPTION', 'tls'),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            // Cap the SMTP handshake so an unreachable/slow mail host cannot
+            // stall a request for the default ~30s (auto event mails are also
+            // deferred to after the response).
+            'timeout' => env('MAIL_TIMEOUT', 10),
             'auth_mode' => null,
         ],
 

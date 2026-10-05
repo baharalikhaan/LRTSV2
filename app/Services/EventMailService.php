@@ -61,28 +61,49 @@ class EventMailService
             $body .= "\n\n" . $signature;
         }
 
-        try {
-            Mail::to($recipient->email)->queue(new GenericEmailMail(
-                $subject,
-                $body,
-                self::SENDER_NAME,
-                $recipient->name ?? ''
-            ));
+        // Log first (fast), then defer the actual SMTP delivery until after the
+        // HTTP response has been sent. With QUEUE_CONNECTION=sync a plain
+        // Mail::queue() would block the request on the SMTP handshake — a slow
+        // or unreachable mail host made actions like "register project" hang
+        // for ~20s. Deferring keeps the UI instant regardless of mail health.
+        $log = EmailSendLog::create([
+            'sent_by'         => ($actor ?? $recipient)->id,
+            'recipient_email' => $recipient->email,
+            'recipient_name'  => $recipient->name,
+            'subject'         => $subject,
+            'body'            => $body,
+            'status'          => 'queued',
+        ]);
 
-            EmailSendLog::create([
-                'sent_by'         => ($actor ?? $recipient)->id,
-                'recipient_email' => $recipient->email,
-                'recipient_name'  => $recipient->name,
-                'subject'         => $subject,
-                'body'            => $body,
-                'status'          => 'queued',
-            ]);
+        $mailable = new GenericEmailMail(
+            $subject,
+            $body,
+            self::SENDER_NAME,
+            $recipient->name ?? ''
+        );
 
-            return true;
-        } catch (\Throwable $e) {
-            Log::error("EventMailService: failed to send '{$eventKey}' to {$recipient->email}: " . $e->getMessage());
-            return false;
+        $deliver = function () use ($recipient, $mailable, $log) {
+            try {
+                Mail::to($recipient->email)->send($mailable);
+                $log->update(['status' => 'sent', 'sent_at' => now()]);
+            } catch (\Throwable $e) {
+                $log->update([
+                    'status'        => 'failed',
+                    'error_message' => $e->getMessage(),
+                ]);
+                Log::error("EventMailService: failed to send to {$recipient->email}: " . $e->getMessage());
+            }
+        };
+
+        // Run after the response is flushed when possible; fall back to an
+        // immediate send in CLI contexts (no HTTP response lifecycle).
+        if (app()->runningInConsole()) {
+            $deliver();
+        } else {
+            app()->terminating($deliver);
         }
+
+        return true;
     }
 
     /**

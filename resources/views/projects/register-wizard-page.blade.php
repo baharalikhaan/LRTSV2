@@ -25,13 +25,27 @@
 <style>
     /* ── Page reset ── */
     html, body { height: 100%; margin: 0; }
-    .app-content { padding: 0 !important; height: 100vh; overflow: hidden; }
 
-    /* ── Split layout ── */
+    /* Bind the real layout containers to the viewport so the wizard fills
+       exactly the full screen height and only the form area scrolls.
+       .app-shell is a grid, .fluent-content a flex column; both use
+       min-height:100vh and grow with content. Pin them to the viewport and
+       carry min-height:0 down every flex ancestor so the scroll child can
+       actually shrink below its content and let overflow-y:auto kick in. */
+    .app-shell { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+    .fluent-content { height: 100vh; height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .fluent-content-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0 !important; overflow: hidden !important; }
+    .fluent-footer { display: none !important; }
+
+    /* ── Split layout: fills the full screen height ── */
     .wizard-split {
         display: flex;
+        flex: 1 1 auto;
         height: 100vh;
+        height: 100dvh;
+        min-height: 0;
         width: 100%;
+        overflow: hidden;
         background: var(--ink-50, #f7f7f8);
     }
 
@@ -136,6 +150,7 @@
         background: #fff;
         overflow: hidden;
         min-width: 0;
+        min-height: 0;
     }
 
     .wizard-form-pane .wizard-form-header {
@@ -230,8 +245,11 @@
 
     /* ── Form body (scrollable) ── */
     .wizard-form-scroll {
-        flex: 1;
+        flex: 1 1 auto;
+        min-height: 0;
         overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
         padding: 14px 16px;
         background: var(--ink-50, #f7f7f8);
     }
@@ -315,6 +333,18 @@
         outline: none;
         border-color: var(--brand-400, #b8496b);
         box-shadow: 0 0 0 2px var(--brand-100, #f3d2da);
+    }
+
+    /* Read-only project title: full-width, wrapping, auto-growing display */
+    .cmp-title-display {
+        min-height: 62px;
+        height: auto;
+        line-height: 1.45;
+        resize: none;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: var(--ink-800, #241f2a);
+        background: var(--sand-50, #faf7f0);
     }
 
     .cmp-input[readonly] {
@@ -709,8 +739,7 @@
                         <p class="cmp-section-desc">Information imported from the Excel file.</p>
                         <div class="cmp-form-group">
                             <label>Project Title</label>
-                            <input type="text" class="cmp-input" readonly
-                                   value="{{ $confProject->title ?? '—' }}">
+                            <textarea class="cmp-input cmp-title-display" readonly rows="3">{{ $confProject->title ?? '—' }}</textarea>
                         </div>
                     </div>
                     <div class="cmp-section">
@@ -847,7 +876,7 @@
                     </div>
                     <div class="cmp-section" style="background:var(--brand-50,#fbeef1);border-color:var(--brand-200,#e8a4b8);">
                         <label class="cmp-checkbox-label" style="margin:0;">
-                            <input type="checkbox" id="cmpAgreeCheck" required>
+                            <input type="checkbox" id="cmpAgreeCheck">
                             <span>I confirm that the information provided is accurate and complete.</span>
                         </label>
                     </div>
@@ -914,6 +943,9 @@
 
         const scroll = document.querySelector('.wizard-form-scroll');
         if (scroll) scroll.scrollTop = 0;
+
+        // Let the scroll-area sizer re-measure after the panel swaps.
+        window.dispatchEvent(new Event('resize'));
     }
 
     if (nextBtn) nextBtn.addEventListener('click', function() {
@@ -1068,75 +1100,137 @@ projInfoContent += buildRow('LPI Email', piEmail);
         return d.innerHTML;
     }
 
-    // ── AJAX submission ──
+    function setSubmitting(on) {
+        if (!submitBtn) return;
+        submitBtn.disabled = on;
+        submitBtn.innerHTML = on
+            ? '<i class="fas fa-spinner fa-spin"></i> Submitting…'
+            : '<i class="fas fa-check"></i> Submit';
+    }
+
+    function showError(msg) {
+        const scroll = document.querySelector('.wizard-form-scroll');
+        if (scroll) {
+            scroll.innerHTML = '<div class="wizard-compact-success" style="color:var(--danger,#b3261e);">'
+                + '<i class="fas fa-exclamation-circle" style="color:var(--danger,#b3261e);"></i>'
+                + '<p>' + msg + '</p></div>';
+        }
+    }
+
+    // ── AJAX submission (native fetch — no jQuery dependency) ──
     if (wizardForm) {
         wizardForm.addEventListener('submit', function(e) {
             e.preventDefault();
 
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…';
+            // Agreement must be ticked; the checkbox lives deep in the scroll
+            // pane, so a native validation bubble can be off-screen and look
+            // like the button "does nothing".
+            if (agreeCheck && !agreeCheck.checked) {
+                agreeCheck.focus({ preventScroll: false });
+                agreeCheck.closest('.cmp-section')?.scrollIntoView({ block: 'center' });
+                showError('Please tick the confirmation checkbox before submitting.');
+                return;
             }
 
-            const formData = new FormData(wizardForm);
-            formData.append('_token', document.querySelector('input[name="_token"]').value);
+            setSubmitting(true);
 
-            $.ajax({
-                url: wizardForm.action,
+            const formData = new FormData(wizardForm);
+            const token = document.querySelector('input[name="_token"]');
+            if (token) formData.set('_token', token.value);
+
+            fetch(wizardForm.action, {
                 method: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(res) {
-                    if (res.success) {
-                        document.querySelectorAll('.wizard-compact-step').forEach(function(s) {
-                            s.classList.remove('active');
-                            s.classList.add('completed');
-                        });
-                        const scroll = document.querySelector('.wizard-form-scroll');
-                        if (scroll) {
-                            scroll.innerHTML = '<div class="wizard-compact-success"><i class="fas fa-check-circle"></i><p>' + (res.message || 'Registered successfully.') + '</p></div>';
-                        }
-                        const footer = document.querySelector('.wizard-form-footer');
-                        if (footer) footer.style.display = 'none';
-                        setTimeout(function() {
-                            if (res.redirect) window.location.href = res.redirect;
-                            else window.location.href = '{{ route("projects.available") }}';
-                        }, 2000);
-                    } else if (res.error) {
-                        const scroll = document.querySelector('.wizard-form-scroll');
-                        if (scroll) {
-                            scroll.innerHTML = '<div class="wizard-compact-success" style="color:var(--danger,#b3261e);"><i class="fas fa-exclamation-circle" style="color:var(--danger,#b3261e);"></i><p>' + res.error + '</p></div>';
-                        }
-                        if (submitBtn) {
-                            submitBtn.disabled = false;
-                            submitBtn.innerHTML = '<i class="fas fa-check"></i> Submit';
-                        }
-                    }
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token ? token.value : '',
                 },
-                error: function(xhr) {
-                    let msg = 'An error occurred. Please try again.';
-                    if (xhr.responseJSON) {
-                        if (xhr.responseJSON.error) msg = xhr.responseJSON.error;
-                        else if (xhr.responseJSON.errors) {
-                            msg = Object.values(xhr.responseJSON.errors).flat().join('<br>');
-                        }
-                    }
+            })
+            .then(function(response) {
+                return response.json().catch(function() { return {}; }).then(function(body) {
+                    return { ok: response.ok, status: response.status, body: body };
+                });
+            })
+            .then(function(result) {
+                const res = result.body || {};
+
+                if (result.ok && res.success) {
+                    document.querySelectorAll('.wizard-compact-step').forEach(function(s) {
+                        s.classList.remove('active');
+                        s.classList.add('completed');
+                    });
                     const scroll = document.querySelector('.wizard-form-scroll');
                     if (scroll) {
-                        scroll.innerHTML = '<div class="wizard-compact-success" style="color:var(--danger,#b3261e);"><i class="fas fa-exclamation-circle" style="color:var(--danger,#b3261e);"></i><p>' + msg + '</p></div>';
+                        scroll.innerHTML = '<div class="wizard-compact-success">'
+                            + '<i class="fas fa-check-circle"></i><p>'
+                            + esc(res.message || 'Registered successfully.')
+                            + '</p></div>';
                     }
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = '<i class="fas fa-check"></i> Submit';
-                    }
+                    const footer = document.querySelector('.wizard-form-footer');
+                    if (footer) footer.style.display = 'none';
+
+                    // Smooth, quick redirect back to the project list.
+                    const target = res.redirect || '{{ route("projects.my") }}';
+                    setTimeout(function() { window.location.href = target; }, 900);
+                    return;
                 }
+
+                // Any non-success response: surface a readable message and
+                // re-enable the button so the user is never stuck.
+                let msg = res.error || res.message || 'An error occurred. Please try again.';
+                if (res.errors) {
+                    msg = Object.keys(res.errors).map(function(k) {
+                        return res.errors[k].join ? res.errors[k].join(' ') : res.errors[k];
+                    }).join(' ');
+                }
+                showError(esc(msg));
+                setSubmitting(false);
+            })
+            .catch(function() {
+                showError('Network error. Please check your connection and try again.');
+                setSubmitting(false);
             });
         });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
         goToStep(1);
+
+        // Auto-grow the read-only project title so long titles show in full.
+        var titleBox = document.querySelector('.cmp-title-display');
+        if (titleBox) {
+            var fitTitle = function() {
+                titleBox.style.height = 'auto';
+                titleBox.style.height = (titleBox.scrollHeight + 2) + 'px';
+            };
+            fitTitle();
+            window.addEventListener('resize', fitTitle);
+        }
+
+        // Guarantee the form pane scrolls and fills the full screen height:
+        // size the scroll area from its top to the bottom of the viewport
+        // (minus the footer when visible), then let it overflow.
+        var scrollArea = document.querySelector('.wizard-form-scroll');
+        var footerEl = document.querySelector('.wizard-form-footer');
+
+        function sizeScrollArea() {
+            if (!scrollArea) return;
+            var top = scrollArea.getBoundingClientRect().top;
+            var footerH = (footerEl && footerEl.offsetParent !== null)
+                ? footerEl.getBoundingClientRect().height
+                : 0;
+            var available = Math.max(120, window.innerHeight - top - footerH);
+            scrollArea.style.height = available + 'px';
+            scrollArea.style.maxHeight = available + 'px';
+            scrollArea.style.overflowY = 'auto';
+        }
+
+        sizeScrollArea();
+        window.addEventListener('resize', sizeScrollArea);
+        // Re-measure when the layout settles and on each step change.
+        setTimeout(sizeScrollArea, 60);
+        setTimeout(sizeScrollArea, 300);
     });
 
 })();

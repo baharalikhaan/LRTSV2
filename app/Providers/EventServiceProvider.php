@@ -35,20 +35,25 @@ class EventServiceProvider extends ServiceProvider
             $samlUser = $event->getSaml2User();
             $attributes = $samlUser->getAttributes();
 
-            // The QU ADFS IdP exposes the user's email under the 'email id'
+            // The QU ADFS IdP exposes the user's QU email under the 'email id'
             // attribute. Fall back to common aliases if it is not present.
-            $email = $attributes['email id'][0]
+            $quEmail = $attributes['email id'][0]
                 ?? $attributes['emailaddress'][0]
                 ?? $attributes['mail'][0]
                 ?? $attributes['email'][0]
                 ?? null;
 
-            if (!$email) {
+            if (!$quEmail) {
                 return;
             }
 
-            // Match the authenticated user by email (case-insensitive).
-            $user = \App\Models\User::whereRaw('LOWER(email) = ?', [strtolower($email)])->first();
+            $quEmail = strtolower(trim($quEmail));
+
+            // Match the authenticated user by QU ID (the QU university ID-based
+            // email, stored in users.qu_id), case-insensitive. Fall back to the
+            // plain email column for the few accounts without a qu_id.
+            $user = \App\Models\User::whereRaw('LOWER(TRIM(qu_id)) = ?', [$quEmail])->first()
+                ?? \App\Models\User::whereRaw('LOWER(email) = ?', [$quEmail])->first();
 
             if ($user && $user->is_active) {
                 // Avoid a full logout; log in the matched user.
