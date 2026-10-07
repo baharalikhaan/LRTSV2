@@ -15,28 +15,30 @@
         <div class="panel-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <form method="GET" class="filter-bar" id="filterForm" style="flex:1;">
                 <div class="filter-group">
+                    <label>Cycle:</label>
+                    <select name="cycle" onchange="onCycleChange(this);" id="cycleFilter">
+                        <option value="">All Cycles</option>
+                        @foreach($cycleConfigs as $cc)
+                            <option value="{{ $cc->id }}" {{ (request('cycle') == $cc->id) ? 'selected' : '' }}>{{ $cc->title }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="filter-group">
                     <label>Grant Type:</label>
-                    <select name="grant_type" onchange="this.form.submit();" id="grantTypeFilter">
+                    @php $grantTypeLabels = ['regular' => 'Regular Grant', 'student' => 'Student Grant']; @endphp
+                    <select name="grant_type" onchange="onGrantTypeChange(this);" id="grantTypeFilter">
                         <option value="">All Types</option>
-                        <option value="regular" {{ request('grant_type') == 'regular' ? 'selected' : '' }}>Regular Grant</option>
-                        <option value="student" {{ request('grant_type') == 'student' ? 'selected' : '' }}>Student Grant</option>
+                        @foreach($filterGrantTypes as $type)
+                            <option value="{{ $type }}" {{ request('grant_type') == $type ? 'selected' : '' }}>{{ $grantTypeLabels[$type] ?? ucfirst($type) }}</option>
+                        @endforeach
                     </select>
                 </div>
                 <div class="filter-group">
                     <label>Grant:</label>
                     <select name="grant" onchange="this.form.submit();" id="grantFilter">
                         <option value="">All Grants</option>
-                        @foreach($grants as $grant)
+                        @foreach($filterGrants as $grant)
                             <option value="{{ $grant->id }}" {{ (request('grant') == $grant->id) ? 'selected' : '' }}>{{ $grant->grant_code }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Cycle:</label>
-                    <select name="cycle" onchange="this.form.submit();" id="cycleFilter">
-                        <option value="">All Cycles</option>
-                        @foreach($cycleConfigs as $cc)
-                            <option value="{{ $cc->id }}" {{ (request('cycle') == $cc->id) ? 'selected' : '' }}>{{ $cc->title }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -576,6 +578,28 @@
 
 @push('scripts')
 <script>
+// Cascading filters: changing a parent resets its dependents so the server
+// re-renders the narrowed option lists (Cycle → Grant Type → Grant).
+function onCycleChange(el) {
+    var form = document.getElementById('filterForm');
+    if (form) {
+        var typeSel = form.querySelector('[name="grant_type"]');
+        var grantSel = form.querySelector('[name="grant"]');
+        if (typeSel) typeSel.value = '';
+        if (grantSel) grantSel.value = '';
+    }
+    if (form) form.submit();
+}
+
+function onGrantTypeChange(el) {
+    var form = document.getElementById('filterForm');
+    if (form) {
+        var grantSel = form.querySelector('[name="grant"]');
+        if (grantSel) grantSel.value = '';
+    }
+    if (form) form.submit();
+}
+
 $(document).ready(function() {
     @if($programs->count() > 0)
     var table = $('#programsTable').DataTable({

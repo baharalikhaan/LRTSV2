@@ -44,7 +44,10 @@ Auth::routes();
 //   GET  /Auth/metadata(saml2_metadata)
 //   GET  /Auth/sls     (saml2_sls)   - single logout service
 // This is a friendly alias so the login page can link to the SSO login route.
-Route::get('/saml/login', function () {
+// NOTE: the URI must be a single segment — the SAML package registers a
+// catch-all "{idpName}/login" route which shadows any "/{anything}/login"
+// path (e.g. "/saml/login" or "/sso/login"). "/sso" cannot collide.
+Route::get('/sso', function () {
     return redirect()->route('saml2_login', ['idpName' => 'Auth']);
 })->name('saml.login');
 
@@ -131,6 +134,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('/ai-settings/prompt', [\App\Http\Controllers\AdminAiController::class, 'savePrompt'])->name('ai-settings.prompt.save');
     Route::post('/ai-settings/reset', [\App\Http\Controllers\AdminAiController::class, 'resetPrompt'])->name('ai-settings.reset');
     Route::get('/system-settings', [\App\Http\Controllers\SystemSettingsController::class, 'index'])->name('system-settings');
+
+    // System logs (admin-only issue logger)
+    Route::get('/logs', [\App\Http\Controllers\AdminLogController::class, 'index'])->name('logs');
+    Route::post('/logs/clear', [\App\Http\Controllers\AdminLogController::class, 'clear'])->name('logs.clear');
+
+    // User activity log (admin-only)
+    Route::get('/activity', [\App\Http\Controllers\AdminActivityController::class, 'index'])->name('activity');
+    Route::post('/activity/clear', [\App\Http\Controllers\AdminActivityController::class, 'clear'])->name('activity.clear');
 });
 
 // ????????? Announcements ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
@@ -286,11 +297,11 @@ HTML;
 
     $file = $request->query('file', '');
     // Prevent path traversal
-    if (preg_match('/(\.\.|\/|\\\\)/', $file)) {
-        abort(403);
+    if ($file === '' || preg_match('/(\.\.|\/|\\\\)/', $file)) {
+        return $fileNotAvailable();
     }
     $path = storage_path('app/' . ltrim($file, '/'));
-    if (!file_exists($path)) {
+    if (!is_file($path)) {
         return $fileNotAvailable();
     }
     return response()->file($path, ['Content-Type' => 'application/pdf']);
@@ -432,6 +443,8 @@ Route::post('/saveratings', [\App\Http\Controllers\ReviewerGradingController::cl
 Route::prefix('about')->name('about.')->group(function () {
     Route::get('/help', [\App\Http\Controllers\AboutController::class, 'help'])->name('help');
     Route::get('/team', [\App\Http\Controllers\AboutController::class, 'team'])->name('team');
+    Route::get('/lpi-manual', [\App\Http\Controllers\AboutController::class, 'lpiManual'])->name('lpi-manual');
+    Route::get('/reviewer-manual', [\App\Http\Controllers\AboutController::class, 'reviewerManual'])->name('reviewer-manual');
 });
 
 Route::post('/ai/chat', [\App\Http\Controllers\AiController::class, 'chat'])->name('ai.chat')->middleware('auth');

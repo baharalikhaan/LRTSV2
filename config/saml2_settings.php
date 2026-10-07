@@ -49,9 +49,10 @@ return $settings = array(
     'loginRoute' => '/home',
 
     /**
-     * Where to redirect after login if no other option was provided
+     * Where to redirect after a failed SSO exchange (errors are flashed to the
+     * session and shown on the login page).
      */
-    'errorRoute' => '/',
+    'errorRoute' => '/login',
 
     // If 'proxyVars' is True, then the Saml lib will trust proxy headers
     // e.g X-Forwarded-Proto / HTTP_X_FORWARDED_PROTO. This is useful if

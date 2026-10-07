@@ -7,6 +7,17 @@
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <form method="GET" action="{{ route('reports.cycle-progress') }}" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:4px;">
+                <label for="cycle_id" style="font-size:12px;font-weight:600;color:var(--ink-600,#4c4553);white-space:nowrap;">Cycle:</label>
+                <select name="cycle_id" id="cycle_id" onchange="onCycleFilterChange(this)" style="padding:6px 10px;border:1px solid var(--ink-200,#d8d6dc);border-radius:6px;font-size:12px;font-family:inherit;color:var(--ink-700,#38333e);background:#fff;min-width:150px;cursor:pointer;appearance:auto;">
+                    <option value="">All Cycles</option>
+                    @if(isset($cycles))
+                    @foreach($cycles as $c)
+                    <option value="{{ $c->id }}" {{ request('cycle_id') == $c->id ? 'selected' : '' }}>{{ $c->title ?? $c->year }}</option>
+                    @endforeach
+                    @endif
+                </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
                 <label for="program_id" style="font-size:12px;font-weight:600;color:var(--ink-600,#4c4553);white-space:nowrap;">Research Call:</label>
                 <select name="program_id" id="program_id" onchange="this.form.submit()" style="padding:6px 10px;border:1px solid var(--ink-200,#d8d6dc);border-radius:6px;font-size:12px;font-family:inherit;color:var(--ink-700,#38333e);background:#fff;min-width:260px;cursor:pointer;appearance:auto;">
                     <option value="">Select a Research Call</option>
@@ -19,10 +30,20 @@
                     @endif
                 </select>
             </div>
-            @if(request('program_id'))
+            @if(request('program_id') || request('cycle_id'))
             <a href="{{ route('reports.cycle-progress') }}" style="font-size:10px;color:var(--ink-400,#8b8592);text-decoration:none;">&times; Clear</a>
             @endif
         </form>
+        <script>
+            // Changing the cycle resets the research-call selection (the calls
+            // shown are narrowed to the chosen cycle server-side).
+            function onCycleFilterChange(sel) {
+                var form = sel.form;
+                var prog = form.querySelector('[name="program_id"]');
+                if (prog) prog.value = '';
+                form.submit();
+            }
+        </script>
         @if($programId)
         <button onclick="window.print()" style="display:inline-flex;align-items:center;gap:4px;background:var(--brand-500,#8d1b3d);color:#fff;border:none;border-radius:4px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;">
             <i class="fas fa-print" style="font-size:11px;"></i> Print / PDF

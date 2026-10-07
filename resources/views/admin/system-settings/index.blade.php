@@ -21,8 +21,8 @@
 </div>
 @endif
 
-{{-- Tab Navigation --}}
-<div style="display:flex;gap:6px;margin-bottom:24px;padding:6px;background:var(--ink-50,#f4f4f5);border-radius:12px;border:1px solid var(--ink-100,#e4e4e7);">
+{{-- Tab Navigation (underline style) --}}
+<div class="settings-tabs">
     @php
         $tabs = [
             'gauges'   => ['icon' => 'fa-gauge-high', 'label' => 'Gauges'],
@@ -33,13 +33,8 @@
     @endphp
     @foreach($tabs as $key => $t)
     <a href="{{ route('admin.system-settings', ['tab' => $key]) }}"
-       style="flex:1;padding:10px 16px;font-size:12.5px;font-weight:600;text-decoration:none;border-radius:8px;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px;
-              {{ $tab === $key
-                  ? 'background:#fff;color:var(--brand-600);box-shadow:0 1px 3px rgba(0,0,0,.08);'
-                  : 'color:var(--ink-500);background:transparent;' }}"
-       onmouseover="if('{{ $tab }}' !== '{{ $key }}') this.style.color='var(--ink-700)'"
-       onmouseout="if('{{ $tab }}' !== '{{ $key }}') this.style.color='var(--ink-500)'">
-        <i class="fas {{ $t['icon'] }}" style="font-size:12px;"></i> {{ $t['label'] }}
+       class="settings-tab {{ $tab === $key ? 'active' : '' }}">
+        <i class="fas {{ $t['icon'] }}"></i> {{ $t['label'] }}
     </a>
     @endforeach
 </div>
@@ -391,6 +386,16 @@ $(document).ready(function() {
 .fluent-alert--success{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;}
 .fluent-alert--error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;}
 .gauge-chart text{display:none !important;}
+
+/* ── Settings tabs (underline style) ── */
+.settings-tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:1px solid var(--ink-200,#d8d6dc);overflow-x:auto;}
+.settings-tab{position:relative;display:inline-flex;align-items:center;gap:8px;padding:11px 18px;font-size:13px;font-weight:600;color:var(--ink-500);text-decoration:none;white-space:nowrap;border-bottom:2.5px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
+.settings-tab i{font-size:12.5px;color:var(--ink-400);transition:color .15s;}
+.settings-tab:hover{color:var(--ink-800);}
+.settings-tab:hover i{color:var(--ink-600);}
+.settings-tab.active{color:var(--brand-600);border-bottom-color:var(--brand-500);}
+.settings-tab.active i{color:var(--brand-500);}
+@media (max-width:600px){.settings-tab{padding:10px 12px;font-size:12px;}}
 </style>
 @endpush
 

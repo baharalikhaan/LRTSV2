@@ -24,4 +24,20 @@ class AboutController extends Controller
 
         return view('about.team', compact('teamMembers'));
     }
+
+    /**
+     * Show the LPI user manual.
+     */
+    public function lpiManual()
+    {
+        return view('about.lpi-manual');
+    }
+
+    /**
+     * Show the Reviewer user manual.
+     */
+    public function reviewerManual()
+    {
+        return view('about.reviewer-manual');
+    }
 }

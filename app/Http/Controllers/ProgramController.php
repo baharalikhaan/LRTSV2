@@ -486,9 +486,43 @@ class ProgramController extends Controller
         // passed to view so the filter form retains the selected value
         $statusFilter = $request->input('status', '');
 
+        // Full lists (used by the create/edit modal).
         $grants = Grant::where('is_active', true)->orderBy('grant_code')->get();
         $cycleConfigs = CycleConfig::orderBy('title')->get();
-        return view('programs.index', compact('programs', 'grants', 'cycleConfigs', 'statusFilter'));
+
+        // ── Cascading filter options ─────────────────────────────────────
+        // Cycle → Grant Type → Grant. Each level narrows the next.
+        $selectedCycle = $request->filled('cycle') ? (int) $request->cycle : null;
+        $selectedGrantType = $request->filled('grant_type') ? $request->grant_type : null;
+
+        // Grant types available within the selected cycle (regular before student).
+        $grantTypeQuery = Grant::query()->whereNotNull('category');
+        if ($selectedCycle) {
+            $grantTypeQuery->whereHas('programs', function ($q) use ($selectedCycle) {
+                $q->where('cycle_id', $selectedCycle);
+            });
+        }
+        $typePriority = ['regular' => 0, 'student' => 1];
+        $filterGrantTypes = $grantTypeQuery->distinct()->pluck('category')
+            ->sortBy(fn ($t) => $typePriority[$t] ?? 99)
+            ->values();
+
+        // Grants available within the selected cycle + grant type.
+        $filterGrantQuery = Grant::where('is_active', true);
+        if ($selectedCycle) {
+            $filterGrantQuery->whereHas('programs', function ($q) use ($selectedCycle) {
+                $q->where('cycle_id', $selectedCycle);
+            });
+        }
+        if ($selectedGrantType) {
+            $filterGrantQuery->where('category', $selectedGrantType);
+        }
+        $filterGrants = $filterGrantQuery->orderBy('grant_code')->get();
+
+        return view('programs.index', compact(
+            'programs', 'grants', 'cycleConfigs', 'statusFilter',
+            'filterGrantTypes', 'filterGrants'
+        ));
     }
 
     public function update(Request $request, $id)
@@ -899,8 +933,13 @@ class ProgramController extends Controller
 
                     if (empty($current) || $current !== $storedName) {
                         // Only write the file to disk when it actually matched.
+                        // If the copy fails we must NOT point the DB at a file
+                        // that does not exist (that would make it "invisible" to
+                        // the file explorer / download paths).
                         if ($sourcePath !== null && $destDir !== null) {
-                            $this->placeProposalFile($sourcePath, $destDir, $storedName);
+                            if (!$this->placeProposalFile($sourcePath, $destDir, $storedName)) {
+                                continue;
+                            }
                         }
 
                         Log::info("PDF match: '{$filename}' MATCHED project (ID: {$project->id}, old: {$project->old_project_id}) -> stored as '{$storedName}'");
@@ -914,7 +953,9 @@ class ProgramController extends Controller
                     if ($sourcePath !== null && $destDir !== null) {
                         $destPath = $destDir . '/' . $storedName;
                         if (!file_exists($destPath)) {
-                            $this->placeProposalFile($sourcePath, $destDir, $storedName);
+                            if (!$this->placeProposalFile($sourcePath, $destDir, $storedName)) {
+                                continue;
+                            }
                             Log::info("PDF match: '{$filename}' restored missing file for project (ID: {$project->id}) as '{$storedName}'");
                             return 'matched';
                         }
@@ -962,12 +1003,17 @@ class ProgramController extends Controller
 
     /**
      * Copy a staged proposal into the proposals folder under its canonical name,
-     * replacing any previous file of the same name.
+     * replacing any previous file of the same name. Returns true only when the
+     * file was actually written, so callers never mark the DB as having a file
+     * that is not on disk.
      */
-    private function placeProposalFile(string $sourcePath, string $destDir, string $storedName): void
+    private function placeProposalFile(string $sourcePath, string $destDir, string $storedName): bool
     {
         if (!is_dir($destDir)) {
-            mkdir($destDir, 0755, true);
+            if (!@mkdir($destDir, 0755, true) && !is_dir($destDir)) {
+                Log::error("Proposal store: could not create directory '{$destDir}'");
+                return false;
+            }
         }
 
         $destPath = $destDir . '/' . $storedName;
@@ -975,7 +1021,12 @@ class ProgramController extends Controller
             @unlink($destPath);
         }
 
-        @copy($sourcePath, $destPath);
+        if (!@copy($sourcePath, $destPath)) {
+            Log::error("Proposal store: failed to copy '{$sourcePath}' -> '{$destPath}'");
+            return false;
+        }
+
+        return true;
     }
 
     /**

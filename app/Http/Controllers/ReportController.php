@@ -221,10 +221,20 @@ class ReportController extends Controller
     public function cycleProgressReport(Request $request)
     {
         $service = new CycleProgressReportService();
-        $programs = Program::with('grant')
+
+        $cycleId = $request->input('cycle_id') ? (int) $request->input('cycle_id') : null;
+
+        // Research calls are filtered by the selected cycle (cascading filter).
+        $programsQuery = Program::with('grant')
             ->whereHas('projects')
-            ->orderBy('program_title')
-            ->get();
+            ->orderBy('program_title');
+        if ($cycleId) {
+            $programsQuery->where('cycle_id', $cycleId);
+        }
+        $programs = $programsQuery->get();
+
+        $cycles = \App\Models\CycleConfig::orderByDesc('year')->get();
+
         $programProjectCounts = DB::table('projects')
             ->select('program_id', DB::raw('COUNT(*) as total'))
             ->groupBy('program_id')
@@ -251,6 +261,8 @@ class ReportController extends Controller
             'totalProjects'  => $report ? $report['totalProjects'] : 0,
             'program'        => $report ? $report['program'] : null,
             'programs'       => $programs,
+            'cycles'         => $cycles,
+            'cycleId'        => $cycleId,
             'programProjectCounts' => $programProjectCounts,
             'programId'      => $programId,
             'isStudentGrant' => $isStudentGrant,

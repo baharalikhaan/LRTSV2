@@ -41,6 +41,7 @@
                     <th>ID</th>
                     <th>Name</th>
                     <th>Email</th>
+                    <th>User Name</th>
                     <th>Type</th>
                     <th>Pillar</th>
                     <th>College</th>
@@ -62,6 +63,13 @@
                         </div>
                     </td>
                     <td>{{ $user->email }}</td>
+                    <td>
+                        @if($user->qu_id)
+                            <code style="font-size:11.5px;">{{ $user->qu_id }}</code>
+                        @else
+                            <span style="color:var(--ink-400);">—</span>
+                        @endif
+                    </td>
                     <td><span class="badge badge-{{ $user->type }}">{{ $user->type }}</span></td>
                     <td>
                         @php
@@ -115,7 +123,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="8">
+                    <td colspan="10">
                         <div class="empty-state py-4">
                             <i class="fas fa-users"></i>
                             <h5>No Users Found</h5>
@@ -263,8 +271,8 @@ $(document).ready(function() {
         dom: 'rt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
-            { orderable: false, targets: [7] },
-            { searchable: false, targets: [7] }
+            { orderable: false, targets: [8, 9] },
+            { searchable: false, targets: [9] }
         ],
         drawCallback: function() {
             $('[data-bs-toggle="tooltip"]').tooltip('dispose').tooltip();

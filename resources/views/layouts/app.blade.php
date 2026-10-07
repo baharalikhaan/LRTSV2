@@ -443,14 +443,27 @@
             {{-- Page Content --}}
             @yield('content')
 
-            {{-- Footer --}}
-            <div class="fluent-footer">
-                <span>&copy; {{ date('Y') }} Qatar University. All rights reserved.</span>
-                <div class="footer-right">
-                     <a href="javascript:void(0)" onclick="document.getElementById('versionHistoryModal').style.display='flex'" style="color:var(--ink-400);cursor:pointer;font-size:12px;">v2.3.1</a>
-                </div>
-            </div>
+        </div>
 
+        {{-- Footer — a direct child of .fluent-content (flex column) so it is
+             always pushed to the bottom of the page --}}
+        <div class="fluent-footer">
+            <span>&copy; {{ date('Y') }} Qatar University. All rights reserved.</span>
+            <div class="footer-right">
+                 @auth
+                 @if(auth()->user()->isAdmin())
+                 <a href="{{ route('admin.activity') }}" title="User activity log"
+                    style="color:var(--ink-400);font-size:12px;text-decoration:none;margin-right:14px;">
+                     <i class="fas fa-user-clock"></i> Activity
+                 </a>
+                 <a href="{{ route('admin.logs') }}" title="System logs / issues"
+                    style="color:var(--ink-400);font-size:12px;text-decoration:none;margin-right:14px;">
+                     <i class="fas fa-bug"></i> Logs
+                 </a>
+                 @endif
+                 @endauth
+                 <a href="javascript:void(0)" onclick="document.getElementById('versionHistoryModal').style.display='flex'" style="color:var(--ink-400);cursor:pointer;font-size:12px;">v2.3.1</a>
+            </div>
         </div>
     </div>
 </div>
@@ -508,6 +521,12 @@
 <div id="aboutDropdown" class="fluent-dropdown" style="display:none;">
 <div class="dropdown-header"><strong>About RTS</strong></div>
 <a class="dropdown-item" href="{{ route('about.help') }}"><i class="fa-solid fa-circle-question"></i> Help Center</a>
+    @if(auth()->user()->isAdmin() || auth()->user()->isLPI())
+    <a class="dropdown-item" href="{{ route('about.help', ['tab' => 'lpi']) }}"><i class="fa-solid fa-user-tie"></i> LPI Manual</a>
+    @endif
+    @if(auth()->user()->isAdmin() || auth()->user()->isReviewer())
+    <a class="dropdown-item" href="{{ route('about.help', ['tab' => 'reviewer']) }}"><i class="fa-solid fa-user-check"></i> Reviewer Manual</a>
+    @endif
     <a class="dropdown-item" href="{{ route('about.team') }}"><i class="fa-solid fa-users"></i> Our Team</a>
 </div>
 
@@ -1292,6 +1311,21 @@ $(document).on('click', '.open-grade-modal', function() {
                             'SSO matching now uses the QU ID — the QU ADFS "email id" attribute is matched against users.qu_id (the QU university ID-based address) first, falling back to the email column for accounts without a QU ID',
                             'Student SIS API diagnostics — failures when adding/verifying a student during progress update are now logged with full detail (request URL, HTTP status and response body, JSON errors, or the connection/DNS exception), instead of a single terse line',
                             'Reviewer assignment page — projects whose latest status is progress_rejected now appear (alongside unassigned / Assigned / proposal_rejected), so admins can reassign the reviewer after a rejected progress report',
+                            'Research Calls filter bar — filters reordered to Cycle → Grant Type → Grant → Status → Visibility and made cascading: choosing a Cycle narrows the Grant Type options (and clears stale selections), and choosing a Grant Type narrows the Grant options',
+                            'New user manuals — dedicated LPI and Reviewer user manual pages (sticky table of contents, light outlined step illustrations, reference tables, troubleshooting and glossary) covering authentication, the status lifecycle, registration, reporting, outcomes, the grading model with its auto-score formula, rejection flows and more; the Help menu shows the LPI manual to LPIs and the Reviewer manual to reviewers (admins see both)',
+                            'System Settings tabs restyled — the segmented pill control is now a clean underline tab bar (active tab marked with a brand-colored underline and icon)',
+                            'Help Center rebuilt as a tabbed reference — the old role buttons are replaced by underline tabs (Administrator / LPI / Reviewer / General), each opening a full manual (LPI, Reviewer and newly authored Administrator and General guides); the tab defaults to the signed-in user role, the AI assistant is retained, and the Help menu links open the matching tab',
+                            'Proposal upload hardened — a proposal is only recorded against a project once its file is confirmed written to disk; copy/create failures are now logged instead of being silently swallowed, so a project can no longer point to a proposal that is missing (which would show as "no files" in File Downloads)',
+                            'Top-bar layout — the role switcher now sits on the right of the command bar, directly beside the notification bell (previously it floated on the left after the breadcrumb)',
+                            'Users list — added a QU ID column (shown between Email and Type, labelled "User Name")',
+                            'SSO login link fixed — the "/saml/login" alias was shadowed by the SAML package catch-all "{idpName}/login" route, so the "Sign in with QU" button returned a 500; the alias now uses "/sso" and works',
+                            'serveFile2 hardened — requesting a missing or invalid file now shows the friendly "file does not exist" page instead of a 500 error',
+                            'Automated test suite added — dedicated test database (rtsnew_test) with Feature tests for security/role access, route smoke-testing, PDF serving, DB↔disk document consistency and data save/retrieve integrity; run with `php vendor/bin/phpunit`',
+                            'Graceful SSO failures — a failed QU single sign-on (unreachable IdP, invalid assertion, certificate problem) or a QU account that is not registered/inactive in RTS now returns to the login page with a clear message instead of a raw 500 error',
+                            'Admin system log viewer — a "Logs" button beside the footer version number (admins only) opens an issue logger that lists recent Laravel log entries (filterable by level, with expandable stack traces) and lets the admin clear the log files',
+                            'User activity log — records each sign-in (with IP, user agent and, on sign-out, session duration) and the actions users perform; an "Activity" button beside the footer version number (admins only) opens a filterable, paginated viewer with daily sign-in/active-user counts',
+                            'Footer pinned to the bottom — the footer (copyright, version history and the admin Activity/Logs links) now sits at the bottom of the page on short pages instead of floating mid-page',
+                            'Research Call Summary report — added a Cycle filter before the Research Call dropdown; selecting a cycle narrows the research-call list to that cycle (cascading)',
                         ],
                     ],
                     [

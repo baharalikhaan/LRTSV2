@@ -27,6 +27,43 @@ class EventServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        // ─── User activity: sign-in / sign-out ────────────────────────────
+        // Records when and from which IP a user signs in, and (on sign-out)
+        // how long the session lasted. Actions are logged by LogUserActivity.
+        Event::listen(\Illuminate\Auth\Events\Login::class, function ($event) {
+            session()->put('activity_login_at', now()->timestamp);
+            try {
+                \App\Models\ActivityLog::create([
+                    'user_id'     => $event->user->id,
+                    'event'       => 'login',
+                    'description' => 'Signed in',
+                    'ip'          => request()->ip(),
+                    'user_agent'  => substr((string) request()->userAgent(), 0, 255),
+                    'url'         => substr(request()->fullUrl(), 0, 2000),
+                ]);
+            } catch (\Throwable $e) {
+                \Log::warning('Activity log (login) failed: ' . $e->getMessage());
+            }
+        });
+
+        Event::listen(\Illuminate\Auth\Events\Logout::class, function ($event) {
+            $loginAt = session()->get('activity_login_at');
+            $duration = $loginAt ? max(0, now()->timestamp - (int) $loginAt) : null;
+            try {
+                \App\Models\ActivityLog::create([
+                    'user_id'          => optional($event->user)->id,
+                    'event'            => 'logout',
+                    'description'      => 'Signed out',
+                    'ip'               => request()->ip(),
+                    'user_agent'       => substr((string) request()->userAgent(), 0, 255),
+                    'duration_seconds' => $duration,
+                ]);
+            } catch (\Throwable $e) {
+                \Log::warning('Activity log (logout) failed: ' . $e->getMessage());
+            }
+            session()->forget('activity_login_at');
+        });
+
         // ─── SAML SSO login ───────────────────────────────────────────────
         // Fired by the aacotroneo/laravel-saml2 package after a successful
         // Assertion Consumer Service (ACS) response from the Qatar University
@@ -44,6 +81,7 @@ class EventServiceProvider extends ServiceProvider
                 ?? null;
 
             if (!$quEmail) {
+                session()->put('sso_error', 'Your QU account did not provide an email address. Please contact the research office.');
                 return;
             }
 
@@ -61,6 +99,14 @@ class EventServiceProvider extends ServiceProvider
                     return;
                 }
                 auth()->login($user, true);
+            } else {
+                // SSO itself succeeded, but there is no matching/active RTS
+                // account. Surface a clear message on the login page instead of
+                // silently bouncing back.
+                session()->put(
+                    'sso_error',
+                    'Your QU account is not registered in RTS, or it is inactive. Please contact the research office.'
+                );
             }
         });
     }

@@ -21,6 +21,22 @@
         <p>Research Tracking System · Qatar University</p>
     </div>
 
+@php
+    // Friendly SSO failure message (set by the SAML error handler, the SSO
+    // listener when no RTS account matches, or the package's error flash).
+    $ssoError = session('sso_error')
+        ?? (session('saml2_error') ? 'Single sign-on could not be completed. Please try again or contact the research office.' : null);
+    if ($ssoError) {
+        session()->forget(['sso_error', 'saml2_error']);
+    }
+@endphp
+@if($ssoError)
+<div style="display:flex;align-items:flex-start;gap:10px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:11px 14px;font-size:12.5px;line-height:1.5;margin-bottom:16px;">
+    <i class="fas fa-exclamation-circle" style="margin-top:1px;"></i>
+    <span>{{ $ssoError }}</span>
+</div>
+@endif
+
 @if($ssoMode)
     {{-- ─── SSO MODE: single QU IdP button (made prominent) ─── --}}
     <form method="POST" action="{{ route('login') }}">

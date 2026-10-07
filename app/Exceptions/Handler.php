@@ -38,4 +38,35 @@ class Handler extends ExceptionHandler
             //
         });
     }
+
+    /**
+     * Render an exception into an HTTP response.
+     *
+     * SAML / SSO failures (IdP unreachable, invalid assertion, missing NameID,
+     * certificate problems, etc.) are turned into a friendly redirect back to
+     * the login page instead of a raw 500 error page.
+     */
+    public function render($request, Throwable $e)
+    {
+        if ($this->isSamlFailure($e)) {
+            \Log::error('SSO sign-in failed: ' . $e->getMessage());
+
+            return redirect()->route('login')->with(
+                'sso_error',
+                'Single sign-on could not be completed. Your QU account may not be registered in RTS, or it may be inactive. Please contact the research office.'
+            );
+        }
+
+        return parent::render($request, $e);
+    }
+
+    /**
+     * True when the exception originated from the SAML/SSO stack.
+     */
+    protected function isSamlFailure(Throwable $e): bool
+    {
+        return $e instanceof \OneLogin\Saml2\Error
+            || $e instanceof \OneLogin\Saml2\ValidationError
+            || stripos(get_class($e), 'saml') !== false;
+    }
 }
