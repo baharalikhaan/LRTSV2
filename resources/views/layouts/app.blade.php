@@ -925,6 +925,72 @@ function openWorkflowModal(projectId, action, size, queryString) {
 }
 
 /**
+ * Custom reviewer dropdown (assign modal): close the menu.
+ */
+function closeReviewerDd() {
+    var menu = document.getElementById('reviewerDdMenu');
+    if (menu) menu.style.display = 'none';
+}
+
+/**
+ * Custom reviewer dropdown (assign modal): toggle the menu. The menu is
+ * position:fixed and placed under the toggle button so it can extend outside
+ * the modal without being clipped.
+ */
+function toggleReviewerDd(e) {
+    if (e) e.stopPropagation();
+    var menu = document.getElementById('reviewerDdMenu');
+    if (!menu) return;
+
+    if (menu.style.display === 'block') {
+        menu.style.display = 'none';
+        return;
+    }
+
+    var btn = document.querySelector('#reviewerDropdown .rv-dd-toggle');
+    if (btn) {
+        var r = btn.getBoundingClientRect();
+        menu.style.left = r.left + 'px';
+        menu.style.width = r.width + 'px';
+        menu.style.top = (r.bottom + 4) + 'px';
+        // Never taller than the space below the button.
+        menu.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 16) + 'px';
+    }
+    menu.style.display = 'block';
+}
+
+// Keep the fixed menu aligned: close it on scroll / resize (but allow
+// scrolling inside the menu itself).
+window.addEventListener('scroll', function (e) {
+    var menu = document.getElementById('reviewerDdMenu');
+    if (menu && e.target && menu.contains(e.target)) return;
+    closeReviewerDd();
+}, true);
+window.addEventListener('resize', closeReviewerDd, true);
+
+/**
+ * Custom reviewer dropdown: pick an item, update the hidden input + label.
+ */
+function pickReviewerDd(el) {
+    var input = document.getElementById('reviewer_1');
+    var label = document.getElementById('reviewerDdLabel');
+    if (input) input.value = el.dataset.id || '';
+    if (label) label.textContent = el.dataset.label || '— Select Reviewer —';
+    var menu = document.getElementById('reviewerDdMenu');
+    if (menu) {
+        menu.querySelectorAll('.rv-dd-item').forEach(function (x) { x.classList.remove('is-selected'); });
+    }
+    el.classList.add('is-selected');
+    if (menu) menu.style.display = 'none';
+}
+
+// Close the custom reviewer dropdown when clicking outside it.
+document.addEventListener('click', function () {
+    var menu = document.getElementById('reviewerDdMenu');
+    if (menu && menu.style.display === 'block') menu.style.display = 'none';
+});
+
+/**
  * Submit assignment of a single reviewer from the assign modal.
  */
 function submitAssignment() {
@@ -1323,9 +1389,16 @@ $(document).on('click', '.open-grade-modal', function() {
                             'Automated test suite added — dedicated test database (rtsnew_test) with Feature tests for security/role access, route smoke-testing, PDF serving, DB↔disk document consistency and data save/retrieve integrity; run with `php vendor/bin/phpunit`',
                             'Graceful SSO failures — a failed QU single sign-on (unreachable IdP, invalid assertion, certificate problem) or a QU account that is not registered/inactive in RTS now returns to the login page with a clear message instead of a raw 500 error',
                             'Admin system log viewer — a "Logs" button beside the footer version number (admins only) opens an issue logger that lists recent Laravel log entries (filterable by level, with expandable stack traces) and lets the admin clear the log files',
-                            'User activity log — records each sign-in (with IP, user agent and, on sign-out, session duration) and the actions users perform; an "Activity" button beside the footer version number (admins only) opens a filterable, paginated viewer with daily sign-in/active-user counts',
+                            'User activity log — records each sign-in (with IP, user agent and, on sign-out, session duration) and the actions users perform; an "Activity" button beside the footer version number (admins only) opens a filterable, sortable, paginated viewer with daily sign-in/active-user counts and a right-hand "Active Users Today" panel (30%) listing each user who signed in today with their sign-in time, IP, number of activities performed and time spent (measured session time, including the current open session)',
                             'Footer pinned to the bottom — the footer (copyright, version history and the admin Activity/Logs links) now sits at the bottom of the page on short pages instead of floating mid-page',
                             'Research Call Summary report — added a Cycle filter before the Research Call dropdown; selecting a cycle narrows the research-call list to that cycle (cascading)',
+                            'LPI & Reviewer manuals — added annotated screenshots (numbered callouts) for signing in, the dashboard, the project list/detail, the progress workspace and the grading page',
+                            'LPI & Reviewer manuals — screenshots removed in favour of detailed, self-contained step-by-step procedures: each action (signing in, reading the dashboard, finding/opening a project, submitting a progress report, grading a report) is now described step by step with what to click, where, and the expected result, so no screenshots are needed',
+                            'Projects list — the Cycle and Research Call filters are now cascading: choosing a Cycle narrows the Research Call dropdown to that cycle (and clears a stale call selection); the same cascading behaviour was added to the Reviewer Assignment page',
+                            'Assign Reviewer modal (project page) — the reviewer dropdown is now a custom themed dropdown that groups reviewers by research pillar (with an "Unassigned" group); pillar headers are maroon, hover/selection follow the brand colour, and the menu is fixed-positioned so it extends outside the modal instead of being clipped',
+                            'Fixed editing a research call — the Edit Deadlines modal submitted an empty program title, causing "Column program_title cannot be null"; the stray field is removed and the update now ignores an empty title so the existing name is preserved',
+                            'Projects list — added an "LPI" column after Project ID (showing the LPI name with their email beneath it) and merged the separate Grant and Category columns into a single "Grant" column (grant code with the grant type beneath it)',
+                            'Report Cards page now lists only graded projects — a project appears only when its Progress and/or Final report grading is completed (publish status no longer "pending"); an info notice states that only progress/final graded projects are displayed here, and the cycle/grant filter dropdowns are built from that same graded set',
                         ],
                     ],
                     [

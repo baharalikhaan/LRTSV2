@@ -42,6 +42,8 @@
     </div></div>
 </div>
 
+<div class="activity-layout">
+    <div class="activity-main">
 <div class="panel">
     <div class="panel-head">
         <form method="GET" class="filter-bar" style="margin-bottom:0;width:100%;">
@@ -75,14 +77,23 @@
     </div>
     <div class="panel-body p-0">
         <table class="fluent-table w-100" style="font-size:12.5px;">
+            @php
+                $sortLink = function ($key) use ($sort, $dir) {
+                    $next = ($sort === $key && $dir === 'asc') ? 'desc' : 'asc';
+                    return request()->fullUrlWithQuery(['sort' => $key, 'dir' => $next, 'page' => null]);
+                };
+                $arrow = function ($key) use ($sort, $dir) {
+                    return $sort === $key ? ($dir === 'asc' ? '▲' : '▼') : '';
+                };
+            @endphp
             <thead>
                 <tr>
-                    <th style="width:150px;">When</th>
-                    <th>User</th>
-                    <th style="width:80px;">Event</th>
-                    <th>Activity</th>
-                    <th style="width:120px;">IP</th>
-                    <th style="width:90px;">Duration</th>
+                    <th style="width:150px;"><a class="th-sort" href="{{ $sortLink('when') }}">When {!! $arrow('when') !!}</a></th>
+                    <th><a class="th-sort" href="{{ $sortLink('user') }}">User {!! $arrow('user') !!}</a></th>
+                    <th style="width:80px;"><a class="th-sort" href="{{ $sortLink('event') }}">Event {!! $arrow('event') !!}</a></th>
+                    <th><a class="th-sort" href="{{ $sortLink('activity') }}">Activity {!! $arrow('activity') !!}</a></th>
+                    <th style="width:120px;"><a class="th-sort" href="{{ $sortLink('ip') }}">IP {!! $arrow('ip') !!}</a></th>
+                    <th style="width:90px;"><a class="th-sort" href="{{ $sortLink('duration') }}">Duration {!! $arrow('duration') !!}</a></th>
                 </tr>
             </thead>
             <tbody>
@@ -131,10 +142,76 @@
 </div>
 
 <div style="margin-top:14px;">{{ $logs->links() }}</div>
+    </div>{{-- /.activity-main --}}
+
+    <aside class="activity-side">
+        <div class="panel">
+            <div class="panel-head">
+                <h2 style="font-size:13px;margin:0;"><i class="fas fa-users" style="margin-right:6px;"></i> Active Users Today</h2>
+                <span class="pill success" style="font-size:10.5px;">{{ $activeUsersToday->count() }}</span>
+            </div>
+            <div class="panel-body p-0">
+                @forelse($activeUsersToday as $entry)
+                <div class="active-user">
+                    <div class="active-user-avatar">{{ strtoupper(substr($entry->user->name ?? '?', 0, 1)) }}</div>
+                    <div class="active-user-info">
+                        <div class="active-user-name">{{ $entry->user->name ?? 'Unknown user' }}</div>
+                        <div class="active-user-meta">{{ $entry->user->email ?? '' }}</div>
+                        <div class="active-user-meta">
+                            <i class="fas fa-clock"></i> {{ $entry->created_at?->format('H:i') }}
+                            &middot; <i class="fas fa-network-wired"></i> {{ $entry->ip ?: '—' }}
+                        </div>
+                    </div>
+                    <div class="active-user-stats">
+                        <div class="active-user-stat">
+                            <span class="aus-num">{{ $activityCounts[$entry->user_id] ?? 0 }}</span>
+                            <span class="aus-lbl">activities</span>
+                        </div>
+                        <div class="active-user-stat">
+                            <span class="aus-num">{{ $timeSpentHuman[$entry->user_id] ?? '0s' }}</span>
+                            <span class="aus-lbl">spent</span>
+                        </div>
+                    </div>
+                </div>
+                @empty
+                <div class="empty-state" style="padding:24px 12px;">
+                    <i class="fas fa-user-slash"></i>
+                    <h5 style="font-size:13px;">No sign-ins today</h5>
+                </div>
+                @endforelse
+            </div>
+        </div>
+    </aside>
+</div>{{-- /.activity-layout --}}
 @endsection
 
 @push('styles')
 <style>
 .fluent-alert--success{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;}
+
+/* Sortable column headers */
+.th-sort { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.th-sort:hover { color: var(--brand-600,#7a1636); }
+
+/* Two-column layout: main log (70%) + active users (30%) */
+.activity-layout { display:grid; grid-template-columns:minmax(0,1fr) 30%; gap:16px; align-items:start; }
+@media (max-width: 1000px) { .activity-layout { grid-template-columns:1fr; } }
+
+.active-user { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--ink-100,#eeedf0); }
+.active-user:last-child { border-bottom:none; }
+.active-user-avatar {
+    width:32px; height:32px; border-radius:50%; flex-shrink:0;
+    background:var(--brand-50,#fbeef1); color:var(--brand-600,#7a1636);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;
+}
+.active-user-info { flex:1; min-width:0; }
+.active-user-name { font-size:12.5px; font-weight:600; color:var(--ink-800,#241f2a); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.active-user-meta { font-size:11px; color:var(--ink-400,#8b8592); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* Right side of the row: the two key metrics */
+.active-user-stats { display:flex; gap:14px; flex-shrink:0; text-align:center; }
+.active-user-stat { display:flex; flex-direction:column; line-height:1.15; }
+.active-user-stat .aus-num { font-size:13px; font-weight:700; color:var(--brand-600,#7a1636); }
+.active-user-stat .aus-lbl { font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-400,#8b8592); }
 </style>
 @endpush

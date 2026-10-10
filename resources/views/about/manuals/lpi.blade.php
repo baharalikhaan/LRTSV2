@@ -51,6 +51,15 @@
                 <p><strong>Account matching.</strong> On SSO sign-in, RTS matches the assertion against your <strong>QU ID</strong> (the ID-based university email held on your account). Only accounts flagged <em>active</em> are permitted to sign in; deactivated accounts are rejected.</p>
                 <p><strong>First sign-in.</strong> Accounts without a saved nationality are presented with a non-dismissable nationality prompt immediately after login, which must be completed before the application can be used.</p>
                 <div class="manual-callout"><i class="fas fa-shield-halved"></i> If SSO completes at the IdP but you are returned to the login page, your account may be inactive or your QU ID may not match. Contact the research office to reconcile it.</div>
+
+                <h4 class="proc-heading"><i class="fas fa-right-to-bracket"></i> How to sign in, step by step</h4>
+                <ol class="manual-steps">
+                    <li><strong>Open the login page.</strong> Browse to the RTS address. When you are not signed in, the login screen appears with the Qatar University logo and either the <em>Sign in with Qatar University</em> button (SSO mode) or an email/password form (local mode).</li>
+                    <li><strong>Start the sign-in.</strong> In <em>SSO mode</em>, click <em>Sign in with Qatar University</em> — you are redirected to the university identity provider (ADFS). In <em>local mode</em>, type your email in the <em>Email</em> field and your password in the <em>Password</em> field, then click <em>Login</em>.</li>
+                    <li><strong>Authenticate with the university.</strong> Enter your QU credentials on the ADFS page. RTS never sees your password — it receives a signed assertion from the university and matches it to your account.</li>
+                    <li><strong>Answer the first-login prompt (once).</strong> If your account has no nationality saved, a window that cannot be dismissed asks you to choose one; select it and save to continue.</li>
+                    <li><strong>You land on your dashboard.</strong> On success the LPI dashboard opens. On failure you are returned to the login page with a clear message (inactive account, unmatched QU ID, or a temporary IdP problem).</li>
+                </ol>
             </div>
         </section>
 
@@ -65,6 +74,18 @@
                     <li><strong>Announcements</strong> — LPI-targeted notices published by the research office.</li>
                 </ul>
                 <p>The counts reflect your projects' latest workflow status, so a project appears in exactly one stage bucket at a time.</p>
+
+                <h4 class="proc-heading"><i class="fas fa-table-cells-large"></i> Reading the dashboard, item by item</h4>
+                <ol class="manual-steps">
+                    <li><strong>All Projects.</strong> The total number of projects assigned to you. Click this card to open the full project list.</li>
+                    <li><strong>Unregistered.</strong> Projects that still need you to complete the registration wizard.</li>
+                    <li><strong>Report Upload Pending.</strong> Registered projects that are waiting for a progress or final report from you.</li>
+                    <li><strong>Progress Report Done.</strong> Projects whose progress report has been submitted (and graded).</li>
+                    <li><strong>Graded.</strong> Completed projects that have a report card available to view.</li>
+                    <li><strong>By Research Call / By Pillar.</strong> Two distribution breakdowns showing how your projects are spread across research calls and research pillars.</li>
+                    <li><strong>LPI Contribution Summary.</strong> Five figures — <em>Grants Availed</em>, <em>Cycles Worked</em>, <em>Research Calls Worked</em>, <em>Publications</em> and <em>Students Attached</em> — summarising your overall research footprint.</li>
+                    <li><strong>Announcements.</strong> Messages published to LPIs by the research office; read these for deadlines and policy changes.</li>
+                </ol>
             </div>
         </section>
 
@@ -74,6 +95,25 @@
                 <p>Open <strong>All Projects</strong> to see every project assigned to you. From each row you can <strong>Register</strong> (start the wizard) or <strong>View</strong> (open the project detail page).</p>
                 <p>The project detail page is the operational hub. Depending on the project's state it exposes the relevant actions — <em>Register</em>, <em>Upload Proposal</em>, <em>Update Progress</em>, <em>Submit Final Report</em>, <em>View Report Card</em> — together with the proposal, reports, outcomes, ethical approvals and the current status.</p>
                 <p><strong>Ownership &amp; access.</strong> You can act on a project that is unclaimed or claimed by you. Once a project has been registered and bound to an LPI, the registration form is locked to that owner; administrative overrides are handled by the research office.</p>
+
+                <h4 class="proc-heading"><i class="fas fa-diagram-project"></i> How to find and open a project</h4>
+                <ol class="manual-steps">
+                    <li><strong>Open the project list.</strong> In the left sidebar, select <em>All Projects</em>. The table lists every project available to you with its <em>Project ID</em>, <em>LPI</em> (name with email beneath), <em>Title</em>, <em>Grant</em> (grant code with the grant type beneath), <em>Budget</em>, <em>Status</em>, <em>Next Step</em> and an <em>Action</em> menu.</li>
+                    <li><strong>Narrow the list (optional).</strong> Use the filters at the top: choose a <em>Cycle</em> first, then a <em>Research Call</em> (the call list narrows to the chosen cycle), then a <em>Status</em>. Use the search box to find a project by ID or title.</li>
+                    <li><strong>Read the Next Step column.</strong> It tells you what is expected next and by whom — e.g. <em>Register by LPI</em>, <em>Add Final Report by LPI</em>, <em>Assign Reviewer</em>, <em>Grade by Reviewer</em>. If it names an action other than an LPI action, no action is required from you yet.</li>
+                    <li><strong>Open a project.</strong> Click the project's <em>Project ID</em> link (or use the <em>View</em> action) to open its detail page. To begin registration, use the <em>Register</em> action instead.</li>
+                </ol>
+
+                <h4 class="proc-heading"><i class="fas fa-circle-info"></i> Tour of the project detail page</h4>
+                <ol class="manual-steps">
+                    <li><strong>Header &amp; status.</strong> The top shows the project title, its ID, the research call/grant and the current workflow status. The primary action for the next step appears here (for example <em>Update Progress</em>, <em>Submit Final Report</em> or <em>View Report Card</em>).</li>
+                    <li><strong>Project Details.</strong> The summary imported from the research call — title, PI identity and identifiers.</li>
+                    <li><strong>Commitments.</strong> The expected outputs you declared at registration (publications, IP, students, ethical requirement). The reviewer scores your actual outcomes against these, so keep them accurate.</li>
+                    <li><strong>Outcomes / Students / Researchers.</strong> The evidence you have recorded, each carrying a verification state (<em>Verified</em> / <em>Pending</em>) as checked by the reviewer.</li>
+                    <li><strong>Project Files.</strong> The proposal PDF and every report version uploaded for the project, each with a download link.</li>
+                    <li><strong>Grading.</strong> Once graded, the reviewer's section scores and comments appear here (and on the report card).</li>
+                    <li><strong>Version History.</strong> A chronological log of every status change on the project, with who made it and when — useful for auditing progress.</li>
+                </ol>
             </div>
         </section>
 
@@ -153,6 +193,17 @@
                 <p><strong>Deadlines and locking.</strong> Each research call defines a progress and a final reporting deadline. Uploads are only accepted while the corresponding window is open; once a deadline passes the upload control is locked. Reviewers can grade a report only after its deadline has passed.</p>
                 <p><strong>Versioning.</strong> Each submission is versioned. Your initial report is <em>v1</em>; if the reviewer rejects it and you resubmit, the new file is stored as <em>v2</em> and the reviewer is re-opened onto the new version while the previous version is retained read-only.</p>
                 <div class="manual-callout"><i class="fas fa-lightbulb"></i> Record outcomes <em>before</em> submitting the report — the reviewer compares them against your commitments, and this drives the auto-score.</div>
+
+                <h4 class="proc-heading"><i class="fas fa-clock-rotate-left"></i> How to submit a progress report, step by step</h4>
+                <ol class="manual-steps">
+                    <li><strong>Open the progress workspace.</strong> From the project detail page, click <em>Update Progress</em> (or <em>Add Progress Report</em>). The workspace opens on the <em>Outcomes</em> tab with a row of tabs across the top: <em>Outcomes</em>, <em>Students &amp; Researchers</em>, <em>Progress Report</em> and <em>Final Report</em>.</li>
+                    <li><strong>Record publications.</strong> On the <em>Outcomes</em> tab, find the <em>Scholarly Articles</em> section and click <em>Add</em>. Choose the article type (Q1–Q4 journal, conference, book, edited book, book chapter) and enter the <strong>DOI / identifier</strong>; RTS validates it and shows the publisher badge when resolved. Repeat for each output.</li>
+                    <li><strong>Record IP and other achievements.</strong> In the <em>Intellectual Property</em> section add disclosures, filed/granted patents, prototypes, open-source software and start-ups as applicable.</li>
+                    <li><strong>Add students and researchers.</strong> Open the <em>Students &amp; Researchers</em> tab and click <em>Add</em>. Enter the student's <strong>QU ID</strong>, level and number of days; RTS looks the student up in the university SIS and fills in their details. Add researchers the same way.</li>
+                    <li><strong>Upload the report PDF.</strong> Open the <em>Progress Report</em> tab and attach your narrative report as a PDF (maximum 10&nbsp;MB). You may attach supporting documents here too.</li>
+                    <li><strong>Save or submit.</strong> Click <em>Save as Draft</em> to keep your work and return later, or <em>Submit</em> to send the report to your assigned reviewer. Submitting records the <em>Progress Added</em> status and notifies the reviewer.</li>
+                </ol>
+                <div class="manual-callout"><i class="fas fa-circle-info"></i> If the upload is locked, the research call's reporting window has closed or an earlier rejection is still unresolved — see section 13.</div>
             </div>
         </section>
 

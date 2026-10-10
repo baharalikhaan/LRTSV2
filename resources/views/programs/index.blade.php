@@ -397,7 +397,6 @@
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="_method" id="editMethod" value="PUT">
-                <input type="hidden" name="program_title" id="edit_program_title" value="">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-edit me-2"></i> Edit Deadlines</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

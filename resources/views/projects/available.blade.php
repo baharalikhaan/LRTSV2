@@ -16,7 +16,7 @@
             <form method="GET" class="filter-bar" id="filterForm">
                 <div class="filter-group">
                     <label>Cycle:</label>
-                    <select name="cycle_id" onchange="this.form.submit()">
+                    <select name="cycle_id" onchange="onProjectsCycleChange(this)">
                         <option value="">All Cycles</option>
                         @foreach($cycleConfigs as $cycle)
                             <option value="{{ $cycle->id }}" {{ ($cycleId ?? '') == $cycle->id ? 'selected' : '' }}>{{ $cycle->title }} ({{ $cycle->year }})</option>
@@ -46,6 +46,16 @@
                     <input type="text" id="tableSearch" placeholder="Search table..." class="search-input">
                 </div>
             </form>
+            <script>
+                // Changing the cycle resets the research-call selection; the
+                // call list is narrowed to the chosen cycle server-side.
+                function onProjectsCycleChange(sel) {
+                    var form = sel.form;
+                    var prog = form.querySelector('[name="program_id"]');
+                    if (prog) prog.value = '';
+                    form.submit();
+                }
+            </script>
         </div>
     </div>
     <div class="panel-body p-0">
@@ -60,9 +70,9 @@
                 <thead>
                     <tr>
                         <th style="min-width:180px;">Project ID</th>
+                        <th>LPI</th>
                         <th>Title</th>
                         <th>Grant</th>
-                        <th>Category</th>
                         <th>Budget (QAR)</th>
                         <th>Status</th>
                         <th>Next Step</th>
@@ -155,9 +165,19 @@
                     @endphp
                     <tr>
                         <td><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
+                        <td>
+                            @if($cp->lpi)
+                                <div style="font-weight:500;">{{ $cp->lpi->name }}</div>
+                                <div style="font-size:11px;color:var(--color-ink-400);">{{ $cp->lpi->email }}</div>
+                            @else
+                                <span style="color:var(--color-ink-400);">—</span>
+                            @endif
+                        </td>
                         <td><span style="font-weight:500;">{{ $cp->title }}</span></td>
-                        <td><span class="pill info" style="font-size:11px;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></td>
-                        <td><span class="pill info" style="font-size:11px;">{{ ucfirst($cp->program->grant->category ?? 'N/A') }}</span></td>
+                        <td>
+                            <div><span class="pill info" style="font-size:11px;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></div>
+                            <div style="font-size:11px;color:var(--color-ink-400);margin-top:2px;">{{ ucfirst($cp->program->grant->category ?? '—') }}</div>
+                        </td>
                         <td>
                             @php
                                 $budget = \App\Models\ProjectBudget::where('project_id', $cp->id)->first();

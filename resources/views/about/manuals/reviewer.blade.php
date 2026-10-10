@@ -43,6 +43,15 @@
                 <p>RTS authenticates against your Qatar University identity, either via <strong>QU Single Sign-On (SAML/ADFS)</strong> or, where configured, a local email and password.</p>
                 <p><strong>Account matching.</strong> On SSO sign-in the assertion is matched against your <strong>QU ID</strong>. Only <em>active</em> accounts may sign in. Accounts without a saved nationality are prompted to set one immediately after login before the application can be used.</p>
                 <div class="manual-callout"><i class="fas fa-shield-halved"></i> If SSO completes but you are returned to the login page, your account may be inactive or your QU ID unmatched. Contact the research office.</div>
+
+                <h4 class="proc-heading"><i class="fas fa-right-to-bracket"></i> How to sign in, step by step</h4>
+                <ol class="manual-steps">
+                    <li><strong>Open the login page.</strong> Browse to the RTS address. When you are not signed in, the login screen appears with the Qatar University logo and either the <em>Sign in with Qatar University</em> button (SSO mode) or an email/password form (local mode).</li>
+                    <li><strong>Start the sign-in.</strong> In <em>SSO mode</em>, click <em>Sign in with Qatar University</em> — you are redirected to the university identity provider (ADFS). In <em>local mode</em>, type your email and password, then click <em>Login</em>.</li>
+                    <li><strong>Authenticate with the university.</strong> Enter your QU credentials on the ADFS page. RTS never sees your password — it receives a signed assertion and matches it to your reviewer account by QU ID.</li>
+                    <li><strong>Answer the first-login prompt (once).</strong> If your account has no nationality saved, a window that cannot be dismissed asks you to choose one; select it and save to continue.</li>
+                    <li><strong>You land on your dashboard.</strong> On success the reviewer dashboard opens. On failure you return to the login page with a clear message (inactive account, unmatched QU ID, or a temporary IdP problem).</li>
+                </ol>
             </div>
         </section>
 
@@ -57,6 +66,16 @@
                     <li><strong>Graded</strong> — projects you have completed.</li>
                 </ul>
                 <p>The <strong>My Reviews</strong> table lists each assignment with its status and the next action; the <strong>Announcements</strong> panel carries reviewer-targeted notices.</p>
+
+                <h4 class="proc-heading"><i class="fas fa-table-cells-large"></i> Reading the dashboard, item by item</h4>
+                <ol class="manual-steps">
+                    <li><strong>Total Assigned.</strong> How many projects are currently assigned to you.</li>
+                    <li><strong>Pending Proposals.</strong> Assignments you have not yet accepted or rejected — these need a decision first.</li>
+                    <li><strong>Pending Gradings.</strong> Accepted projects whose report is ready to grade (the reporting deadline has passed).</li>
+                    <li><strong>Graded.</strong> Projects you have completed.</li>
+                    <li><strong>My Reviews.</strong> The table of all your assignments — each row shows the project, its status and the next action (<em>Accept/Reject a proposal</em>, <em>Grade a report</em>, or <em>View grades</em>).</li>
+                    <li><strong>Announcements.</strong> Reviewer-targeted notices from the research office.</li>
+                </ol>
             </div>
         </section>
 
@@ -132,6 +151,17 @@
                 </div>
                 <p>A <strong>Commitments vs Outcomes</strong> panel lets you compare the LPI's declared commitments against the actual outcomes side-by-side while scoring.</p>
                 <div class="manual-callout"><i class="fas fa-file-lines"></i> If more than one version of the report exists, pick the version you are grading with the version selector before submitting.</div>
+
+                <h4 class="proc-heading"><i class="fas fa-star"></i> How to grade a report, step by step</h4>
+                <ol class="manual-steps">
+                    <li><strong>Open the grading page.</strong> From your dashboard's <em>My Reviews</em> table, click <em>Grade</em> on the project (or open the project and use its grading action). The grading page opens with the report PDF on the left and your scoring form on the right.</li>
+                    <li><strong>Read the proposal.</strong> Open the <em>Proposal</em> tab to re-read the original proposal and confirm what the project set out to do.</li>
+                    <li><strong>Read the submitted report.</strong> Open the <em>Progress Report</em> tab (or <em>Progress Report 2</em> / <em>Final Report</em> as appropriate) to read the document the LPI submitted. If several versions exist, choose the one you are grading in the version selector.</li>
+                    <li><strong>Compare commitments vs outcomes.</strong> Use the <em>Commitments vs Outcomes</em> panel to see the LPI's declared commitments beside the outcomes actually recorded.</li>
+                    <li><strong>Score each section.</strong> For <em>Section A — Achievements</em>, <em>Section B — Publications &amp; IP</em> and <em>Section C — Student &amp; Researcher Involvement</em>, choose a rating from 1 to 5. RTS shows a suggested (auto-calculated) score based on outcomes vs commitments; you may adjust it. Add a short comment for each section.</li>
+                    <li><strong>Verify the evidence.</strong> While scoring, toggle each outcome, student and researcher between <em>Verified</em> and <em>Pending</em>, and confirm a valid ethical-approval document is attached where required.</li>
+                    <li><strong>Submit or reject.</strong> Click <em>Submit</em> to record the grade (the project advances to <em>Progress Reviewed</em>). To reject instead, switch the publish status to <em>Rejected</em>, choose a <strong>rejection type</strong> (<em>Report</em> / <em>Missing/Invalid Ethical Approval</em> / <em>Other</em>) and enter a reason — see section 9 for how each type is followed up.</li>
+                </ol>
             </div>
         </section>
 

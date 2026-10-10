@@ -16,6 +16,10 @@
     .manual-callout { background:var(--sand-50); border-left:3px solid var(--gold-400); border-radius:6px; padding:10px 14px; font-size:12.5px; color:var(--ink-600); margin:12px 0 0; line-height:1.6; }
     .manual-callout i { color:var(--gold-600); margin-right:6px; }
     .manual-callout a { color:var(--brand-500); }
+    /* Procedure heading (step-by-step how-to blocks) */
+    .proc-heading { font-size:13.5px; font-weight:700; color:var(--ink-800,#241f2a); margin:18px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--ink-100,#eeedf0); }
+    .proc-heading i { color:var(--brand-500); margin-right:6px; }
+    .manual-body .manual-steps > li > strong:first-child { color:var(--ink-800,#241f2a); }
     .table-wrap { overflow-x:auto; margin:10px 0; border:1px solid var(--ink-100); border-radius:8px; }
     .manual-body .fluent-table tbody td { font-size:13px; vertical-align:top; }
     .manual-body .fluent-table thead th { font-size:11px; }

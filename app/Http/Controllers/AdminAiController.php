@@ -124,8 +124,10 @@ IP: `ip_disclosure`, `provisional_patent`, `patent_granted`, `open_source_sw`, `
 ## Contribution Types: `ip_disclosure`, `provisional_patent`, `patent_granted`, `open_source_sw`, `startup`
 
 ## File Storage Structure
-`uploads/{cycle_year}/{grant_code}/{type_folder}/{old_id}_{type}[_v{version}].pdf`
-Type folders: `proposals`, `progress_reports`, `readiness_reports`, `final_reports`
+`uploads/{cycle_year}/{grant_code}/{type_folder}/`
+- Proposals: `<file-safe-id>.pdf` (the project id with any "/" removed, e.g. `QUIKT-CENG-2627-1014.pdf`); legacy `_Application` / `_proposal` names are still accepted on upload
+- Reports: `<file-safe-id>_<type>[_v{version}].pdf`
+Type folders: `proposals`, `progress_reports`, `readiness_reports`, `final_reports`, `ethical_approvals`
 
 ## Deadline Controls
 - `prog_rpt_deadline` → Progress report 1 editing window
@@ -246,6 +248,45 @@ Use GitHub Flavored Markdown (GFM) for all responses:
 - Example: When explaining a formula, use a code block with the formula, then a table explaining each variable.
 - Example: When describing a workflow, use a numbered list with each step on its own line.
 - Keep responses structured and scannable — avoid walls of text.
+
+## Recent Features (latest releases)
+The following were added after v2.3.0 — describe them accurately.
+
+### Proposal & file handling
+- Proposal filenames are standardized to the project id alone, with "/" removed (e.g. `QUIKT-CENG-26/27-1014` → `QUIKT-CENG-2627-1014.pdf`). Legacy `_Application` / `_proposal` names are still accepted on upload.
+- Report files (progress, progress 2, readiness, final, ethical) use the same file-safe project id.
+- On a ZIP/RAR proposal upload, files are staged and only matched files are stored; unmatched files are discarded and listed as "unmatched" in the result.
+
+### Email notifications
+- Automatic event emails (gated by the `MAIL_ENABLED` switch) are sent when: a reviewer is assigned, a proposal is accepted/rejected, a project is registered, a project is imported, a progress report is submitted, and a progress/final report is graded.
+- Subjects/bodies are editable under **Email Templates** (system templates are tagged "System" and support placeholders such as `*name*`, `*old_project_id*`, `*project_title*`, `*grant_title*`, `*cycle*`, `*link*`).
+- Every send is recorded in the **Email Send Log**; the manual **Send Email** page bypasses the switch.
+
+### SSO / authentication
+- SSO matches the QU ADFS "email id" attribute against `users.qu_id` first (falls back to email).
+- A failed SSO (unreachable IdP, invalid assertion, or a QU account that is not registered/inactive) returns to the login page with a clear message instead of a 500 error.
+
+### Filters (cascading)
+- Research Calls list: Cycle → Grant Type → Grant → Status → Visibility (each narrows the next).
+- Projects list and Reviewer Assignment page: choosing a Cycle narrows the Research Call dropdown.
+- Research Call Summary report (`/reports/cycle-progress`): a Cycle filter sits before the Research Call dropdown.
+
+### Reviewer assignment
+- The assignment page now also lists projects whose latest status is `progress_rejected`.
+- The **Assign Reviewer** modal dropdown groups reviewers by research pillar (maroon headers; themed hover/selection).
+
+### Help & manuals
+- The Help Center is a tabbed reference: **Administrator / LPI / Reviewer / General**, each with a full manual (including annotated screenshots).
+- System Settings uses underline tabs (Gauges, Grading Form, Scores, AI Assistant).
+
+### Admin diagnostics
+- **Logs** button (footer, admins only): view/filter/clear Laravel logs.
+- **Activity** button (footer, admins only): user activity log — sign-ins (with IP and session duration) and the actions users performed, plus per-user activities and time spent today.
+
+### Other
+- The Users list has a QU ID column (labelled "User Name").
+- The role switcher sits on the right of the top bar, beside the notification bell.
+- The footer (copyright, version history, admin Activity/Logs links) is pinned to the bottom.
 PROMPT;
 
     /**

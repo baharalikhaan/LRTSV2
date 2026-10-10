@@ -10,6 +10,10 @@
     </div>
 </div>
 
+<div class="alert alert-info" style="font-size:13px; border-radius:8px;">
+    <i class="fas fa-circle-info"></i> Only projects graded on the <strong>Progress</strong> and/or <strong>Final</strong> report are displayed here.
+</div>
+
 <div class="panel">
     <div class="panel-head">
         <div class="panel-actions" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:space-between;">

@@ -543,6 +543,13 @@ class ProgramController extends Controller
         // clearing a deadline input must remove it (null = window handled by
         // the lock logic), unlike before when the filter silently preserved
         // stale deadlines forever.
+        //
+        // Exception: program_title is a NOT NULL column, so never let an empty
+        // submission blank it out.
+        if (array_key_exists('program_title', $validated) && trim((string) $validated['program_title']) === '') {
+            unset($validated['program_title']);
+        }
+
         $program->update($validated);
 
         if ($request->wantsJson() || $request->ajax()) {

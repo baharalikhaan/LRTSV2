@@ -565,15 +565,23 @@ class ReportController extends Controller
         $query = Project::with([
             'program.grant', 'program.cycleConfig', 'lpi',
             'progressGradings' => function ($q) {
-                $q->where('report_type', 'progress')->orWhereNull('report_type');
+                $q->where(function ($w) {
+                    $w->where('report_type', 'progress')->orWhereNull('report_type');
+                })->where('publish', '!=', 'pending');
             },
             'progress2Gradings' => function ($q) {
-                $q->where('report_type', 'progress2');
+                $q->where('report_type', 'progress2')->where('publish', '!=', 'pending');
             },
-            'finalGradings'
+            'finalGradings' => function ($q) {
+                $q->where('publish', '!=', 'pending');
+            }
         ])->where(function ($q) {
-            $q->whereHas('progressGradings')
-              ->orWhereHas('finalGradings');
+            $q->whereHas('progressGradings', function ($g) {
+                $g->where('publish', '!=', 'pending');
+            })
+              ->orWhereHas('finalGradings', function ($g) {
+                  $g->where('publish', '!=', 'pending');
+              });
         });
 
         if ($cycleId) {

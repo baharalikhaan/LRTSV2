@@ -27,7 +27,7 @@
             <form method="GET" class="filter-bar" id="filterForm">
                 <div class="filter-group">
                     <label>Cycle:</label>
-                    <select name="cycle_id" onchange="this.form.submit()">
+                    <select name="cycle_id" onchange="onAssignCycleChange(this)">
                         <option value="">All Cycles</option>
                         @foreach($cycleConfigs as $cycle)
                             <option value="{{ $cycle->id }}" {{ ($cycleId ?? '') == $cycle->id ? 'selected' : '' }}>{{ $cycle->title }} ({{ $cycle->year }})</option>
@@ -65,6 +65,16 @@
                     <input type="text" id="tableSearch" placeholder="Search table..." class="search-input">
                 </div>
             </form>
+            <script>
+                // Changing the cycle resets the research-call selection; the
+                // call list is narrowed to the chosen cycle server-side.
+                function onAssignCycleChange(sel) {
+                    var form = sel.form;
+                    var prog = form.querySelector('[name="program_id"]');
+                    if (prog) prog.value = '';
+                    form.submit();
+                }
+            </script>
         </div>
     </div>
 

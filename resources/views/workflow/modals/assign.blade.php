@@ -27,10 +27,22 @@
             $previousRejectors = $project->previousRejectors();
             $rejectorIds = $previousRejectors->pluck('user_id')->toArray();
 
-            $reviewers = \App\Models\User::whereIn('type', ['Reviewer', 'LPI+Reviewer', 'Admin+LPI+Reviewer'])
+            // Reviewers grouped by their research pillar (each reviewer appears
+            // once — under their first pillar, or "Unassigned" when they have
+            // none), mirroring the Reviewer Assignment page.
+            $reviewers = \App\Models\User::with('pillars')
+                ->whereIn('type', ['Reviewer', 'LPI+Reviewer', 'Admin+LPI+Reviewer'])
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get();
+
+            $reviewerGroups = [];
+            foreach ($reviewers as $reviewer) {
+                $pillarNames = $reviewer->getRelation('pillars')->pluck('pillar')->filter()->values()->all();
+                $group = !empty($pillarNames) ? $pillarNames[0] : 'Unassigned';
+                $reviewerGroups[$group][] = $reviewer;
+            }
+            ksort($reviewerGroups);
         @endphp
 
         @if($previousRejectors->isNotEmpty())
@@ -42,26 +54,84 @@
             </div>
         @endif
 
-        {{-- Single Reviewer --}}
+        {{-- Single Reviewer (custom themed dropdown) --}}
         <div style="margin-bottom:14px;">
             <label style="font-size:12px;font-weight:600;color:var(--color-ink-700);display:block;margin-bottom:5px;">
                 Reviewer
             </label>
-            <select name="reviewer_ids[]" id="reviewer_1" class="reviewer-select" style="width:100%;padding:8px 10px;border:1px solid var(--color-ink-200);border-radius:6px;font-size:13px;color:var(--color-ink-800);background:#fff;appearance:auto;">
-                <option value="">— Select Reviewer —</option>
-                @foreach($reviewers as $reviewer)
-                    @if(in_array($reviewer->id, $rejectorIds))
-                        <option value="{{ $reviewer->id }}" disabled style="color:var(--color-ink-400);">
-                            {{ $reviewer->name }} ({{ $reviewer->email }}) — previously rejected
-                        </option>
-                    @else
-                        <option value="{{ $reviewer->id }}" {{ $reviewer->id == $currentReviewerId ? 'selected' : '' }}>
-                            {{ $reviewer->name }} ({{ $reviewer->email }})
-                        </option>
-                    @endif
-                @endforeach
-            </select>
+
+            @php
+                $currentReviewerLabel = $currentReviewer
+                    ? $currentReviewer->name . ' (' . $currentReviewer->email . ')'
+                    : '— Select Reviewer —';
+            @endphp
+
+            <div class="rv-dropdown" id="reviewerDropdown">
+                <button type="button" class="rv-dd-toggle" onclick="toggleReviewerDd(event)">
+                    <span id="reviewerDdLabel">{{ $currentReviewerLabel }}</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                {{-- Kept as the form value; submitAssignment() reads #reviewer_1.value --}}
+                <input type="hidden" name="reviewer_ids[]" id="reviewer_1" value="{{ $currentReviewerId }}">
+
+                <div class="rv-dd-menu" id="reviewerDdMenu" style="display:none;">
+                    @foreach($reviewerGroups as $pillarName => $groupReviewers)
+                        <div class="rv-dd-group">{{ $pillarName }}</div>
+                        @foreach($groupReviewers as $reviewer)
+                            @if(in_array($reviewer->id, $rejectorIds))
+                                <div class="rv-dd-item rv-dd-item--disabled">
+                                    {{ $reviewer->name }} ({{ $reviewer->email }}) — previously rejected
+                                </div>
+                            @else
+                                <div class="rv-dd-item {{ $reviewer->id == $currentReviewerId ? 'is-selected' : '' }}"
+                                     data-id="{{ $reviewer->id }}"
+                                     data-label="{{ $reviewer->name }} ({{ $reviewer->email }})"
+                                     onclick="pickReviewerDd(this)">
+                                    {{ $reviewer->name }} ({{ $reviewer->email }})
+                                </div>
+                            @endif
+                        @endforeach
+                    @endforeach
+                </div>
+            </div>
         </div>
+
+        <style>
+            .rv-dropdown { position: relative; }
+            .rv-dd-toggle {
+                width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+                padding: 8px 10px; border: 1px solid var(--ink-200, #d8d6dc); border-radius: 6px;
+                background: #fff; font-size: 13px; color: var(--ink-800, #241f2a); cursor: pointer;
+                font-family: inherit; text-align: left; transition: border-color .15s, box-shadow .15s;
+            }
+            .rv-dd-toggle:hover { border-color: var(--brand-300, #d3738f); }
+            .rv-dd-toggle:focus { outline: none; border-color: var(--brand-400, #b8496b); box-shadow: 0 0 0 2px var(--brand-100, #f3d2da); }
+            .rv-dd-toggle i { color: var(--ink-400); font-size: 11px; }
+
+            .rv-dd-menu {
+                position: fixed; z-index: 2000; margin-top: 0;
+                max-height: 320px; overflow-y: auto; background: #fff;
+                border: 1px solid var(--ink-200, #d8d6dc); border-radius: 8px;
+                box-shadow: 0 8px 24px rgba(0,0,0,.15);
+            }
+            /* Pillar headers — maroon so they stand out from reviewer entries */
+            .rv-dd-group {
+                position: sticky; top: 0; z-index: 1;
+                padding: 7px 12px; font-size: 10.5px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: .05em;
+                color: var(--brand-600, #7a1636);
+                background: var(--brand-50, #fbeef1);
+                border-top: 1px solid var(--brand-100, #f3d2da);
+            }
+            .rv-dd-group:first-child { border-top: none; }
+
+            .rv-dd-item { padding: 8px 14px; font-size: 13px; color: var(--ink-700, #38333e); cursor: pointer; }
+            .rv-dd-item:hover { background: var(--brand-500, #8d1b3d); color: #fff; }
+            .rv-dd-item.is-selected { background: var(--brand-50, #fbeef1); color: var(--brand-600, #7a1636); font-weight: 600; }
+            .rv-dd-item.is-selected:hover { background: var(--brand-500, #8d1b3d); color: #fff; }
+            .rv-dd-item--disabled { color: var(--ink-400, #8b8592); cursor: not-allowed; }
+            .rv-dd-item--disabled:hover { background: transparent; color: var(--ink-400, #8b8592); }
+        </style>
 
         {{-- Already-assigned info --}}
         @if($currentReviewer)

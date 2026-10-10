@@ -194,7 +194,7 @@ class ProjectController extends Controller
             $status = $status ?? ($filters['status'] ?? null);
         }
 
-        $query = Project::with('program.grant');
+        $query = Project::with(['program.grant', 'lpi']);
 
         // ─── Role-based filtering ────────────────────────────────────────
         // Admin: see all projects (no filter)
@@ -238,7 +238,12 @@ class ProjectController extends Controller
             });
         }
 
-        $programs = Program::with('grant')->orderBy('program_title')->get();
+        // Research calls are narrowed to the selected cycle (cascading filter).
+        $programsQuery = Program::with('grant')->orderBy('program_title');
+        if ($cycleId) {
+            $programsQuery->where('cycle_id', $cycleId);
+        }
+        $programs = $programsQuery->get();
         $cycleConfigs = CycleConfig::orderBy('year', 'desc')->get();
 
         return view('projects.available', compact('confProjects', 'programs', 'programId', 'cycleConfigs', 'cycleId', 'user', 'status'));
@@ -482,7 +487,12 @@ class ProjectController extends Controller
 
         $confProjects = $query->orderBy('created_at', 'desc')->get();
 
-        $programs = Program::with('grant')->orderBy('program_title')->get();
+        // Research calls are narrowed to the selected cycle (cascading filter).
+        $programsQuery = Program::with('grant')->orderBy('program_title');
+        if ($cycleId) {
+            $programsQuery->where('cycle_id', $cycleId);
+        }
+        $programs = $programsQuery->get();
         $cycleConfigs = CycleConfig::orderBy('year', 'desc')->get();
 
         // Available reviewers for the dropdowns, grouped by their research pillar
