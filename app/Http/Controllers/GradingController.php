@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Project;
 use App\Models\ProgressReportGrading;
 use App\Models\FinalReportGrading;
+use App\Models\Commitment;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -37,17 +38,22 @@ class GradingController extends Controller
         $query = $user->reviewedProjects()->visibleProgram()->with('lpi', 'program', 'program.grant');
 
         if ($cycleId) {
-            $query->where('cycle_id', $cycleId);
+            $query->whereHas('program', function ($q) use ($cycleId) {
+                $q->where('cycle_id', $cycleId);
+            });
         }
 
-        $gradedProjects = $query->orderBy('created_at', 'desc')->paginate(15);
+        $gradedProjects = $query
+            ->orderBy(\App\Models\Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->paginate(15);
 
         return view('grading.gradedProjects', compact('gradedProjects', 'cycles', 'cycleId'));
     }
 
     /**
      * Show the grading form for a specific project.
-     * Deprecated alias — the unified grading page is at /projects/{id}/grading.
+     * Deprecated alias Ã¢â‚¬â€ the unified grading page is at /projects/{id}/grading.
      */
     public function gradeProject($id)
     {
@@ -80,17 +86,33 @@ class GradingController extends Controller
             abort(403, 'You are not assigned to review this project.');
         }
 
+        // Gate: a reviewer must claim for HIMSELF first Ã¢â‚¬â€ the menu enforces
+        // this, and direct URL visits must not bypass the claim step.
+        if (!$user->isAdmin() && !$this->hasOwnClaim($project, $user)) {
+            abort(403, 'Accept the proposal (claim the project) before grading.');
+        }
+
+        // Each user works on HIS OWN grading set: a reviewer (or the admin)
+        // sees his own draft (editable) or his own submitted grades (read-only),
+        // never another reviewer's scores. A reviewer assigned later therefore
+        // starts from a blank form while the earlier reviewer's set stays stored.
         $finalGrading = FinalReportGrading::where('project_id', $id)
+            ->where('user_id', $user->id)
             ->orderBy('id', 'desc')
             ->first();
         $progressGrading = ProgressReportGrading::where('project_id', $id)
+            ->where('user_id', $user->id)
             ->where(function ($q) {
                 $q->where('report_type', 'progress')->orWhereNull('report_type');
             })
             ->orderBy('id', 'desc')
             ->first();
         $progress2Grading = $project->extended_progress
-            ? ProgressReportGrading::where('project_id', $id)->where('report_type', 'progress2')->orderBy('id', 'desc')->first()
+            ? ProgressReportGrading::where('project_id', $id)
+                ->where('user_id', $user->id)
+                ->where('report_type', 'progress2')
+                ->orderBy('id', 'desc')
+                ->first()
             : null;
 
         $commitments = $project->commitments()->first();
@@ -99,11 +121,18 @@ class GradingController extends Controller
         $students = $project->students()->get();
         $researchers = $project->researchers()->get();
 
+        // Auto-grade only counts outcomes that have actually been verified (by
+        // the CrossRef check or by the reviewer). Unverified rows are excluded
+        // so a batch of unverified entries cannot inflate the section scores —
+        // the reviewer verifies what should count via the Verify toggles.
+        $verifiedOutcomes = $outcomes->filter(fn ($o) => ($o->verifcation_by_system ?? '') === 'verified'
+            || ($o->verifcation_by_reviewer ?? '') === 'verified');
+
         $submissions = $project->submissions()
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // LPI submission gates — check file existence instead of status
+        // LPI submission gates Ã¢â‚¬â€ check file existence instead of status
         // (buttons removed, files uploaded directly)
         $proposalExists = $this->proposalFileExists($project);
         $progressSubmitted = $submissions->where('type', 'progress')->count() > 0;
@@ -140,7 +169,7 @@ class GradingController extends Controller
             'undergrad'      => 'Undergraduate Student',
         ];
 
-        // ─── Auto-grade calculations (scores from database) ───
+        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Auto-grade calculations (scores from database) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         $scoreMap = \App\Models\Score::getMap();
 
         $achievementTypes = [
@@ -150,7 +179,7 @@ class GradingController extends Controller
 
         $studentTypes = ['masters', 'UG', 'PhD'];
 
-        // ── Section A: Achievements against objectives ──
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Section A: Achievements against objectives Ã¢â€â‚¬Ã¢â€â‚¬
         $expectedSumA = 0;
         if ($commitments) {
             $expectedSumA = ($commitments->ip ?? 0) * ($scoreMap['ip_disclosure'] ?? 0)
@@ -158,12 +187,12 @@ class GradingController extends Controller
                 + ($commitments->openSourceSW ?? 0) * ($scoreMap['open_source_sw'] ?? 0)
                 + ($commitments->startUp ?? 0) * ($scoreMap['startup'] ?? 0);
         }
-        $actualSumA = $outcomes->filter(fn($o) => in_array($o->type, $achievementTypes))->reduce(function ($carry, $o) use ($scoreMap) {
+        $actualSumA = $verifiedOutcomes->filter(fn($o) => in_array($o->type, $achievementTypes))->reduce(function ($carry, $o) use ($scoreMap) {
             return $carry + ($scoreMap[$o->type] ?? 0);
         }, 0);
         $autoGradeA = $expectedSumA > 0 ? min(round(($actualSumA / $expectedSumA) * 5, 2), 5) : 0;
 
-        // ── Section B: Publications & IP ──
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Section B: Publications & IP Ã¢â€â‚¬Ã¢â€â‚¬
         $pubTypes = ['journal_q1','journal_q2','journal_q3','journal_q4','conference','book','edited_book','book_chapter'];
         $expectedSumB = 0;
         if ($commitments) {
@@ -176,12 +205,12 @@ class GradingController extends Controller
                 + ($commitments->editBooks ?? 0) * ($scoreMap['edited_book'] ?? 0)
                 + ($commitments->chapters ?? 0) * ($scoreMap['book_chapter'] ?? 0);
         }
-        $actualSumB = $outcomes->filter(fn($o) => in_array($o->type, $pubTypes))->reduce(function ($carry, $o) use ($scoreMap) {
+        $actualSumB = $verifiedOutcomes->filter(fn($o) => in_array($o->type, $pubTypes))->reduce(function ($carry, $o) use ($scoreMap) {
             return $carry + ($scoreMap[$o->type] ?? 0);
         }, 0);
         $autoGradeB = $expectedSumB > 0 ? min(round(($actualSumB / $expectedSumB) * 5, 2), 5) : 0;
 
-        // ── Section C: Student & Researcher Involvement ──
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Section C: Student & Researcher Involvement Ã¢â€â‚¬Ã¢â€â‚¬
         $expectedSumC = 0;
         if ($commitments) {
             $expectedSumC = ($commitments->master ?? 0) * ($scoreMap['masters'] ?? 0)
@@ -201,8 +230,9 @@ class GradingController extends Controller
 
         // Auto-grade visibility setting
         $autoGradeVisibility = AiSetting::get('auto_grade_visibility', '1');
+        $isAdmin = $user->isAdmin();
 
-        // Deadline info — show/hide grading forms based on deadlines
+        // Deadline info Ã¢â‚¬â€ show/hide grading forms based on deadlines
         $program = $project->program;
         $progressDeadline = $program ? ($program->prog_rpt_deadline ?? null) : null;
         $progress2Deadline = $program ? $program->prog_rpt2_deadline : null;
@@ -245,7 +275,8 @@ class GradingController extends Controller
             'progressDeadlinePassed',
             'progress2DeadlinePassed',
             'finalDeadlinePassed',
-            'autoGradeVisibility'
+            'autoGradeVisibility',
+            'isAdmin',
         ));
     }
 
@@ -260,6 +291,68 @@ class GradingController extends Controller
     public function finalGradingPage($id)
     {
         return $this->grading($id);
+    }
+
+    /**
+     * Update a project's commitments from the grading page (admin only).
+     * Reviewers can view commitments but never edit them.
+     */
+    public function updateCommitments(Request $request, $id)
+    {
+        if (!auth()->check() || !auth()->user()->isAdmin()) {
+            abort(403);
+        }
+
+        $project = Project::findOrFail($id);
+
+        $numeric = ['nullable', 'integer', 'min:0'];
+        $request->validate([
+            'q1article'    => $numeric,
+            'q2article'    => $numeric,
+            'q3article'    => $numeric,
+            'q4article'    => $numeric,
+            'confArticle'  => $numeric,
+            'books'        => $numeric,
+            'editBooks'    => $numeric,
+            'chapters'     => $numeric,
+            'ip'           => $numeric,
+            'filedPatent'  => $numeric,
+            'openSourceSW' => $numeric,
+            'master'       => $numeric,
+            'UG'           => $numeric,
+            'Phd'          => $numeric,
+            'startUp'      => 'nullable|in:0,1',
+            'ethical'      => 'nullable|in:0,1',
+            'crossCollege' => 'nullable|in:0,1',
+        ]);
+
+        Commitment::updateOrCreate(
+            ['project_id' => $project->id],
+            [
+                'q1article'    => (int) ($request->input('q1article') ?? 0),
+                'q2article'    => (int) ($request->input('q2article') ?? 0),
+                'q3article'    => (int) ($request->input('q3article') ?? 0),
+                'q4article'    => (int) ($request->input('q4article') ?? 0),
+                'confArticle'  => (int) ($request->input('confArticle') ?? 0),
+                'books'        => (int) ($request->input('books') ?? 0),
+                'editBooks'    => (int) ($request->input('editBooks') ?? 0),
+                'chapters'     => (int) ($request->input('chapters') ?? 0),
+                'ip'           => (int) ($request->input('ip') ?? 0),
+                'filedPatent'  => (int) ($request->input('filedPatent') ?? 0),
+                'openSourceSW' => (int) ($request->input('openSourceSW') ?? 0),
+                'startUp'      => $request->boolean('startUp') ? 1 : 0,
+                'ethical'      => $request->boolean('ethical') ? 1 : 0,
+                'master'       => (int) ($request->input('master') ?? 0),
+                'UG'           => (int) ($request->input('UG') ?? 0),
+                'Phd'          => (int) ($request->input('Phd') ?? 0),
+                'crossCollege' => $request->boolean('crossCollege') ? 1 : 0,
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Commitments updated successfully.',
+        ]);
     }
 
     /**
@@ -306,6 +399,12 @@ class GradingController extends Controller
         // Gate: only assigned reviewers or admins may grade this project.
         if (!$user->isAdmin() && !$this->isAssignedReviewer($project, $user)) {
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
+        }
+
+        // Gate: a reviewer must claim for himself first Ã¢â‚¬â€ direct POSTs cannot
+        // skip the claim step.
+        if (!$user->isAdmin() && !$this->hasOwnClaim($project, $user)) {
+            return response()->json(['success' => false, 'error' => 'Accept the proposal (claim the project) before grading.'], 403);
         }
 
         // Report type discriminator: 'progress' (report 1) or 'progress2' (extended report)
@@ -355,10 +454,10 @@ class GradingController extends Controller
         $userSelection = $request->publish;
         $isAcceptedValue = $userSelection === 'accepted' ? 1 : ($userSelection === 'rejected' ? 0 : 0);
 
-        // Use updateOrCreate with report_type to handle progress/progress2 separately —
+        // Use updateOrCreate with report_type to handle progress/progress2 separately Ã¢â‚¬â€
         // grading write + workflow status recorded inside one transaction so a
         // mid-flight failure cannot desynchronize publish vs. status history.
-        $grading = DB::transaction(function () use ($project, $user, $request, $reportType, $isProgress2, $publishValue, $isAcceptedValue, $userSelection, $saveAction) {
+        $grading = DB::transaction(function () use ($project, $user, $request, $reportType, $isProgress2, $publishValue, $isAcceptedValue, $userSelection, $saveAction, &$stageCompleted) {
             $row = \App\Models\ProgressReportGrading::updateOrCreate(
                 ['project_id' => $project->id, 'user_id' => $user->id, 'report_type' => $reportType],
                 [
@@ -378,44 +477,48 @@ class GradingController extends Controller
                     'report_type'           => $reportType,
                     'isAccepted'            => $isAcceptedValue,
                     'isAdmin'               => $user->isAdmin(),
+                    // Kept on the row so the reason survives until the
+                    // consensus completes and records the *_REJECTED status.
+                    'rejection_type'        => $userSelection === 'rejected' ? ($request->rejection_type ?: 'report') : null,
+                    'rejection_reason'      => $userSelection === 'rejected' ? ($request->rejection_reason ?? $request->comments) : null,
                 ]
             );
 
-            // On submit, record the workflow status
-            if ($saveAction === 'submit') {
-                if ($userSelection === 'accepted') {
-                    $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REVIEWED : Project::STATUS_PROGRESS_REVIEWED, [
-                        'triggered_by' => $isProgress2 ? 'progress2-grade-accept' : 'progress-grade-accept',
-                        'report_type'  => $reportType,
-                    ], $user->id);
-                } elseif ($userSelection === 'rejected') {
-                    $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REJECTED : Project::STATUS_PROGRESS_REJECTED, [
-                        'triggered_by' => $isProgress2 ? 'progress2-grade-reject' : 'progress-grade-reject',
-                        'comment'      => $request->rejection_reason ?? $request->comments ?? null,
+            // On submit, advance the workflow only through the multi-reviewer
+            // consensus: the stage status flips once EVERY assigned reviewer
+            // has submitted his own set (a standalone admin grade with no
+            // reviewers completes immediately). Any rejected set wins.
+            $stageCompleted = false;
+            if ($saveAction === 'submit' && in_array($userSelection, ['accepted', 'rejected'], true)) {
+                $stageCompleted = $this->recordStageCompletion(
+                    $project,
+                    $isProgress2 ? 'progress2' : 'progress',
+                    $isProgress2 ? Project::STATUS_PROGRESS2_REVIEWED : Project::STATUS_PROGRESS_REVIEWED,
+                    $isProgress2 ? Project::STATUS_PROGRESS2_REJECTED : Project::STATUS_PROGRESS_REJECTED,
+                    $user,
+                    [
+                        'triggered_by'  => $isProgress2 ? 'progress2-grade' : 'progress-grade',
+                        'comment'       => $request->rejection_reason ?? $request->comments ?? null,
                         'rejection_type' => $request->rejection_type ?: 'report',
-                        'report_type'  => $reportType,
-                    ], $user->id);
-
-                    // Keep the grading record (publish='rejected') so the next visit
-                    // shows the rejection flag + comments read-only instead of a
-                    // blank form. The form re-opens fresh when the LPI resubmits —
-                    // uploadFile()/save() reset publish back to 'pending' then.
-                }
+                    ]
+                );
             }
 
             return $row;
         });
 
-        // Notify the LPI when a progress report is graded (accepted).
-        if ($saveAction === 'submit' && $userSelection === 'accepted') {
-            $this->notifyLpiReportGraded($project->fresh(), $user, 'progress_graded');
+        $message = 'Progress grade saved successfully.';
+        if ($saveAction === 'submit'
+            && !$stageCompleted
+            && in_array($userSelection, ['accepted', 'rejected'], true)) {
+            $message = 'Progress grade saved. The stage will complete once every assigned reviewer has submitted.';
         }
 
         if ($request->ajax() || $request->wantsJson()) {
-            return response()->json(['success' => true, 'message' => 'Progress grade saved successfully.']);
+            return response()->json(['success' => true, 'message' => $message]);
         }
 
-        return redirect()->back()->with('success', 'Progress grade saved successfully.');
+        return redirect()->back()->with('success', $message);
     }
 
     /**
@@ -464,6 +567,12 @@ class GradingController extends Controller
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
         }
 
+        // Gate: a reviewer must claim for himself first Ã¢â‚¬â€ direct POSTs cannot
+        // skip the claim step.
+        if (!$user->isAdmin() && !$this->hasOwnClaim($project, $user)) {
+            return response()->json(['success' => false, 'error' => 'Accept the proposal (claim the project) before grading.'], 403);
+        }
+
         // Gate: reviewer can only grade the final report once the LPI has added it.
         // Check file existence instead of status (buttons removed, files uploaded directly)
         if ($project->submissions()->where('type', 'final')->count() === 0) {
@@ -493,7 +602,7 @@ class GradingController extends Controller
                  ($request->scoreB ?? 0) +
                  ($request->scoreC ?? 0);
 
-        $final = DB::transaction(function () use ($project, $user, $request, $publishValue, $isAcceptedValue, $total) {
+        $final = DB::transaction(function () use ($project, $user, $request, $publishValue, $isAcceptedValue, $total, $userSelection) {
             $row = FinalReportGrading::updateOrCreate(
                 // Keyed per (project, user): an admin grading on behalf no
                 // longer silently overwrites the assigned reviewer's row
@@ -518,51 +627,48 @@ class GradingController extends Controller
                     'publish'     => $publishValue,
                     'isAccepted'  => $isAcceptedValue,
                     'isAdmin'     => $user->isAdmin(),
+                    // Kept on the row so the reason survives until the
+                    // consensus completes and records the *_REJECTED status.
+                    'rejection_type'   => $userSelection === 'rejected' ? ($request->rejection_type ?: 'report') : null,
+                    'rejection_reason' => $userSelection === 'rejected' ? ($request->rejection_reason ?? $request->comments) : null,
                 ]
             );
 
             return $row;
         });
 
-        // On submit, record the workflow status
-        if ($saveAction === 'submit') {
-            if ($userSelection === 'accepted') {
-                $project->recordStatus(Project::STATUS_GRADED, [
-                    'triggered_by' => 'final-grade',
-                ], $user->id);
-            } elseif ($userSelection === 'rejected') {
-                $project->recordStatus(Project::STATUS_FINAL_REJECTED, [
-                    'triggered_by' => 'final-grade-reject',
-                    'comment'      => $request->rejection_reason ?? $request->comments ?? null,
+        // On submit, advance the workflow only through the multi-reviewer
+        // consensus: the status flips once EVERY assigned reviewer has
+        // submitted his own final set (standalone admin grading completes
+        // immediately). Any rejected set wins.
+        $stageCompleted = false;
+        if ($saveAction === 'submit' && in_array($userSelection, ['accepted', 'rejected'], true)) {
+            $stageCompleted = $this->recordStageCompletion(
+                $project,
+                'final',
+                Project::STATUS_GRADED,
+                Project::STATUS_FINAL_REJECTED,
+                $user,
+                [
+                    'triggered_by'   => 'final-grade',
+                    'comment'        => $request->rejection_reason ?? $request->comments ?? null,
                     'rejection_type' => $request->rejection_type ?: 'report',
-                ], $user->id);
-
-                // Keep the grading record (publish='rejected') so the read-only
-                // Rejected panel, project page and report card still show what
-                // was graded and why. The form re-opens fresh when the LPI
-                // uploads a revised final report (v2) — uploadFile() resets
-                // publish back to 'pending' at that point.
-            }
+                ]
+            );
         }
 
-        // Notify the LPI when the final report is graded (accepted).
-        if ($saveAction === 'submit' && $userSelection === 'accepted') {
-            $this->notifyLpiReportGraded($project->fresh(), $user, 'final_graded');
+        $message = 'Final grade submitted successfully.';
+        if ($saveAction === 'submit'
+            && !$stageCompleted
+            && in_array($userSelection, ['accepted', 'rejected'], true)) {
+            $message = 'Final grade saved. Grading completes once every assigned reviewer has submitted.';
         }
 
         if ($request->ajax() || $request->wantsJson()) {
-            return response()->json(['success' => true, 'message' => 'Final grade saved successfully.']);
+            return response()->json(['success' => true, 'message' => $message]);
         }
 
-        return redirect()->back()->with('success', 'Final grade submitted successfully.');
-    }
-
-    /**
-     * Submit the final grade (legacy endpoint).
-     */
-    public function submitFinalGrade(Request $request, $id)
-    {
-        return $this->saveFinalGrade($request, $id);
+        return redirect()->back()->with('success', $message);
     }
 
     /**
@@ -627,34 +733,163 @@ class GradingController extends Controller
     }
 
     /**
-     * Submit the grade — marks the project as Graded in the workflow.
+     * True when this user has claimed (accepted the proposal for) the project.
+     * A reviewer must claim for HIMSELF before the grading form unlocks Ã¢â‚¬â€
+     * direct URL/POST visits cannot skip the claim step.
      */
-    public function submitGrade(Request $request, $id)
+    protected function hasOwnClaim(Project $project, User $user): bool
     {
-        $project = Project::findOrFail($id);
-        $user = Auth::user();
+        return DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->where('user_id', $user->id)
+            ->whereNotNull('claimed_at')
+            ->exists();
+    }
 
-        // Only assigned reviewers or admins may finalize grades.
-        if (!$user->isAdmin() && !$this->isAssignedReviewer($project, $user)) {
-            return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
+    /**
+     * Consensus completion for a grading stage (multi-reviewer).
+     *
+     * The project-level workflow status only advances once EVERY assigned
+     * reviewer has submitted his own set for this stage (a standalone admin
+     * grade with no reviewers completes immediately). On completion the stage
+     * flips exactly once: any rejected set wins over accepted ones.
+     *
+     * A stage that already completed (reviewed/rejected status on record) is
+     * FROZEN: later sets Ã¢â‚¬â€ e.g. from a reviewer added afterwards Ã¢â‚¬â€ are stored
+     * but never re-open or flip the workflow. The LPI notification fires here,
+     * exactly once, on a no-rejection completion. Also invoked when an
+     * assignment is removed, so dropping the blocking reviewer completes the
+     * stage instead of leaving it wedged.
+     *
+     * @return bool true when this call completed the stage with no rejection
+     *              (and the LPI was notified).
+     */
+    public function recordStageCompletion(
+        Project $project,
+        string $stage,
+        string $reviewedStatus,
+        string $rejectedStatus,
+        User $actor,
+        array $metadata = []
+    ): bool {
+        // Already completed for this round — grades are records only.
+        // Exception: an Ethical/Other rejection carries no v2 resubmission and
+        // no admin review step — it is resolved by the rejector amending their
+        // own grading in place. Let that one re-grade re-evaluate the stage;
+        // every other case stays frozen so a late reviewer cannot reopen it.
+        if (in_array($project->currentWorkflowStatus(), [$reviewedStatus, $rejectedStatus], true)) {
+            $amendingOwnEthicalRejection = false;
+            if ($project->currentWorkflowStatus() === $rejectedStatus) {
+                $latestRejection = $project->statusHistories()
+                    ->where('status', $rejectedStatus)
+                    ->latest('id')
+                    ->first();
+                $amendingOwnEthicalRejection = $latestRejection
+                    && in_array($latestRejection->metadata['rejection_type'] ?? 'report', ['ethical', 'other'], true)
+                    && (string) ($latestRejection->metadata['rejected_by'] ?? '') === (string) $actor->id;
+            }
+            if (!$amendingOwnEthicalRejection) {
+                return false;
+            }
         }
 
-        // Gate: cannot finalize the grade until the LPI has added the final report.
-        // Check file existence instead of status (buttons removed, files uploaded directly)
-        if ($project->submissions()->where('type', 'final')->count() === 0) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'The LPI has not submitted the final report yet. You cannot finalize the grade until then.',
-            ], 403);
+        $assigned = DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->pluck('user_id');
+        $submitted = $this->stageSubmitters($project, $stage);
+
+        if ($submitted->isEmpty()) {
+            return false; // nobody has graded this stage (e.g. last reviewer removed)
+        }
+        if ($assigned->isNotEmpty() && $assigned->diff($submitted)->isNotEmpty()) {
+            return false; // still waiting for other reviewers
         }
 
-        if (!$project->hasStatus(Project::STATUS_GRADED)) {
-            $project->recordStatus(Project::STATUS_GRADED, [
-                'triggered_by' => 'submit-grade',
-            ], $user->id);
+        $rejectedRow = $this->latestRejectedRow($project, $stage);
+
+        if ($rejectedRow) {
+            if (empty($metadata['comment'])) {
+                $metadata['comment'] = $rejectedRow->rejection_reason;
+            }
+            if (empty($metadata['rejection_type'])) {
+                $metadata['rejection_type'] = $rejectedRow->rejection_type ?: 'report';
+            }
+            $metadata['rejected_by'] = $rejectedRow->user_id;
         }
 
-        return response()->json(['success' => true, 'message' => 'Grade submitted successfully. Project marked as Graded.']);
+        $project->recordStatus(
+            $rejectedRow ? $rejectedStatus : $reviewedStatus,
+            array_merge([
+                'triggered_by'  => 'grade-consensus',
+                'report_type'   => $stage,
+                'all_submitted' => true,
+            ], $metadata),
+            $actor->id
+        );
+
+        if ($rejectedRow === null) {
+            $this->notifyLpiReportGraded(
+                $project->fresh(),
+                $actor,
+                $stage === 'final' ? 'final_graded' : 'progress_graded'
+            );
+        }
+
+        return $rejectedRow === null;
+    }
+
+    /**
+     * User ids that have submitted (publish != pending) their own set for
+     * the given stage Ã¢â‚¬â€ used to decide whether the consensus is complete.
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    private function stageSubmitters(Project $project, string $stage)
+    {
+        if ($stage === 'final') {
+            return FinalReportGrading::where('project_id', $project->id)
+                ->where('publish', '!=', 'pending')
+                ->distinct()
+                ->pluck('user_id');
+        }
+
+        return ProgressReportGrading::where('project_id', $project->id)
+            ->where('publish', '!=', 'pending')
+            ->when(
+                $stage === 'progress2',
+                fn ($q) => $q->where('report_type', 'progress2'),
+                fn ($q) => $q->where(function ($w) {
+                    $w->where('report_type', 'progress')->orWhereNull('report_type');
+                })
+            )
+            ->distinct()
+            ->pluck('user_id');
+    }
+
+    /**
+     * The most recent rejected set for the stage, if any Ã¢â‚¬â€ carries the
+     * rejection reason/type for the *_REJECTED status metadata.
+     */
+    private function latestRejectedRow(Project $project, string $stage)
+    {
+        if ($stage === 'final') {
+            return FinalReportGrading::where('project_id', $project->id)
+                ->where('publish', 'rejected')
+                ->orderBy('id', 'desc')
+                ->first();
+        }
+
+        return ProgressReportGrading::where('project_id', $project->id)
+            ->where('publish', 'rejected')
+            ->when(
+                $stage === 'progress2',
+                fn ($q) => $q->where('report_type', 'progress2'),
+                fn ($q) => $q->where(function ($w) {
+                    $w->where('report_type', 'progress')->orWhereNull('report_type');
+                })
+            )
+            ->orderBy('id', 'desc')
+            ->first();
     }
 
     /**

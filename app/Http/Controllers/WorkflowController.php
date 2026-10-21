@@ -248,7 +248,7 @@ class WorkflowController extends Controller
     {
         $validated = $request->validate([
             'project_id'   => 'required|exists:projects,id',
-            'reviewer_ids' => 'required|array|min:1|max:1',
+            'reviewer_ids' => 'required|array|min:1',
             'reviewer_ids.*' => 'exists:users,id',
         ]);
 
@@ -271,30 +271,56 @@ class WorkflowController extends Controller
             }
         }
 
-        DB::transaction(function () use ($project, $reviewerIds) {
-            // Remove all existing reviewers for this project
-            DB::table('projects_reviewers')->where('project_id', $project->id)->delete();
+        $newlyAssigned = [];
 
-            // Assign the single reviewer
+        DB::transaction(function () use ($project, $reviewerIds, &$newlyAssigned) {
+            // Multi-reviewer model: reviewers are ADDED alongside the existing
+            // ones (never replaced), so each keeps his own grading set.
+            $hadReviewers = DB::table('projects_reviewers')
+                ->where('project_id', $project->id)
+                ->exists();
+
             foreach ($reviewerIds as $reviewerId) {
+                $alreadyAssigned = DB::table('projects_reviewers')
+                    ->where('project_id', $project->id)
+                    ->where('user_id', $reviewerId)
+                    ->exists();
+
+                if ($alreadyAssigned) {
+                    continue; // idempotent â€” already on the team
+                }
+
                 DB::table('projects_reviewers')->insert([
                     'project_id' => $project->id,
                     'user_id'    => $reviewerId,
                     'role'       => 'Reviewer',
+                    'claimed_at' => null, // each reviewer claims for himself
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                $newlyAssigned[] = $reviewerId;
             }
 
-            // Always record Assigned status when a reviewer is assigned
-            $project->recordStatus(Project::STATUS_ASSIGNED, [
-                'triggered_by' => 'assign',
-                'reviewer_id'  => $reviewerIds[0] ?? null,
-            ], auth()->id());
+            // Record Assigned status only for the FIRST assignment â€” adding
+            // another reviewer to an already in-review project must not roll
+            // its workflow status (Claimed/progress_*) back to Assigned.
+            if (!$hadReviewers && !empty($newlyAssigned)) {
+                $project->recordStatus(Project::STATUS_ASSIGNED, [
+                    'triggered_by' => 'assign',
+                    'reviewer_id'  => $newlyAssigned[0],
+                ], auth()->id());
+            }
         });
 
+        if (empty($newlyAssigned)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Selected reviewer is already assigned to this project.',
+            ]);
+        }
+
         // Notify the assigned reviewer (automatic; gated by MAIL_ENABLED).
-        foreach ($reviewerIds as $reviewerId) {
+        foreach ($newlyAssigned as $reviewerId) {
             $reviewer = User::find($reviewerId);
             if ($reviewer) {
                 app(EventMailService::class)->send('reviewer_assigned', $reviewer, $project, auth()->user());
@@ -333,24 +359,44 @@ class WorkflowController extends Controller
             return response()->json(['error' => 'You are not authorized to make a decision on this proposal.'], 403);
         }
 
-        // ─── ACCEPTED: keep the assignment and record Claimed ────────────
+        // â”€â”€â”€ ACCEPTED: keep the assignment and record Claimed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if ($validated['accept'] === 'accepted') {
-            if (!$project->hasStatus(Project::STATUS_CLAIMED)) {
+            // Per-reviewer claim: mark THIS reviewer's assignment as claimed so
+            // his own grading form unlocks (other assigned reviewers still have
+            // to accept for themselves).
+            DB::table('projects_reviewers')
+                ->where('id', $validated['r_id'])
+                ->update(['claimed_at' => now(), 'updated_at' => now()]);
+
+            // Project-level Claimed status + LPI mail are recorded only from a
+            // pre-claim state (no status yet / registered / assigned / proposal
+            // rejected / reviewer un-assigned): the FIRST claim of a round
+            // records it, a later reviewer's claim never regresses a post-claim
+            // status (progress_added, final_added, graded, â€¦), and the LPI is
+            // mailed once per round instead of once per reviewer.
+            $current = $project->currentWorkflowStatus();
+            $preClaimStates = [
+                Project::STATUS_IMPORTED,
+                Project::STATUS_REGISTERED,
+                Project::STATUS_ASSIGNED,
+                Project::STATUS_PROPOSAL_REJECTED,
+                Project::STATUS_REVIEWER_UNASSIGNED,
+            ];
+            if ($current === null || in_array($current, $preClaimStates, true)) {
                 $project->recordStatus(Project::STATUS_CLAIMED, [
                     'triggered_by'  => 'claim',
                 ], $user->id);
-            }
 
-            // Notify the LPI that their proposal was accepted.
-            $lpi = $project->lpi;
-            if ($lpi) {
-                app(EventMailService::class)->send('proposal_accepted', $lpi, $project, $user);
+                $lpi = $project->lpi;
+                if ($lpi) {
+                    app(EventMailService::class)->send('proposal_accepted', $lpi, $project, $user);
+                }
             }
 
             return response()->json(['success' => true, 'message' => 'Proposal accepted successfully.']);
         }
 
-        // ─── REJECTED: audit trail + un-assign + record Rejected ─────────
+        // â”€â”€â”€ REJECTED: audit trail + un-assign + record Rejected â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // The project goes back to the admin queue so a different reviewer can be
         // assigned. The rejecting reviewer is recorded in `reviewer_rejections` so
         // the assign UI can exclude them from the dropdown.
@@ -378,89 +424,32 @@ class WorkflowController extends Controller
             $latestStatus = $project->statusHistories()
                 ->orderByDesc('id')
                 ->value('status');
+            $recorded = false;
             if ($latestStatus !== Project::STATUS_PROPOSAL_REJECTED) {
                 $project->recordStatus(Project::STATUS_PROPOSAL_REJECTED, [
                     'triggered_by' => 'reject-proposal',
                     'rejected_by'  => $user->id,
                     'reason'       => $validated['reject_reason'] ?? null,
                 ], $user->id);
+                $recorded = true;
+            }
+
+            // Notify the LPI once per rejection round â€” in lock-step with the
+            // status guard above, so a second rejecting reviewer does not mail
+            // the same "proposal rejected" event again.
+            if ($recorded) {
+                $lpi = $project->fresh()->lpi;
+                if ($lpi) {
+                    app(EventMailService::class)->send('proposal_rejected', $lpi, $project, $user, [
+                        '*reason*' => $validated['reject_reason'] ?? '',
+                    ]);
+                }
             }
         });
-
-        // Notify the LPI that their proposal was rejected (back to admin queue).
-        $lpi = $project->fresh()->lpi;
-        if ($lpi) {
-            app(EventMailService::class)->send('proposal_rejected', $lpi, $project, $user, [
-                '*reason*' => $validated['reject_reason'] ?? '',
-            ]);
-        }
 
         return response()->json([
             'success' => true,
             'message' => 'Proposal rejected. The project has been returned to the admin queue for reassignment.',
-        ]);
-    }
-
-    /**
-     * AJAX: Submit reviewer decision on progress report (accept or reject).
-     *
-     * If accepted → records progress_reviewed.
-     * If rejected → records progress_rejected (LPI resubmits, reviewer re-reviews).
-     * The reviewer stays assigned in both cases.
-     */
-    public function submitProgressReview(Request $request)
-    {
-        $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
-            'accept'     => 'required|in:accepted,rejected',
-            'comment'    => 'nullable|string|max:2000',
-            'report_type' => 'nullable|in:progress,progress2',
-        ]);
-
-        $project = Project::findOrFail($validated['project_id']);
-
-        $user = auth()->user();
-
-        $isProgress2 = ($validated['report_type'] ?? 'progress') === 'progress2';
-
-        // Verify this user is assigned as a reviewer
-        $reviewerRecord = DB::table('projects_reviewers')
-            ->where('project_id', $validated['project_id'])
-            ->where('user_id', $user->id)
-            ->first();
-
-        if (!$reviewerRecord) {
-            return response()->json(['error' => 'You are not authorized to review this project.'], 403);
-        }
-
-        if ($validated['accept'] === 'accepted') {
-            if (!$project->hasStatus($isProgress2 ? Project::STATUS_PROGRESS2_REVIEWED : Project::STATUS_PROGRESS_REVIEWED)) {
-                $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REVIEWED : Project::STATUS_PROGRESS_REVIEWED, [
-                    'triggered_by' => 'progress-review-accept',
-                    'report_type'  => $validated['report_type'] ?? 'progress',
-                ], $user->id);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => $isProgress2
-                    ? 'Progress Report 2 approved. The LPI can now submit the final report.'
-                    : 'Progress report approved. The LPI can now submit the final report.',
-            ]);
-        }
-
-        // Rejected — keep reviewer assigned and record progress_rejected
-        $project->recordStatus($isProgress2 ? Project::STATUS_PROGRESS2_REJECTED : Project::STATUS_PROGRESS_REJECTED, [
-            'triggered_by' => 'progress-review-reject',
-            'comment'      => $validated['comment'] ?? null,
-            'report_type'  => $validated['report_type'] ?? 'progress',
-        ], $user->id);
-
-        return response()->json([
-            'success' => true,
-            'message' => $isProgress2
-                ? 'Progress Report 2 rejected. The admin will review and send it back to the LPI.'
-                : 'Progress report rejected. The admin will review and send it back to the LPI.',
         ]);
     }
 
@@ -539,21 +528,10 @@ class WorkflowController extends Controller
             return response()->json(['error' => 'Only administrators can review rejections.'], 403);
         }
 
-        // Ethical/Other rejections skip the admin review step — no resubmission
-        // is expected, so guard against stale direct requests to this endpoint.
-        $rejectedStatusMap = [
-            'final'     => Project::STATUS_FINAL_REJECTED,
-            'progress2' => Project::STATUS_PROGRESS2_REJECTED,
-            'progress'  => Project::STATUS_PROGRESS_REJECTED,
-        ];
-        $lastRejection = $project->statusHistories()
-            ->where('status', $rejectedStatusMap[$validated['report_type']])
-            ->latest()->first();
-        if ($lastRejection && in_array($lastRejection->metadata['rejection_type'] ?? 'report', ['ethical', 'other'], true)) {
-            return response()->json([
-                'error' => 'This rejection type does not require an admin review step. The reviewer can edit the grading directly.',
-            ], 422);
-        }
+        // Ethical/Other rejections ALSO route through this step: the admin
+        // forwards them to the LPI, who re-sends the ethical approval document
+        // (the progress/final report itself is never re-uploaded — that upload
+        // stays locked by the rejection hold).
 
         // There must be a pending (still un-reviewed) report-type rejection for
         // the given report type. This also blocks recording a "reviewed"
@@ -573,26 +551,49 @@ class WorkflowController extends Controller
             $status = Project::STATUS_PROGRESS_REJ_REVIEWED;
         }
 
+        // Read the rejection type so the forward can tell the LPI WHAT to fix:
+        // an Ethical/Other rejection expects the ethical-approval document to
+        // be re-sent, never a re-upload of the progress/final report itself.
+        $rejectedStatusMap = [
+            'final'     => Project::STATUS_FINAL_REJECTED,
+            'progress2' => Project::STATUS_PROGRESS2_REJECTED,
+            'progress'  => Project::STATUS_PROGRESS_REJECTED,
+        ];
+        $lastRejection = $project->statusHistories()
+            ->where('status', $rejectedStatusMap[$validated['report_type']])
+            ->latest('id')
+            ->first();
+        $rejectionType = $lastRejection->metadata['rejection_type'] ?? 'report';
+        $isEthicalOrOther = in_array($rejectionType, ['ethical', 'other'], true);
+
         $project->recordStatus($status, [
             'action' => 'send_to_lpi',
             'admin_message' => $validated['message'],
             'report_type' => $validated['report_type'],
+            'rejection_type' => $rejectionType,
             'triggered_by' => 'review-rejection',
         ], $user->id);
 
         $reportLabel = $validated['report_type'] === 'final' ? 'Final Report'
             : ($validated['report_type'] === 'progress2' ? 'Progress Report 2' : 'Progress Report');
 
-        $this->sendNotificationToLpi(
-            $project,
-            $user,
-            "{$reportLabel} Resubmission Required",
-            "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
-            "Admin message: {$validated['message']}\n\n" .
-            "Please resubmit your {$reportLabel}."
-        );
+        if ($isEthicalOrOther) {
+            $subject = "Ethical Approval Re-send Required";
+            $body = "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
+                "Reason ({$rejectionType}): {$validated['message']}\n\n" .
+                "Please re-send the ethical approval document for this project. The {$reportLabel} itself does not need to be re-uploaded.";
+            $message = "Ethical approval re-send request sent to LPI.";
+        } else {
+            $subject = "{$reportLabel} Resubmission Required";
+            $body = "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
+                "Admin message: {$validated['message']}\n\n" .
+                "Please resubmit your {$reportLabel}.";
+            $message = "{$reportLabel} sent to LPI for resubmission.";
+        }
 
-        return response()->json(['success' => true, 'message' => "{$reportLabel} sent to LPI for resubmission."]);
+        $this->sendNotificationToLpi($project, $user, $subject, $body);
+
+        return response()->json(['success' => true, 'message' => $message]);
     }
 
     /**
@@ -602,8 +603,9 @@ class WorkflowController extends Controller
     public function unassignReviewer(Request $request)
     {
         $validated = $request->validate([
-            'project_id' => 'required|exists:projects,id',
-            'reason'     => 'nullable|string|max:2000',
+            'project_id'  => 'required|exists:projects,id',
+            'reviewer_id' => 'nullable|integer|exists:users,id',
+            'reason'      => 'nullable|string|max:2000',
         ]);
 
         $project = Project::findOrFail($validated['project_id']);
@@ -613,42 +615,55 @@ class WorkflowController extends Controller
             return response()->json(['error' => 'Only administrators can un-assign reviewers.'], 403);
         }
 
-        // Check if reviewer exists
-        $hasReviewerEntry = DB::table('projects_reviewers')
-            ->where('project_id', $project->id)
-            ->exists();
+        // Affected assignments: one specific reviewer, or (legacy) all of them.
+        $entriesQuery = DB::table('projects_reviewers')->where('project_id', $project->id);
+        if (!empty($validated['reviewer_id'])) {
+            $entriesQuery->where('user_id', $validated['reviewer_id']);
+        }
+        $entries = $entriesQuery->get();
 
-        if (!$hasReviewerEntry) {
+        if ($entries->isEmpty()) {
             return response()->json(['error' => 'No reviewer is currently assigned to this project.'], 422);
         }
 
-        // Check if reviewer has claimed
-        $hasClaimed = $project->hasStatus(Project::STATUS_CLAIMED);
-        if ($hasClaimed) {
-            return response()->json(['error' => 'Cannot un-assign. The reviewer has already claimed this project.'], 422);
-        }
+        // Deliberate decision: the admin MAY also remove a claimed reviewer.
+        // A claimed-but-silent reviewer would otherwise wedge the multi-reviewer
+        // consensus forever (nobody can complete the stage and he cannot be
+        // pulled out). The action is admin-only, asks for a reason, notifies
+        // the reviewer and is audited through the reviewer_unassigned status.
 
-        // Get reviewer info before deleting for notification
-        $reviewer = DB::table('projects_reviewers')
-            ->where('project_id', $project->id)
-            ->first();
-        $reviewerUser = User::find($reviewer->user_id ?? null);
+        // Get reviewer info(s) before deleting for notification
+        $removedUsers = User::whereIn('id', $entries->pluck('user_id'))->get();
 
-        DB::transaction(function () use ($project, $reviewer) {
-            // Remove the reviewer assignment
+        DB::transaction(function () use ($project, $entries) {
             DB::table('projects_reviewers')
-                ->where('project_id', $project->id)
+                ->whereIn('id', $entries->pluck('id'))
                 ->delete();
 
-            // Record the un-assign status
-            $project->recordStatus(Project::STATUS_REVIEWER_UNASSIGNED, [
-                'triggered_by' => 'unassign-reviewer',
-                'reviewer_id'  => $reviewer->user_id ?? null,
-            ], auth()->id());
+            // Only step the project back to "unassigned" when nobody is left â€”
+            // with another reviewer still assigned the review simply continues.
+            $remaining = DB::table('projects_reviewers')
+                ->where('project_id', $project->id)
+                ->exists();
+
+            if (!$remaining) {
+                $project->recordStatus(Project::STATUS_REVIEWER_UNASSIGNED, [
+                    'triggered_by' => 'unassign-reviewer',
+                    'reviewer_id'  => $entries->first()->user_id,
+                ], auth()->id());
+            }
         });
 
-        // Notify the un-assigned reviewer
-        if ($reviewerUser) {
+        // Consensus re-check: removing this reviewer may leave only reviewers
+        // who already submitted â€” complete whatever stage he was blocking
+        // (recordStageCompletion is a no-op when nothing changed).
+        $grading = app(GradingController::class);
+        $grading->recordStageCompletion($project, 'progress', Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED, $user, ['triggered_by' => 'unassign-consensus']);
+        $grading->recordStageCompletion($project, 'progress2', Project::STATUS_PROGRESS2_REVIEWED, Project::STATUS_PROGRESS2_REJECTED, $user, ['triggered_by' => 'unassign-consensus']);
+        $grading->recordStageCompletion($project, 'final', Project::STATUS_GRADED, Project::STATUS_FINAL_REJECTED, $user, ['triggered_by' => 'unassign-consensus']);
+
+        // Notify the un-assigned reviewer(s)
+        foreach ($removedUsers as $removedUser) {
             $this->sendNotificationToReviewers(
                 $project,
                 $user,

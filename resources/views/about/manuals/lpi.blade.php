@@ -93,7 +93,7 @@
             <div class="panel-head"><h2><i class="fas fa-diagram-project"></i> 4. Project Portfolio</h2></div>
             <div class="panel-body">
                 <p>Open <strong>All Projects</strong> to see every project assigned to you. From each row you can <strong>Register</strong> (start the wizard) or <strong>View</strong> (open the project detail page).</p>
-                <p>The project detail page is the operational hub. Depending on the project's state it exposes the relevant actions — <em>Register</em>, <em>Upload Proposal</em>, <em>Update Progress</em>, <em>Submit Final Report</em>, <em>View Report Card</em> — together with the proposal, reports, outcomes, ethical approvals and the current status.</p>
+                <p>The project detail page is the operational hub. Depending on the project's state it exposes the relevant actions — <em>Register</em>, <em>Update Progress</em>, <em>Submit Final Report</em>, <em>View Report Card</em> — together with the proposal, reports, outcomes, ethical approvals and the current status. The proposal PDF itself is viewable and downloadable here, but it is uploaded and managed by the research office.</p>
                 <p><strong>Ownership &amp; access.</strong> You can act on a project that is unclaimed or claimed by you. Once a project has been registered and bound to an LPI, the registration form is locked to that owner; administrative overrides are handled by the research office.</p>
 
                 <h4 class="proc-heading"><i class="fas fa-diagram-project"></i> How to find and open a project</h4>
@@ -108,7 +108,7 @@
                 <ol class="manual-steps">
                     <li><strong>Header &amp; status.</strong> The top shows the project title, its ID, the research call/grant and the current workflow status. The primary action for the next step appears here (for example <em>Update Progress</em>, <em>Submit Final Report</em> or <em>View Report Card</em>).</li>
                     <li><strong>Project Details.</strong> The summary imported from the research call — title, PI identity and identifiers.</li>
-                    <li><strong>Commitments.</strong> The expected outputs you declared at registration (publications, IP, students, ethical requirement). The reviewer scores your actual outcomes against these, so keep them accurate.</li>
+                    <li><strong>Commitments.</strong> The expected outputs you declared at registration (publications, IP, students, ethical requirement). The reviewer scores your actual outcomes against these, so keep them accurate. Commitments are set once during registration — after that only an administrator can update them (for example to correct agreed targets); contact the research office if a value needs to change.</li>
                     <li><strong>Outcomes / Students / Researchers.</strong> The evidence you have recorded, each carrying a verification state (<em>Verified</em> / <em>Pending</em>) as checked by the reviewer.</li>
                     <li><strong>Project Files.</strong> The proposal PDF and every report version uploaded for the project, each with a download link.</li>
                     <li><strong>Grading.</strong> Once graded, the reviewer's section scores and comments appear here (and on the report card).</li>
@@ -130,8 +130,8 @@
                             <tr><td><span class="pill primary">Assigned</span></td><td>A reviewer has been assigned and must accept.</td><td>Reviewer</td></tr>
                             <tr><td><span class="pill success">Claimed</span></td><td>The reviewer accepted the proposal and owns its grading.</td><td>LPI</td></tr>
                             <tr><td><span class="pill warning">Progress Added</span></td><td>You submitted Progress Report 1.</td><td>Reviewer</td></tr>
-                            <tr><td><span class="pill success">Progress Reviewed</span></td><td>Progress Report 1 was graded/accepted.</td><td>LPI</td></tr>
-                            <tr><td><span class="pill danger">Progress Rejected</span></td><td>Progress Report 1 was rejected — action required.</td><td>LPI</td></tr>
+                            <tr><td><span class="pill success">Progress Reviewed</span></td><td>All assigned reviewers have submitted their grades for Progress Report 1 and the outcome is accepted.</td><td>LPI</td></tr>
+                            <tr><td><span class="pill danger">Progress Rejected</span></td><td>The review rejected Progress Report 1 — action required.</td><td>LPI</td></tr>
                             <tr><td><span class="pill warning">Progress 2 Added</span></td><td>You submitted Progress Report 2 (extended projects).</td><td>Reviewer</td></tr>
                             <tr><td><span class="pill warning">Final Added</span></td><td>You submitted the final report.</td><td>Reviewer</td></tr>
                             <tr><td><span class="pill success">Graded</span></td><td>Final grading accepted — the project is complete.</td><td>—</td></tr>
@@ -163,7 +163,7 @@
                         <tbody>
                             <tr><td>Basic Info</td><td>Project title, PI name, PI email</td><td>Title and PI identity are required; pre-filled from the research call where possible.</td></tr>
                             <tr><td>Pillar &amp; College</td><td>Research pillars (multi-select), College/Institute (single)</td><td>Select every pillar the project spans; choose the administering college.</td></tr>
-                            <tr><td>Commitments</td><td>Publications: Q1–Q4 articles, conference articles, books, edited books, chapters. IP: disclosures, filed patents, open-source SW, start-up. People: Masters, Undergraduate, PhD, cross-college. Ethical requirement flag.</td><td>Whole numbers ≥ 0. Commitments become the yardstick the reviewer uses to auto-score your outputs.</td></tr>
+                            <tr><td>Commitments</td><td>Publications: Q1–Q4 articles, conference articles, books, edited books, chapters. IP: disclosures, filed patents, open-source SW, start-up. People: Masters, Undergraduate, PhD, cross-college. Ethical requirement flag.</td><td>Whole numbers ≥ 0. Commitments become the yardstick the reviewer uses to auto-score your outputs. They are locked once the registration is submitted — later corrections are made by an administrator.</td></tr>
                             <tr><td>Review &amp; Submit</td><td>Read-only summary + confirmation checkbox</td><td>Submission records <em>Registered</em> and locks the form.</td></tr>
                         </tbody>
                     </table>
@@ -175,12 +175,8 @@
         <section id="proposal" class="panel manual-section">
             <div class="panel-head"><h2><i class="fas fa-file-pdf"></i> 7. Proposal Document</h2></div>
             <div class="panel-body">
-                <p>The proposal PDF is normally imported by the research office when the research call is created and matched to your project ID. You can view it inline during registration and from the project detail page.</p>
-                <p>If no proposal is attached, upload one from the project page (or during registration). Constraints:</p>
-                <ul class="manual-steps">
-                    <li>Format: <strong>PDF</strong> only; maximum size <strong>20 MB</strong>.</li>
-                    <li>Uploading replaces any existing proposal document for the project.</li>
-                </ul>
+                <p>The proposal PDF is imported by the research office when the research call is created and matched to your project ID. You can view it inline during registration and from the project detail page, and download it from <em>Project Files</em>.</p>
+                <p><strong>Proposals are managed by the research office.</strong> LPIs cannot upload or replace a proposal document. If your project has no proposal attached — or the attached file is wrong — ask the research office to upload it (PDF only, maximum 20 MB; a new upload replaces the existing document).</p>
                 <p>Stored proposals are addressed by the project's file-safe ID, so document lookups remain consistent even when the project ID contains characters such as "/".</p>
             </div>
         </section>
@@ -219,7 +215,7 @@
             <div class="panel-head"><h2><i class="fas fa-shield-halved"></i> 10. Ethical Approvals</h2></div>
             <div class="panel-body">
                 <p>Where your project requires ethical approval, upload the approval document(s) from the project page. RTS supports <strong>multiple</strong> ethical documents per project; each is listed with its filename and upload date and can be viewed or removed individually.</p>
-                <p>During grading the reviewer verifies the ethical approval. If it is missing or invalid, the reviewer may reject the report with the type <em>Missing/Invalid Ethical Approval</em>. In that case you upload a corrected document and the reviewer re-opens and edits the existing grading — no new report version is requested.</p>
+                <p>During grading the reviewer verifies the ethical approval. If it is missing or invalid, the reviewer may reject the report with the type <em>Missing/Invalid Ethical Approval</em>. The admin reviews this rejection and sends it back to you; you then upload a corrected ethical document — <strong>no new report version is requested</strong> (the report upload stays locked). The reviewer re-reviews once your corrected approval is in place.</p>
             </div>
         </section>
 
@@ -257,7 +253,7 @@
         <section id="resubmit" class="panel manual-section">
             <div class="panel-head"><h2><i class="fas fa-rotate"></i> 13. Rejection &amp; Resubmission</h2></div>
             <div class="panel-body">
-                <p>When a reviewer rejects a report, the project displays the rejection with the reviewer's reason and the rejection type. Your next action depends on that type:</p>
+                <p>When a reviewer rejects a report, the project displays the rejection with the reviewer's reason and the rejection type, and a <em>rejected report needing resubmission</em> task appears in your notification bell until the rejection is resolved. Your next action depends on that type:</p>
                 <div class="mini-flow">
                     <div class="mini-step"><span class="ms-num">1</span><span class="ms-text"><span class="ms-label">Report Rejected</span><span class="ms-sub">Reason + type shown</span></span></div>
                     <span class="mini-arrow"><i class="fas fa-arrow-right"></i></span>
@@ -270,8 +266,8 @@
                         <thead><tr><th>Rejection type</th><th>Your action</th></tr></thead>
                         <tbody>
                             <tr><td><strong>Report</strong></td><td>Upload a corrected report (stored as a new version, e.g. <em>v2</em>) and submit it. The reviewer re-grades the new version.</td></tr>
-                            <tr><td><strong>Missing / Invalid Ethical Approval</strong></td><td>Upload the correct ethical document. The reviewer re-opens and edits the existing grading — no new report version.</td></tr>
-                            <tr><td><strong>Other</strong></td><td>Address the reviewer's note; the reviewer re-opens and edits the existing grading — no resubmission of the report itself.</td></tr>
+                            <tr><td><strong>Missing / Invalid Ethical Approval</strong></td><td>Once the admin sends the rejection back to you, upload the correct ethical document (the report itself is not re-uploaded). The reviewer then re-reviews.</td></tr>
+                            <tr><td><strong>Other</strong></td><td>Once the admin sends the rejection back to you, address the reviewer's note (typically by re-sending the supporting document). The reviewer then re-reviews — no resubmission of the report itself.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -308,10 +304,10 @@
                 <p>RTS keeps you informed through three channels:</p>
                 <ul class="manual-steps">
                     <li><strong>Announcements</strong> — targeted messages shown on your dashboard and the Announcements page.</li>
-                    <li><strong>The notification bell</strong> — pending tasks and reminders relevant to your role.</li>
+                    <li><strong>The notification bell</strong> — pending tasks and reminders relevant to your role: projects awaiting your registration, progress reports still to upload, and <em>rejected reports needing resubmission</em>. The rejected-report task appears as soon as the review rejects your report and clears automatically once you resubmit (or the project is graded).</li>
                     <li><strong>Email notifications</strong> — event-based messages sent when the deployment's email switch is enabled.</li>
                 </ul>
-                <p><strong>Events that trigger an email to you</strong> (subject to the system email switch): a project is added to a research call, your registration is confirmed, a proposal decision is recorded, you submit a progress report, and a report is graded. Each is driven by an editable template maintained by the research office.</p>
+                <p><strong>Events that trigger an email to you</strong> (subject to the system email switch): a project is added to a research call, your registration is confirmed, a proposal decision is recorded, you submit a progress report, and the review of a report completes (once every assigned reviewer has submitted — a single e-mail, not one per reviewer). Each is driven by an editable template maintained by the research office.</p>
             </div>
         </section>
 
@@ -332,10 +328,10 @@
                         <tbody>
                             <tr><td>Returned to the login page after SSO</td><td>Account inactive or QU ID not matched. Contact the research office.</td></tr>
                             <tr><td>Cannot upload a report</td><td>The reporting window is closed (deadline passed) or an unresolved rejection is locking the upload.</td></tr>
-                            <tr><td>Proposal not shown</td><td>No proposal was imported; upload one from the project page (PDF, ≤ 20 MB).</td></tr>
+                            <tr><td>Proposal not shown</td><td>No proposal has been attached yet; ask the research office to upload it (PDF, ≤ 20 MB).</td></tr>
                             <tr><td>Student details blank after adding</td><td>The SIS lookup failed. Use <strong>Verify</strong> on the student to retry.</td></tr>
                             <tr><td>DOI shows no publisher badge</td><td>The identifier could not be resolved by Crossref; verify the DOI format.</td></tr>
-                            <tr><td>Report rejected as "ethical"</td><td>Upload the correct ethical approval; no new report version is needed.</td></tr>
+                            <tr><td>Report rejected as "ethical"</td><td>The admin reviews the rejection and sends it back to you; upload the correct ethical approval. No new report version is needed.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -351,7 +347,7 @@
                         <tbody>
                             <tr><td>LPI</td><td>Lead Principal Investigator — owner of the project and its reporting.</td></tr>
                             <tr><td>Research Call</td><td>A grant cycle instance (grant × cycle) under which projects are grouped.</td></tr>
-                            <tr><td>Commitments</td><td>The expected outputs you declare at registration; used as the grading baseline.</td></tr>
+                            <tr><td>Commitments</td><td>The expected outputs you declare at registration; used as the grading baseline. Locked after registration — updated by administrators only.</td></tr>
                             <tr><td>Outcome</td><td>A concrete result of the project (publication, IP, person) recorded against commitments.</td></tr>
                             <tr><td>Version (vN)</td><td>A specific submission of a report; resubmissions increment the version.</td></tr>
                             <tr><td>SIS</td><td>QU Student Information System — source of student records.</td></tr>

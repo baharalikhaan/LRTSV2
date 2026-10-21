@@ -23,6 +23,7 @@ class FinalReportGrading extends Model
         'total',
         'publish',
         'isAdmin', 'isAccepted',
+        'rejection_type', 'rejection_reason',
     ];
 
     protected $casts = [

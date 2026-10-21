@@ -81,9 +81,11 @@
                 <i class="fas fa-check-circle"></i> {{ $actLabel }}
             </button>
         @elseif($act['action'] === 'unassign-reviewer')
-            <button type="button" class="btn-danger btn-sm" title="{{ $tooltip }}" onclick="confirmUnassignReviewer({{ $project->id ?? '' }})">
-                <i class="fas fa-user-minus"></i> {{ $actLabel }}
+            @foreach($project->reviewers as $rvUser)
+            <button type="button" class="btn-danger btn-sm" title="Un-assign {{ $rvUser->name }}" onclick="confirmUnassignReviewer({{ $project->id ?? '' }}, {{ $rvUser->id }})">
+                <i class="fas fa-user-minus"></i> {{ $project->reviewers->count() > 1 ? 'Un-assign ' . $rvUser->name : $actLabel }}
             </button>
+            @endforeach
         @elseif($act['action'] === 'review-progress-rejection')
             <button type="button" class="{{ $priClass }} btn-sm" title="{{ $tooltip }}" onclick="openWorkflowModal({{ $project->id ?? '' }}, 'review-rejection', 'lg', 'report_type=progress')">
                 <i class="fas fa-balance-scale"></i> {{ $actLabel }}

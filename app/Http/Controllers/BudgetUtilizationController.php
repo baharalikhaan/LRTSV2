@@ -74,7 +74,8 @@ class BudgetUtilizationController extends Controller
         $start = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
 
-        $budgets = $query->orderByDesc('project_budgets.id')
+        $budgets = $query->orderByRaw('(SELECT program_title FROM programs WHERE programs.id = (SELECT program_id FROM projects WHERE projects.id = project_budgets.project_id)) ASC')
+            ->orderBy('project_budgets.project_id', 'asc')
             ->skip($start)->take($length)
             ->get();
 

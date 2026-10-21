@@ -122,7 +122,7 @@ $(document).ready(function() {
                 d.program_id = $('#programFilter').val();
             }
         },
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         columns: [
             { data: 'old_project_id', name: 'old_project_id', title: 'Project ID', width: '140px' },
             { data: 'title', name: 'title', title: 'Title', orderable: true, searchable: true },
@@ -130,7 +130,7 @@ $(document).ready(function() {
             { data: 'files', name: 'files', title: 'Files', orderable: false, searchable: false, width: '70px' },
             { data: 'action', name: 'action', title: 'Action', orderable: false, searchable: false, className: 'text-center', width: '70px' },
         ],
-        order: [[0, 'desc']],
+        order: [],
         pageLength: 10,
         drawCallback: function() {
             $('[data-bs-toggle="tooltip"]').tooltip('dispose').tooltip();

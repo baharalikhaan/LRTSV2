@@ -91,7 +91,7 @@
 <script>
     $(document).ready(function() {
         $('#gradedTable').DataTable({
-            order: [[0, 'asc']],
+            order: [],
             columnDefs: [
                 { orderable: false, targets: [6] },
                 { searchable: false, targets: [6] }

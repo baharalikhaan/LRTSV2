@@ -148,7 +148,7 @@ function insertTag(tag) {
     ta.selectionStart = ta.selectionEnd = pos + tag.length;
 }
 function previewTemplate(id) {
-    fetch('/email-templates/' + id + '/preview')
+    fetch(appUrl('/email-templates/' + id + '/preview'))
         .then(function(r) { return r.json(); })
         .then(function(d) {
             document.getElementById('previewSubject').textContent = d.subject;

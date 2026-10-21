@@ -114,7 +114,7 @@
 <script>
     $(document).ready(function() {
         var table = $('#callsTable').DataTable({
-            dom: 'rt<"bottom"lip>',
+            dom: 'Brt<"bottom"lip>',
             order: [[0, 'asc']],
             columnDefs: [
                 { orderable: false, targets: [6] },

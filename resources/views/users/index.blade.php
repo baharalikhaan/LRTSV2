@@ -268,7 +268,7 @@
 $(document).ready(function() {
     @if($users->count() > 0)
     var table = $('#usersTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
             { orderable: false, targets: [8, 9] },

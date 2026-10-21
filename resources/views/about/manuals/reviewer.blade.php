@@ -82,14 +82,14 @@
         <section id="assignments" class="panel manual-section">
             <div class="panel-head"><h2><i class="fas fa-check-double"></i> 4. Assignments &amp; Eligibility</h2></div>
             <div class="panel-body">
-                <p>Projects are assigned by the research office. RTS uses a <strong>single-reviewer</strong> model: one reviewer owns a project's grading at any time.</p>
+                <p>Projects are assigned by the research office, and a project may have <strong>several reviewers at the same time</strong>. Each reviewer keeps his own independent set of grades for the same project — your draft, submitted scores and rejection decisions are never visible to another reviewer, and the project page / report card presents every reviewer's set side by side.</p>
                 <p><strong>Eligibility rules.</strong></p>
                 <ul class="manual-steps">
                     <li>You are offered for assignment based on your declared research pillars.</li>
                     <li>A reviewer who has previously <em>rejected</em> a project's proposal is excluded from being re-assigned to that project.</li>
                     <li>An assignment may be withdrawn by the office before you act on it; you will be notified if un-assigned.</li>
                 </ul>
-                <p>When a project is assigned and you accept it, it moves to <em>Claimed</em> and you become its grader until completion.</p>
+                <p>When a project is assigned you accept it <strong>for yourself</strong> — the grading form stays locked until your own acceptance exists. Your accept stamps your own claim, the project moves to <em>Claimed</em>, and your grading form opens; every assigned reviewer claims separately.</p>
             </div>
         </section>
 
@@ -106,7 +106,7 @@
                 </div>
                 <div class="mini-decision">
                     <div class="md-row"><span class="md-tag accept"><i class="fas fa-check"></i> Accept</span><span class="md-text">Confirms you will grade the project — it moves to <em>Claimed</em> and you become its grader.</span></div>
-                    <div class="md-row"><span class="md-tag reject"><i class="fas fa-xmark"></i> Reject</span><span class="md-text">Supply a reason. The project returns to the office for a different reviewer, and you are recorded as having declined it.</span></div>
+                    <div class="md-row"><span class="md-tag reject"><i class="fas fa-xmark"></i> Reject</span><span class="md-text">Supply a reason. You are removed from the project (any other assigned reviewers remain and continue their review), the project returns to the office, and you are recorded as having declined it.</span></div>
                 </div>
                 <div class="manual-callout"><i class="fas fa-triangle-exclamation"></i> Rejection is durable: you cannot later be re-assigned to a project you have rejected. Reject only when you genuinely cannot review it (for example a conflict of interest).</div>
             </div>
@@ -141,11 +141,11 @@
                 </div>
                 <div class="table-wrap">
                     <table class="fluent-table">
-                        <thead><tr><th>Section</th><th>Assesses</th><th>Auto-scored</th></tr></thead>
+                        <thead><tr><th>Section</th><th>Assesses</th></tr></thead>
                         <tbody>
-                            <tr><td><strong>A — Achievements against objectives</strong></td><td>IP disclosures, patents, open-source software, start-ups, prototypes and cross-college activity versus commitments.</td><td>Yes</td></tr>
-                            <tr><td><strong>B — Publications &amp; IP</strong></td><td>Q1–Q4 journal articles, conference articles, books, edited books and chapters versus commitments.</td><td>Yes</td></tr>
-                            <tr><td><strong>C — Student &amp; Researcher Involvement</strong></td><td>Masters, Undergraduate and PhD students, and researchers attached to the project.</td><td>Yes</td></tr>
+                            <tr><td><strong>A — Achievements against objectives</strong></td><td>IP disclosures, patents, open-source software, start-ups, prototypes and cross-college activity versus commitments.</td></tr>
+                            <tr><td><strong>B — Publications &amp; IP</strong></td><td>Q1–Q4 journal articles, conference articles, books, edited books and chapters versus commitments.</td></tr>
+                            <tr><td><strong>C — Student &amp; Researcher Involvement</strong></td><td>Masters, Undergraduate and PhD students, and researchers attached to the project.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -160,7 +160,7 @@
                     <li><strong>Compare commitments vs outcomes.</strong> Use the <em>Commitments vs Outcomes</em> panel to see the LPI's declared commitments beside the outcomes actually recorded.</li>
                     <li><strong>Score each section.</strong> For <em>Section A — Achievements</em>, <em>Section B — Publications &amp; IP</em> and <em>Section C — Student &amp; Researcher Involvement</em>, choose a rating from 1 to 5. RTS shows a suggested (auto-calculated) score based on outcomes vs commitments; you may adjust it. Add a short comment for each section.</li>
                     <li><strong>Verify the evidence.</strong> While scoring, toggle each outcome, student and researcher between <em>Verified</em> and <em>Pending</em>, and confirm a valid ethical-approval document is attached where required.</li>
-                    <li><strong>Submit or reject.</strong> Click <em>Submit</em> to record the grade (the project advances to <em>Progress Reviewed</em>). To reject instead, switch the publish status to <em>Rejected</em>, choose a <strong>rejection type</strong> (<em>Report</em> / <em>Missing/Invalid Ethical Approval</em> / <em>Other</em>) and enter a reason — see section 9 for how each type is followed up.</li>
+                    <li><strong>Submit or reject.</strong> Click <em>Submit</em> to record your grade — the project advances to <em>Progress Reviewed</em> only once <strong>every assigned reviewer has submitted</strong> (any rejection wins at that point), your own submitted set becomes read-only, and the LPI is notified once. To reject instead, switch the publish status to <em>Rejected</em>, choose a <strong>rejection type</strong> (<em>Report</em> / <em>Missing/Invalid Ethical Approval</em> / <em>Other</em>) and enter a reason — see section 9 for how each type is followed up.</li>
                 </ol>
             </div>
         </section>
@@ -207,7 +207,7 @@
         <section id="edit" class="panel manual-section">
             <div class="panel-head"><h2><i class="fas fa-pen-to-square"></i> 10. Editing a Grade</h2></div>
             <div class="panel-body">
-                <p>After an <em>Ethical</em> or <em>Other</em> rejection — or after the LPI has addressed a note — you re-open the project and use the <strong>Edit Grading</strong> action to amend your existing grade.</p>
+                <p>After an <em>Ethical</em> or <em>Other</em> rejection the admin reviews it and sends it back to the LPI, who re-sends the ethical approval (no new report version). Once the LPI has acted you re-open the project and use the <strong>Edit Grading</strong> action to amend your existing grade.</p>
                 <p>Your previously submitted grading is shown read-only until you save the update, so you always have the prior state as reference.</p>
             </div>
         </section>
@@ -243,7 +243,7 @@
         <section id="notifications" class="panel manual-section">
             <div class="panel-head"><h2><i class="fas fa-bullhorn"></i> 14. Notifications</h2></div>
             <div class="panel-body">
-                <p>Reviewer-targeted <strong>announcements</strong> appear on your dashboard and the Announcements page, and the <strong>notification bell</strong> highlights pending tasks.</p>
+                <p>Reviewer-targeted <strong>announcements</strong> appear on your dashboard and the Announcements page, and the <strong>notification bell</strong> lists your pending tasks — assigned projects that still need your proposal decision or a submitted grade. Announcements and tasks that are not yours never appear there.</p>
                 <p>When the deployment's email switch is enabled, event-based emails are sent to you — for example when a project is assigned to you, when a grading reminder is issued, or when you are un-assigned from a project. These are driven by editable templates maintained by the research office.</p>
             </div>
         </section>
@@ -267,7 +267,7 @@
                             <tr><td>Cannot re-assign yourself after rejecting</td><td>By design — rejected proposals cannot be re-assigned to the same reviewer.</td></tr>
                             <tr><td>Auto-score looks low</td><td>The LPI recorded fewer outcomes than commitments (or none). The score is a guide and can be adjusted.</td></tr>
                             <tr><td>Grade form blank after resubmission</td><td>A new report version opens a fresh grading form; the prior grading is retained read-only.</td></tr>
-                            <tr><td>Ethical/Other rejection cannot resubmit</td><td>Those types do not request a new report — use <strong>Edit Grading</strong> once the LPI has acted.</td></tr>
+                            <tr><td>Ethical/Other rejection cannot resubmit</td><td>Those types do not request a new report — after the admin forwards it and the LPI re-sends the approval, use <strong>Edit Grading</strong> to re-review.</td></tr>
                         </tbody>
                     </table>
                 </div>

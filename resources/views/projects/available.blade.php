@@ -33,13 +33,14 @@
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label>Status:</label>
-                    <select name="status" onchange="this.form.submit()">
-                        <option value="">All Statuses</option>
-                        <option value="unregistered" {{ ($status ?? '') == 'unregistered' ? 'selected' : '' }}>Unregistered</option>
-                        <option value="registered" {{ ($status ?? '') == 'registered' ? 'selected' : '' }}>Registered</option>
-                        <option value="claimed" {{ ($status ?? '') == 'claimed' ? 'selected' : '' }}>Claimed</option>
-                    </select>
+                <label>Status:</label>
+                <select name="status" onchange="this.form.submit()">
+                    <option value="">All Statuses</option>
+                    <option value="unregistered" {{ ($status ?? '') == 'unregistered' ? 'selected' : '' }}>Unregistered</option>
+                    @foreach(\App\Models\Project::statusLabels() as $statusValue => $statusName)
+                    <option value="{{ $statusValue }}" {{ ($status ?? '') == $statusValue ? 'selected' : '' }}>{{ $statusName }}</option>
+                    @endforeach
+                </select>
                 </div>
                 <div class="filter-group">
                     <label>Search:</label>
@@ -293,9 +294,11 @@
                                                     <i class="fas fa-user-tag" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
                                                 </a>
                                             @elseif($act['action'] === 'unassign-reviewer')
-                                                <a class="dropdown-item" href="#" onclick="closeProjectMenus();confirmUnassignReviewer({{ $cp->id }})" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#dc3545;">
-                                                    <i class="fas fa-user-minus" style="width:16px;text-align:center;font-size:11px;"></i> {{ $act['label'] }}
+                                                @foreach($cp->reviewers as $rvUser)
+                                                <a class="dropdown-item" href="#" onclick="closeProjectMenus();confirmUnassignReviewer({{ $cp->id }}, {{ $rvUser->id }})" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#dc3545;">
+                                                    <i class="fas fa-user-minus" style="width:16px;text-align:center;font-size:11px;"></i> Un-assign {{ $rvUser->name }}
                                                 </a>
+                                                @endforeach
 
                                             @elseif($act['action'] === 'review-progress-rejection')
                                                 <a class="dropdown-item" href="#" onclick="closeProjectMenus();openWorkflowModal({{ $cp->id }}, 'review-rejection', 'lg', 'report_type=progress')" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
@@ -375,8 +378,8 @@
 <script>
     $(document).ready(function() {
         var table = $('#projectsTable').DataTable({
-            dom: 'rt<"bottom"lip>',
-            order: [[0, 'asc']],
+            dom: 'Brt<"bottom"lip>',
+            order: [],
             columnDefs: [
                 { orderable: false, targets: [7] },
                 { searchable: false, targets: [7] }
@@ -471,7 +474,7 @@
         formData.append('_token', '{{ csrf_token() }}');
         formData.append('pdf', singleFile);
         $.ajax({
-            url: '/programs/' + singleProjectId + '/upload-proposal',
+            url: appUrl('/programs/' + singleProjectId + '/upload-proposal'),
             method: 'POST',
             data: formData,
             processData: false,
@@ -533,7 +536,7 @@
         modal.modal('show');
 
         // Load wizard content via AJAX
-        $.get('/wizard/load/' + projectId, function(res) {
+        $.get(appUrl('/wizard/load/' + projectId), function(res) {
             if (res.html) {
                 modal.find('.modal-content').html(res.html);
                 // If modal lost positioning during content swap, re-center

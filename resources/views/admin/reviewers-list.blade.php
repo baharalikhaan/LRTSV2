@@ -112,7 +112,7 @@
 $(document).ready(function() {
     @if(($reviewers ?? null) && count($reviewers) > 0)
     var table = $('#reviewersTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         pageLength: 20,
         lengthChange: false,

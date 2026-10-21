@@ -215,7 +215,7 @@
             <thead>
                 <tr class="a4-group-header">
                     <th colspan="1" class="a4-group-project">Project Info</th>
-                    <th colspan="7" class="a4-group-lpi">LPI</th>
+                    <th colspan="8" class="a4-group-lpi">LPI</th>
                     <th colspan="1" class="a4-group-admin">Admin</th>
                     <th colspan="2" class="a4-group-reviewer">Reviewer</th>
                 </tr>
@@ -226,6 +226,7 @@
                     <th class="a4-col-center">Students</th>
                     <th class="a4-col-center">Contribution</th>
                     <th class="a4-col-center">Progress Report</th>
+                    <th class="a4-col-center">Progress Report 2</th>
                     <th class="a4-col-center">Final Report</th>
                     <th class="a4-col-center">Readiness Report</th>
                     <th class="a4-col-center">Reviewers Assignment</th>
@@ -252,6 +253,15 @@
                     <td class="a4-cell-center">{{ $row['contributions_count'] }}</td>
                     <td class="a4-cell-center">
                         @if($row['has_progress_report'])
+                            <i class="fas fa-check-circle a4-icon-yes"></i>
+                        @else
+                            <i class="fas fa-times-circle a4-icon-no"></i>
+                        @endif
+                    </td>
+                    <td class="a4-cell-center">
+                        @if(!$row['progress2_enabled'])
+                            <span style="font-size:9px;color:var(--ink-400,#8b8592);">N/A</span>
+                        @elseif($row['has_progress2_report'])
                             <i class="fas fa-check-circle a4-icon-yes"></i>
                         @else
                             <i class="fas fa-times-circle a4-icon-no"></i>
@@ -295,7 +305,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="11" class="a4-cell-empty">No projects found in this research call.</td>
+                    <td colspan="12" class="a4-cell-empty">No projects found in this research call.</td>
                 </tr>
                 @endforelse
             </tbody>
@@ -308,6 +318,7 @@
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['students']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['students']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['contributions']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['contributions']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['progress_report']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['progress_report']['pending'] }}</div></td>
+                    <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['progress2_report']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['progress2_report']['pending'] }}</div>@if($footer['progress2_report']['not_applicable'] > 0)<div class="a4-foot-p">N/A: {{ $footer['progress2_report']['not_applicable'] }}</div>@endif</td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['final_report']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['final_report']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Completed: {{ $footer['readiness_report']['completed'] }}</div><div class="a4-foot-p">Pending: {{ $footer['readiness_report']['pending'] }}</div></td>
                     <td class="a4-foot-cell"><div class="a4-foot-c">Assigned: {{ $footer['reviewer_count']['completed'] }}</div><div class="a4-foot-p">Unassigned: {{ $footer['reviewer_count']['pending'] }}</div></td>
@@ -316,7 +327,7 @@
                 </tr>
                 @if($footer['registration']['pending'] > 0)
                 <tr class="a4-foot-summary" style="background:#fff5f5;">
-                    <td colspan="11" class="a4-foot-label" style="text-align:left;font-size:8.5px;color:#c0392b;">
+                    <td colspan="12" class="a4-foot-label" style="text-align:left;font-size:8.5px;color:#c0392b;">
                         Unregistered Projects:
                         @foreach($rows->where('registration', false) as $unreg)
                             <span style="display:inline-block;background:#fde8e8;border-radius:3px;padding:1px 5px;margin:1px 2px;font-weight:600;color:#991b1b;">{{ $unreg['old_project_id'] }}</span>
@@ -331,6 +342,7 @@
                     <td class="a4-foot-cell">@if($footer['students']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('students')" data-column="students"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['contributions']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('contributions')" data-column="contributions"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['progress_report']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('progress_report')" data-column="progress_report"><i class="fas fa-envelope"></i> Send</button>@endif</td>
+                    <td class="a4-foot-cell">@if($footer['progress2_report']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('progress2_report')" data-column="progress2_report"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['final_report']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('final_report')" data-column="final_report"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell">@if($footer['readiness_report']['pending'] > 0)<button class="btn-send-email" onclick="sendReminder('readiness_report')" data-column="readiness_report"><i class="fas fa-envelope"></i> Send</button>@endif</td>
                     <td class="a4-foot-cell"></td>

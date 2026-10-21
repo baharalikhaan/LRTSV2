@@ -154,7 +154,7 @@
 $(document).ready(function() {
     @if($colleges->count() > 0)
     var table = $('#collegesTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
             { orderable: false, targets: [4] },

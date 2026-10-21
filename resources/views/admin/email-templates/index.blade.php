@@ -177,7 +177,7 @@
 $(document).ready(function() {
     @if($templates->count() > 0)
     var table = $('#templatesTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[2, 'asc']],
         pageLength: 25,
         columnDefs: [{ orderable: false, targets: [4] }],
@@ -200,7 +200,7 @@ $(document).ready(function() {
 });
 
 function previewTemplate(id) {
-    fetch('/email-templates/' + id + '/preview')
+    fetch(appUrl('/email-templates/' + id + '/preview'))
         .then(function(r) { return r.json(); })
         .then(function(d) {
             document.getElementById('previewSubject').textContent = d.subject;

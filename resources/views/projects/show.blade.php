@@ -13,7 +13,7 @@
             $userActions = $project->availableActions(auth()->user());
         @endphp
         <div class="dropdown" style="position:relative;display:inline-block;">
-            <button class="btn-secondary" type="button" onclick="toggleProjectMenu(this)" style="background:#8d1b3d;color:#fff;border-color:#8d1b3d;">
+            <button class="btn-secondary btn-sm" type="button" onclick="toggleProjectMenu(this)" style="background:#8d1b3d;color:#fff;border-color:#8d1b3d;">
                 <i class="fas fa-cog"></i> Actions ▾
             </button>
             <div class="action-menu" style="display:none;position:fixed;z-index:10000;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:200px;padding:4px 0;">
@@ -43,9 +43,11 @@
                             <i class="fas fa-user-tag" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
                         </a>
                     @elseif($act['action'] === 'unassign-reviewer')
-                        <a class="dropdown-item" href="#" onclick="confirmUnassignReviewer({{ $project->id }})" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#dc3545;">
-                            <i class="fas fa-user-minus" style="width:16px;text-align:center;font-size:11px;"></i> {{ $act['label'] }}
+                        @foreach($project->reviewers as $rvUser)
+                        <a class="dropdown-item" href="#" onclick="confirmUnassignReviewer({{ $project->id }}, {{ $rvUser->id }})" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#dc3545;">
+                            <i class="fas fa-user-minus" style="width:16px;text-align:center;font-size:11px;"></i> Un-assign {{ $rvUser->name }}
                         </a>
+                        @endforeach
                     @elseif($act['action'] === 'review-progress-rejection')
                         <a class="dropdown-item" href="#" onclick="openWorkflowModal({{ $project->id }}, 'review-rejection', 'lg', 'report_type=progress')" style="padding:8px 14px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                             <i class="fas fa-balance-scale" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> {{ $act['label'] }}
@@ -58,7 +60,10 @@
                 @endforeach
             </div>
         </div>
-        <a href="{{ route('projects.available') }}" class="btn-secondary">
+        <a href="{{ route('projects.printable', $project->id) }}" target="_blank" class="btn-secondary btn-sm">
+            <i class="fas fa-print"></i> Printable Version
+        </a>
+        <a href="{{ route('projects.available') }}" class="btn-secondary btn-sm">
             <i class="fas fa-arrow-left"></i> Back to Projects
         </a>
     </div>

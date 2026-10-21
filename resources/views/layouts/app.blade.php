@@ -219,6 +219,46 @@
                 'url'   => route('projects.available'),
             ];
         }
+
+        // Admin: rejections awaiting their review — the admin opens
+        // "Review Rejection", adds his own comment and sends the report
+        // back to the LPI. Mirrors Project::hasUnreviewedRejection():
+        // the latest row of the rejection round is still a rejection,
+        // graded projects never count. Ethical/Other rejections count too —
+        // the admin forwards them so the LPI re-sends the ethical approval.
+        $rejectionPairs = [
+            ['progress_rejected', 'progress_rejection_reviewed'],
+            ['progress2_rejected', 'progress2_rejection_reviewed'],
+            ['final_rejected', 'final_rejection_reviewed'],
+        ];
+        $pairSql = [];
+        foreach ($rejectionPairs as [$rejected, $reviewed]) {
+            $pairSql[] = "EXISTS (
+                    SELECT 1 FROM status_histories s
+                    WHERE s.project_id = p.id
+                      AND s.status IN ('{$rejected}', '{$reviewed}')
+                      AND s.id = (SELECT MAX(x.id) FROM status_histories x
+                                  WHERE x.project_id = p.id
+                                    AND x.status IN ('{$rejected}', '{$reviewed}'))
+                      AND s.status = '{$rejected}'
+                )";
+        }
+        $unreviewedRejections = (int) (\Illuminate\Support\Facades\DB::selectOne(
+            'SELECT COUNT(DISTINCT p.id) AS c FROM projects p
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM status_histories g
+                 WHERE g.project_id = p.id AND g.status = \'Graded\'
+             )
+             AND (' . implode(' OR ', $pairSql) . ')'
+        )->c ?? 0);
+        if ($unreviewedRejections > 0) {
+            $pendingTasks[] = [
+                'icon'  => 'fa-solid fa-balance-scale',
+                'color' => '#dc2626',
+                'label' => $unreviewedRejections . ' rejected report' . ($unreviewedRejections > 1 ? 's' : '') . ' awaiting your review',
+                'url'   => route('projects.available'),
+            ];
+        }
     }
 
     if ($isLPI && $activeRole === 'LPI') {
@@ -253,14 +293,26 @@
             ];
         }
 
-        // LPI: rejected reports needing resubmission
+        // LPI: rejected reports needing resubmission — shown while the
+        // workflow sits on a rejection / admin-review state. Keyed on the
+        // LATEST status so it disappears automatically once the LPI
+        // resubmits (progress_added / final_added) or the project is graded;
+        // the previous all-time check hid it forever for any project that
+        // had ever uploaded a progress report.
         $rejectedCount = \App\Models\Project::where('lpi_id', $user->id)
-            ->whereHas('statusHistories', function ($q) {
-                $q->whereIn('status', ['progress_rejected', 'progress_rejection_reviewed', 'final_rejected']);
-            })
-            ->whereDoesntHave('statusHistories', function ($q) {
-                $q->whereIn('status', ['progress_added', 'final_added', 'Graded']);
-            })->count();
+            ->whereRaw('
+                (SELECT sh.status FROM status_histories sh
+                 WHERE sh.project_id = projects.id
+                 ORDER BY sh.id DESC LIMIT 1)
+                IN (?, ?, ?, ?, ?, ?)
+            ', [
+                \App\Models\Project::STATUS_PROGRESS_REJECTED,
+                \App\Models\Project::STATUS_PROGRESS_REJ_REVIEWED,
+                \App\Models\Project::STATUS_PROGRESS2_REJECTED,
+                \App\Models\Project::STATUS_PROGRESS2_REJ_REVIEWED,
+                \App\Models\Project::STATUS_FINAL_REJECTED,
+                \App\Models\Project::STATUS_FINAL_REJ_REVIEWED,
+            ])->count();
         if ($rejectedCount > 0) {
             $pendingTasks[] = [
                 'icon'  => 'fa-solid fa-exclamation-triangle',
@@ -288,18 +340,41 @@
             ];
         }
 
-        // Reviewer: graded (completed)
+        // Reviewer: accepted (claimed) projects whose report is ready to grade
+        // now — i.e. a progress or final report exists AND its deadline has
+        // passed (the same conditions save-progress-grade / save-final-grade
+        // enforce). Distinct from the "pending your review" queue above, which
+        // counts every assigned project that is not yet Graded.
         $pendingGrading = \App\Models\Project::whereHas('reviewers', function ($q) use ($user) {
-            $q->where('user_id', $user->id);
+            $q->where('user_id', $user->id)->whereNotNull('claimed_at');
         })->visibleProgram()
           ->whereDoesntHave('statusHistories', function ($q) {
               $q->where('status', \App\Models\Project::STATUS_GRADED);
-          })->count();
-        if ($pendingGrading > 0) {
+          })
+          ->where(function ($q) {
+              $q->where(function ($qq) {
+                  $qq->whereHas('submissions', function ($s) {
+                      $s->where('type', 'progress');
+                  })->whereHas('program', function ($p) {
+                      $p->whereNull('prog_rpt_deadline')->orWhere('prog_rpt_deadline', '<', now());
+                  });
+              })->orWhere(function ($qq) {
+                  $qq->whereHas('submissions', function ($s) {
+                      $s->where('type', 'final');
+                  })->whereHas('program', function ($p) {
+                      $p->whereNull('final_rpt_deadline')->orWhere('final_rpt_deadline', '<', now());
+                  });
+              });
+          })
+          ->count();
+        // Only surface "ready to grade" when it is a strict subset of the
+        // queue — if every pending project is already ready, the second task
+        // would just repeat the first one for the same records.
+        if ($pendingGrading > 0 && $pendingGrading < $pendingProposals) {
             $pendingTasks[] = [
                 'icon'  => 'fa-solid fa-star',
                 'color' => '#7c3aed',
-                'label' => $pendingGrading . ' accepted project' . ($pendingGrading > 1 ? 's' : '') . ' pending grading',
+                'label' => $pendingGrading . ' accepted project' . ($pendingGrading > 1 ? 's' : '') . ' ready to grade',
                 'url'   => route('projects.available'),
             ];
         }
@@ -520,14 +595,8 @@
 
 <div id="aboutDropdown" class="fluent-dropdown" style="display:none;">
 <div class="dropdown-header"><strong>About RTS</strong></div>
-<a class="dropdown-item" href="{{ route('about.help') }}"><i class="fa-solid fa-circle-question"></i> Help Center</a>
-    @if(auth()->user()->isAdmin() || auth()->user()->isLPI())
-    <a class="dropdown-item" href="{{ route('about.help', ['tab' => 'lpi']) }}"><i class="fa-solid fa-user-tie"></i> LPI Manual</a>
-    @endif
-    @if(auth()->user()->isAdmin() || auth()->user()->isReviewer())
-    <a class="dropdown-item" href="{{ route('about.help', ['tab' => 'reviewer']) }}"><i class="fa-solid fa-user-check"></i> Reviewer Manual</a>
-    @endif
-    <a class="dropdown-item" href="{{ route('about.team') }}"><i class="fa-solid fa-users"></i> Our Team</a>
+            <a class="dropdown-item" href="{{ route('about.help') }}"><i class="fa-solid fa-circle-question"></i> Help Center</a>
+            <a class="dropdown-item" href="{{ route('about.team') }}"><i class="fa-solid fa-users"></i> Our Team</a>
 </div>
 
 {{-- Nationality setup modal — non-dismissable until nationality is set --}}
@@ -638,12 +707,71 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+{{-- DataTables export back-ends: SheetJS for Excel, jsPDF + AutoTable for PDF --}}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+{{-- DataTables defaults (buttons + export back-ends) are applied HERE, right
+     after the libs load, NOT inside DOMContentLoaded: page scripts use
+     $(document).ready which fires BEFORE a DOMContentLoaded listener registered
+     later in this file, so defaults set there arrive too late for page tables. --}}
+<script>
+    if (window.jQuery && jQuery.fn.dataTable) {
+        jQuery.extend(jQuery.fn.dataTable.defaults, {
+            dom: '<"dt-toolbar"<"dt-buttons"B><"dt-search"f>>' +
+                 '<"dt-table-wrap"t>' +
+                 '<"dt-bottom"<"dt-info"i><"dt-paginate"p>>',
+            buttons: [
+                { extend: 'copy', text: '<i class="fa-regular fa-copy"></i> Copy', className: 'btn btn-dt',
+                  exportOptions: { columns: ':visible:not(.no-export)' } },
+                { extend: 'csv', text: '<i class="fa-regular fa-file-lines"></i> CSV', className: 'btn btn-dt',
+                  exportOptions: { columns: ':visible:not(.no-export)' } },
+                { extend: 'excel', text: '<i class="fa-regular fa-file-excel"></i> Excel', className: 'btn btn-dt',
+                  exportOptions: { columns: ':visible:not(.no-export)' } },
+                { extend: 'pdf', text: '<i class="fa-regular fa-file-pdf"></i> PDF', className: 'btn btn-dt',
+                  orientation: 'landscape', pageSize: 'A4',
+                  exportOptions: { columns: ':visible:not(.no-export)' } },
+                { extend: 'print', text: '<i class="fa-regular fa-print"></i> Print', className: 'btn btn-dt',
+                  exportOptions: { columns: ':visible:not(.no-export)' } }
+            ],
+            language: {
+                search: 'Search:',
+                searchPlaceholder: 'Search records…',
+                lengthMenu: 'Show _MENU_ entries',
+                info: 'Showing _START_ to _END_ of _TOTAL_ records',
+                infoEmpty: 'No records available',
+                infoFiltered: '(filtered from _MAX_ total records)',
+                paginate: {
+                    previous: '<i class="fa-solid fa-chevron-left"></i>',
+                    next: '<i class="fa-solid fa-chevron-right"></i>'
+                }
+            },
+            pageLength: 25,
+            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
+            initComplete: function() {
+                var searchInput = jQuery(this).closest('.dataTables_wrapper').find('.dataTables_filter input');
+                searchInput.attr('placeholder', 'Search records…');
+            }
+        });
+    }
+</script>
 
 {{-- Bootstrap JS (for modal functionality only, no styles) --}}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
 
 {{-- Chart.js (dashboard charts) --}}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+{{-- Base URL helper: the app may run in a subfolder (e.g. /lrts), so every
+     hand-written root-relative URL must go through appUrl() to resolve
+     against the app base instead of the domain root. --}}
+<script>
+    window.APP_BASE = @json(rtrim(url('/'), '/'));
+    function appUrl(path) {
+        return window.APP_BASE + (path.charAt(0) === '/' ? path : '/' + path);
+    }
+</script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -828,41 +956,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('click', function() {
         document.querySelectorAll('.fluent-dropdown').forEach(function(d) { d.style.display = 'none'; });
     });
-
-    // DataTable defaults with Buttons + search
-    if ($.fn.dataTable) {
-        $.extend($.fn.dataTable.defaults, {
-            dom: '<"dt-toolbar"<"dt-buttons"B><"dt-search"f>>' +
-                 '<"dt-table-wrap"t>' +
-                 '<"dt-bottom"<"dt-info"i><"dt-paginate"p>>',
-            buttons: [
-                { extend: 'copy', text: '<i class="fa-solid fa-copy"></i> Copy', className: 'btn btn-dt' },
-                { extend: 'csv', text: '<i class="fa-solid fa-file-csv"></i> CSV', className: 'btn btn-dt' },
-                { extend: 'excel', text: '<i class="fa-solid fa-file-excel"></i> Excel', className: 'btn btn-dt' },
-                { extend: 'pdf', text: '<i class="fa-solid fa-file-pdf"></i> PDF', className: 'btn btn-dt' },
-                { extend: 'print', text: '<i class="fa-solid fa-print"></i> Print', className: 'btn btn-dt' }
-            ],
-            language: {
-                search: 'Search:',
-                searchPlaceholder: 'Search records…',
-                lengthMenu: 'Show _MENU_ entries',
-                info: 'Showing _START_ to _END_ of _TOTAL_ records',
-                infoEmpty: 'No records available',
-                infoFiltered: '(filtered from _MAX_ total records)',
-                paginate: {
-                    previous: '<i class="fa-solid fa-chevron-left"></i>',
-                    next: '<i class="fa-solid fa-chevron-right"></i>'
-                }
-            },
-            pageLength: 25,
-            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'All']],
-            initComplete: function() {
-                // Style the search input
-                var searchInput = $(this).closest('.dataTables_wrapper').find('.dataTables_filter input');
-                searchInput.attr('placeholder', 'Search records…');
-            }
-        });
-    }
+    // DataTable defaults (buttons + export back-ends) are set in the standalone
+    // block right after the DataTables libs above — not here, because page
+    // scripts use $(document).ready which fires before this listener.
 });
 </script>
 
@@ -903,7 +999,7 @@ function openWorkflowModal(projectId, action, size, queryString) {
     $('body').append(modal);
     modal.modal('show');
 
-    var url = '/workflow/modal/' + action + '/' + projectId;
+    var url = appUrl('/workflow/modal/' + action + '/' + projectId);
     if (queryString) {
         url += '?' + queryString;
     }
@@ -1026,7 +1122,7 @@ function submitAssignment() {
     data.append('project_id', projectId);
     data.append('reviewer_ids[]', reviewerSelect.value);
 
-    fetch('/workflow/assign-reviewers', {
+    fetch(appUrl('/workflow/assign-reviewers'), {
         method: 'POST',
         headers: {
             'Accept': 'application/json'
@@ -1096,7 +1192,7 @@ function submitProposalDecision() {
         data.append('reject_reason', reasonEl.value.trim());
     }
 
-    fetch('/workflow/submit-decision', {
+    fetch(appUrl('/workflow/submit-decision'), {
         method: 'POST',
         headers: {
             'Accept': 'application/json',
@@ -1129,7 +1225,7 @@ function submitProposalDecision() {
  */
 function recordStatus(projectId, action) {
     $.ajax({
-        url: '/workflow/transition',
+        url: appUrl('/workflow/transition'),
         method: 'POST',
         data: {
             _token: '{{ csrf_token() }}',
@@ -1189,7 +1285,7 @@ function showToast(type, message) {
 /**
  * Confirm and execute un-assignment of a reviewer from a project.
  */
-function confirmUnassignReviewer(projectId) {
+function confirmUnassignReviewer(projectId, reviewerId) {
     // Cleanup any previous modals
     $('#workflowModal').remove();
     $('.modal-backdrop').remove();
@@ -1204,15 +1300,15 @@ function confirmUnassignReviewer(projectId) {
         + '</div>'
         + '<h5 style="margin:0 0 8px;font-weight:700;font-size:17px;color:#1e1b4b;">Un-assign Reviewer?</h5>'
         + '<p style="margin:0 0 20px;font-size:13px;color:#64748b;line-height:1.5;">'
-        + 'This will remove the currently assigned reviewer from this project. '
-        + 'You can assign a new reviewer afterwards.</p>'
+        + 'This will remove the selected reviewer from this project. '
+        + 'Other assigned reviewers (if any) stay on the project.</p>'
         + '<div style="margin-bottom:20px;text-align:left;">'
         + '<label style="font-size:11px;font-weight:600;display:block;margin-bottom:6px;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Reason (optional)</label>'
         + '<textarea id="unassignReason" rows="2" maxlength="2000" style="width:100%;font-size:13px;border:2px solid #e2e8f0;border-radius:8px;padding:10px 12px;color:#1e1b4b;resize:none;font-family:inherit;" placeholder="Optional reason for un-assigning..."></textarea>'
         + '</div>'
         + '<div style="display:flex;gap:10px;justify-content:center;">'
         + '<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal" style="padding:10px 20px;border-radius:8px;font-weight:600;font-size:13px;">Cancel</button>'
-        + '<button type="button" class="btn btn-sm" id="confirmUnassignBtn" style="padding:10px 24px;border-radius:8px;font-weight:600;font-size:13px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(239,68,68,.3);" onclick="executeUnassignReviewer(' + projectId + ')">'
+        + '<button type="button" class="btn btn-sm" id="confirmUnassignBtn" style="padding:10px 24px;border-radius:8px;font-weight:600;font-size:13px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(239,68,68,.3);" onclick="executeUnassignReviewer(' + projectId + ', ' + (reviewerId || 'null') + ')">'
         + '<i class="fas fa-user-minus"></i> Un-assign'
         + '</button>'
         + '</div>'
@@ -1224,7 +1320,7 @@ function confirmUnassignReviewer(projectId) {
     modal.modal('show');
 }
 
-function executeUnassignReviewer(projectId) {
+function executeUnassignReviewer(projectId, reviewerId) {
     var btn = document.getElementById('confirmUnassignBtn');
     var errorDiv = document.getElementById('unassignError');
     var reason = document.getElementById('unassignReason').value;
@@ -1236,9 +1332,10 @@ function executeUnassignReviewer(projectId) {
     var data = new FormData();
     data.append('_token', document.querySelector('meta[name="csrf-token"]').content);
     data.append('project_id', projectId);
+    if (reviewerId) data.append('reviewer_id', reviewerId);
     if (reason.trim()) data.append('reason', reason.trim());
 
-    fetch('/workflow/unassign-reviewer', {
+    fetch(appUrl('/workflow/unassign-reviewer'), {
         method: 'POST',
         headers: { 'Accept': 'application/json' },
         body: data,
@@ -1297,7 +1394,7 @@ $(document).on('click', '.open-grade-modal', function() {
 
     // Load the view-grade partial via AJAX
     $.ajax({
-        url: '/workflow/view-grade/' + projectId,
+        url: appUrl('/workflow/view-grade/' + projectId),
         method: 'GET',
         success: function(response) {
             if (response.success) {
@@ -1352,6 +1449,13 @@ $(document).on('click', '.open-grade-modal', function() {
                         'date'      => 'October 2026',
                         'tagline'   => 'Mandatory Nationality on First Login',
                         'changes'   => [
+                            'Public landing footer — the Qatar University logo now renders white on transparency to match and contrast with the dark footer',
+                            'Public landing page — removed the illustrated sketch from the hero while preserving the title, slogans, sign-in action and responsive layout',
+                            'Pending Reviews — admins can now review submitted progress/final reports even when no reviewer is assigned; the assigned-reviewer cell shows a dash for unassigned projects',
+                            'Research Calls list — Grant Code is now plain text with Grant Type beneath it; added the Progress Report 2 Deadline column alongside the other report deadlines',
+                            'Edit Research Call modal now correctly pre-fills all three existing deadline fields; saving the modal no longer clears deadlines because the date data attributes now match the JavaScript keys',
+                            'Research Call Summary — added a Progress Report 2 status column for extended-progress projects, with completed/pending totals and an LPI reminder action; projects without Progress Report 2 enabled show N/A',
+                            'Admin Upload Reports — when the current workflow status shows a rejected Progress Report, admin uploads are saved as v2 while retaining the v1 submission and file; subsequent admin re-uploads replace only v2 and record progress_added in status history. Added a Rejected Progress filter, a compact notice that clears after v2 is uploaded, and green Progress, Progress 2 and Final badges show multiple versions together (e.g. "Uploaded v1,v2")',
                             'Users without a saved nationality are now met with a non-dismissable modal right after login (both SSO and password logins) that must be completed with a nationality choice before the application can be used',
                             'Research Pillars and Colleges/Institutes pages restyled to match the Grant Types page — same table name styling, italic description captions, shared chip/badge look for sub-pillars and departments, and primary-colored Edit buttons; pillar delete now asks for confirmation',
                             'AI Assistant — system prompt expanded with the report rejection workflows (Report / Missing-Invalid Ethical Approval / Other types, admin review & resubmission flow, and edit-in-place grading flow)',
@@ -1399,6 +1503,39 @@ $(document).on('click', '.open-grade-modal', function() {
                             'Fixed editing a research call — the Edit Deadlines modal submitted an empty program title, causing "Column program_title cannot be null"; the stray field is removed and the update now ignores an empty title so the existing name is preserved',
                             'Projects list — added an "LPI" column after Project ID (showing the LPI name with their email beneath it) and merged the separate Grant and Category columns into a single "Grant" column (grant code with the grant type beneath it)',
                             'Report Cards page now lists only graded projects — a project appears only when its Progress and/or Final report grading is completed (publish status no longer "pending"); an info notice states that only progress/final graded projects are displayed here, and the cycle/grant filter dropdowns are built from that same graded set',
+                            'Help Center gained a "System workflow" tab — an illustrated end-to-end walkthrough of the whole lifecycle available to every role (guests included): the happy-path flow and rejection loop diagrams, a phases/actors/statuses table, assignment & per-reviewer claiming, grading drafts and the consensus rules, all three rejection scenarios, extended progress (PR2), the full status reference, notification-bell tasks per role, event e-mails and deadline/locking rules; the General manual\'s descriptions were refreshed to match the new tab set',
+                            'Projects list Status filter now offers every workflow status (built from the canonical status list: Imported, Assigned, Claimed, Proposal Rejected, Progress Added/Reviewed/Rejected, PR2 variants, Final Added/Rejected, Graded, Reviewer Unassigned, plus the computed Unregistered) and each option filters by the project\'s LATEST status — the exact value shown in its Status pill; previously only Unregistered/Registered/Claimed were selectable and those two matched any project that had ever passed through the state',
+                            'LPI & Reviewer manuals + AI assistant prompt aligned with the current workflow — the reviewer manual no longer claims a single-reviewer model (several reviewers can grade the same project, each with an invisible-to-others grade set; claims are per reviewer; the stage advances only once every assigned reviewer submitted), both manuals now describe the notification-bell pending tasks (admin rejection review queue, LPI resubmission task that clears on resubmit), and the AI prompt gained a Notification Bell section plus updated lifecycle/grade-behavior/assignment/rejection-flow wording',
+                            'Notification bell fixed — the admin now gets a "N rejected report(s) awaiting your review" pending task whenever a report-type rejection still needs his review (same rules as the Review Rejection action: latest of the rejection round is still a rejection, ethical/other rejections skip it, graded projects never count), so a rejected progress/final report actually surfaces on the bell; the LPI\'s "needing resubmission" task now keys on the latest workflow status instead of an all-time check that permanently hid it for any project that had ever uploaded a progress report — it now appears on rejection and clears automatically on resubmission',
+                            'Workflow hardening (audit fixes) — grading now requires the reviewer\'s OWN claim server-side (direct URL/POST can no longer skip Accept/Reject); un-assigning a reviewer re-runs the consensus so removing a blocking reviewer completes the stage instead of wedging it, and an admin may now also pull a claimed-but-silent reviewer (with reason, notification and audit status); a completed stage is frozen (a reviewer added later stores his set but can never re-open or flip the status); proposal accepted/rejected mails now fire once per round instead of once per reviewer; the LPI proposal-upload API refuses non-admins (policy enforced, not just hidden); removed the legacy consensus-bypass endpoints /grading/{id}/submit-grade, /grading/{id}/final-grade and /workflow/submit-progress-review',
+                            'Consensus grading — the workflow status now advances only when EVERY assigned reviewer has submitted his own set for a stage: a first (or early) submission keeps the stage open instead of closing it for the other reviewers, any rejected set wins when the consensus completes (reason/type persisted on the grading row), the LPI "graded" email fires once at completion, and the grading form availability is now per-user (each reviewer\'s form stays open until he personally submits); Evaluate Projects became the admin\'s personal queue (rows leave only once HE submits), final grading follows the same rules, and a v2 resubmission now re-opens EVERY reviewer\'s set',
+                            'Help Center menu & tabs tidied — the top navigation "?" dropdown now only lists Help Center and Our Team (the direct LPI/Reviewer manual links were removed), and the Help Center itself shows role-based tabs: an LPI sees only General + LPI, a reviewer only General + Reviewer, admins keep all four; opening a restricted tab by URL (e.g. ?tab=admin) falls back to the user\'s own manual',
+                            'LPI & Admin manuals updated to match current behaviour — the LPI manual no longer lists "Upload Proposal" as an LPI action (proposals are uploaded/managed by the research office only; view & download remain) and now states that commitments are set at registration and can only be updated by an administrator afterwards (registration table, project-page tour, glossary and troubleshooting updated); the admin manual gained the matching "Edit Commitments" entry under Grading Oversight',
+                            'Multi-reviewer grading — a project can now have several reviewers assigned at the same time: the admin adds reviewers alongside the existing ones (Assign modal, Reviewer Assignment page and Projects action menu all gained per-reviewer Add/Un-assign controls), each reviewer claims (Accept/Reject Proposal) for himself before his own grading form unlocks, and every reviewer/admin works on his own independent grading set — a reviewer sees only his own draft (editable until he saves, read-only afterwards) or a blank form if he has not started, while the earlier reviewer\'s scores stay stored; new claimed_at column on projects_reviewers with backfill',
+                            'Fixed AJAX calls failing with "Failed to load action." after moving to XAMPP — hand-written root-relative URLs in JavaScript (workflow modals incl. Accept/Reject Proposal, proposal uploads, register wizard, view-grade, email-template previews, teams edit) and in the grading save forms now resolve against the app base URL, so every feature works when the app runs in a subfolder such as /lrts',
+                            'Grading page — admins can now edit a project\'s commitments: an "Edit Commitments" button on the Commitments tab opens an inline editor (Publications / IP & Innovation / Students & Training groups) with Save/Cancel; saving updates the commitments and refreshes the comparison table — reviewers keep full view but never see the edit controls (enforced server-side, admin-only route)',
+                            'Consistent project ordering across the app — every project table (Projects list, My Projects, My Assignments, Reviewer Assignment, Extend Progress, Evaluate Projects, Upload Reports, File Explorer, Graded Projects, Report Cards, Budget Utilization, dashboards and progress reports) is now sorted by research call title A→Z and then by project ID ascending, instead of the mixed date/received-order sorting used before',
+                            'Research Calls page — the Edit Deadlines modal is now wider (760px) with the three deadline fields in a single row, and opens with the line "Editing deadlines of the research call <title>" where the research call title is bold and highlighted',
+                            'Reviewer Assignment, Extend Progress Report, Upload Reports, Evaluate Projects (Pending Reviews) and Report Cards pages — the "LPI" column now sits right after Project ID and shows the LPI name with their email beneath it (matching the projects list styling)',
+                            'LPI uploads hardened — Progress Report 2 uploads now require the project\'s extended-progress flag server-side (mirroring the grading-side gate), so the PR2 type that the UI hides for non-extended projects can no longer be posted directly to the upload endpoint',
+                            'Resubmission window precision fixed — the upload/form lock checks (and the admin rejection review) now compare status-history records by their monotonic id instead of created_at, so a reviewer grading in the same second as the admin\'s "Send to LPI" review reliably closes the resubmission window; previously same-second actions could leave the LPI upload unlocked after the project had already been re-graded',
+                            'Automated test suite extended — new LpiReportUploadTest suite (25 scenarios from docs/TEST-SCENARIOS-LPI-UPLOADS.md): progress/final/PR2/readiness/ethical uploads, deadline locks & resubmission unlocks, owner/guest/role gates, v1 replace semantics, the full rejection → admin review → v2 chain (v1 kept, every reviewer set archived & re-opened, window closing after the next grading) and the project-data freeze after the final deadline',
+                            'Fixed Graded Projects cycle filter — the Cycle dropdown filtered on a non-existent projects.cycle_id column (SQL error / empty page); it now resolves through the program\'s cycle, so filtering the Graded Projects list by cycle works',
+                            'Automated test suite extended — new ReviewerGradingTest suite (39 scenarios from docs/TEST-SCENARIOS-REVIEWER-GRADING.md): grading-page access gates, progress/final save validation & deadline/stage/extended-progress locks, draft-vs-submit publish semantics, the final total (= scoreA+scoreB+scoreC), the verification AJAX endpoint (IDOR all-or-nothing guard + admin bypass), the Graded Projects page, the View-Grade modal and the admin Evaluate Projects queue (per-admin rows, drafts still owed, reviewer submissions not clearing the admin\'s row)',
+                            'Full lifecycle regression added (scenario I-01 in docs/TEST-SCENARIOS-GRADING.md) — one end-to-end test covering: reviewer rejects the proposal → removed & blocked from re-assignment → admin re-assigns a different reviewer → two-reviewer consensus where one accepts and one rejects → admin forwards the rejection → LPI uploads v2 (both sets archived & re-opened, claims preserved) → the rejecting reviewer re-grades v2 and consensus completes',
+                            'Fixed Ethical/Other rejection deadlock — an ethical or "other" report rejection used to leave the project stuck at "rejected" forever: the reviewer\'s in-place edit never cleared the status, so the LPI\'s progress upload stayed locked indefinitely. Re-evaluating the stage on the reviewer\'s re-grade now resolves the rejection (status advances, the upload hold lifts); a different or late reviewer still cannot reopen a completed stage',
+                            'Ethical/Other rejections now route through the admin — previously an ethical or "other" report rejection was invisible to the admin (no bell task, no Review Rejection action) and could only be resolved by the reviewer editing their own grading. Now the admin is notified, reviews it and forwards it to the LPI just like a report rejection; the LPI is asked to re-send the ETHICAL APPROVAL document (never the progress/final report, whose upload stays locked), after which the reviewer re-reviews and the rejection resolves',
+                            'Final report rejection lifecycle regression added (scenario I-03 in docs/TEST-SCENARIOS-GRADING.md) — end-to-end test covering: reviewer rejects the final report → consensus records final_rejected → admin forwards → LPI uploads a final v2 past the deadline (v1 kept, every final grading set archived & reset) → reviewer re-grades the v2 → the project reaches the terminal Graded status',
+                            'Ethical rejection on the final report verified (scenario I-04) — the admin forwards it, the LPI re-sends the ethical approval (both the final and readiness uploads stay locked, since readiness shares the final rejection hold), and the reviewer\'s re-review completes the project to Graded',
+                            'LPI upload & outcomes hardening (bug fixes) — (a) a readiness-only final-form submit no longer records "Final Added" (the reviewer was blocked by a status that claimed a final report existed); (b) an upload\'s download link now pins submission_id, so a v2 upload no longer returns a URL serving the stale v1 file; (c) report uploads now write the new file BEFORE retiring the old rows and check the write result, so a failed write can no longer destroy the previous version and leave a dangling record; (d) saveOutcomes now upserts instead of delete-and-reinsert — re-saving can no longer wipe rows added record-by-record (resetting verification flags, scores and DOI links, or deleting IP/contribution rows outright); (e) a text-only progress form save no longer resets the reviewers\' in-progress grading set (only a new uploaded file does)',
+                            'Auto-grade integrity fix — the final-report auto-grade (sections A and B) now only counts outcomes that have actually been verified (by CrossRef or by the reviewer\'s Verify toggle); previously any unverified outcome raised the score, so a batch of unverified entries could inflate the reviewer\'s auto-grade hint',
+                            'Readiness report now bound to the FINAL submission period — it was gated by the Progress Report 2 deadline (and the UI gated it by the final deadline), so the two disagreed and a readiness upload could be refused (or allowed) at the wrong time. Readiness now follows the final report deadline and rejection hold, matching the UI and the rule that outcomes/students/readiness/ethical/final are all bound to the final window (progress stays bound to the progress period)',
+                            'Full LPI submission-lifecycle regression added (scenario H-01 in docs/TEST-SCENARIOS-LPI-UPLOADS.md) — one end-to-end test covering both submission periods: inside them the LPI uploads and replaces the progress/final reports, uploads readiness + ethical approval, and creates outcomes/students; once each period closes its own artefacts and the project data are locked (refused uploads leave the stored files untouched)',
+                            'Research Call report booklet — a printable A4 booklet page at /programs/{id}/booklet (admin-only) for any research call, with the QU research logo and compact project-detail report styling: printer-safe Arial/Helvetica typography, 9px body text, 8.5px tables, maroon hairline section headings, compact spacing and a print-only Back / Print / Save PDF toolbar. It retains the call-specific content (description, cumulative chart, summary, workflow, grading, budget, research output, people arranged in two columns and project appendix) and now flows continuously across A4 pages, repeating table headers without forced breaks between content groups. Admins can open it from each research call\'s Actions menu or directly by URL',
+                            'DataTable export buttons (Copy / CSV / Excel / PDF / Print) — every data table in the app now shows a compact, left-aligned export toolbar with light-weight labels, Font Awesome line (regular) icons and a hairline light-maroon border; Excel uses SheetJS and PDF uses jsPDF + AutoTable (both newly loaded). Columns tagged with the no-export class (e.g. an Actions column) are excluded from every export, PDF exports use landscape A4, and the DataTables defaults are now applied immediately after the libraries load instead of inside a DOMContentLoaded listener — previously page tables initialized via $(document).ready inherited the defaults too late, so the export buttons never appeared. Pages that override the DataTables dom option had the buttons slot (B) added so they pick up the same toolbar',
+                            'Cycle summary report — the "Send Email Reminders" buttons verified and covered by regression tests (guest/admin gating, the MAIL_ENABLED guard, column validation, LPI and reviewer recipient routing, and the no-pending short-circuit); each queued ProjectReminderMail is matched by a ReportReminderSent log row. Note: MAIL_ENABLED is currently false in .env, so the buttons report "Email sending is disabled" until it is switched on',
+                            'Fixed the reviewer notification bell showing the same task twice — "N projects pending your review" and "N accepted projects pending grading" ran an identical query (assigned + not Graded), so both always listed the same projects. "Ready to grade" now counts only projects the reviewer has accepted (claimed) AND whose progress/final report exists with its deadline passed, and it is only shown when that is a strict subset of the queue — so when every pending project is already ready the bell shows a single task instead of repeating the same records',
+                            'Printable project detail page — the project detail page (/projects/{id}) gained a "Printable Version" button that opens a compact A4 summary at /projects/{id}/printable. Print-first, dense layout with printer-safe typography, hairline rules, complete labels and repeating table headers. The QU-logo report shows Commitments as a full-width section with Publications in the left column and IP & Innovation plus Students & Training in the right; full-width Project files follow immediately, then outcome tables. Binary commitment verification values display as Yes/No and commitment statuses match the detail page (Behind / In Progress / On Track). Grading tables give comments more width for longer text. Status History was removed and reviewer names are omitted from grading. The detail-page Actions, Printable Version and Back to Projects controls use compact sizing. The print toolbar provides Back / Print / Save PDF, reviewers retain the restricted view (no Outcomes/Grading), and projects without a research call remain supported',
                         ],
                     ],
                     [

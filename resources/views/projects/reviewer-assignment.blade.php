@@ -87,7 +87,8 @@
         @endphp
         <div class="panel-head" style="border-bottom:1px solid var(--ink-100);background:var(--sand-50);">
             <span style="font-size:13px;color:var(--ink-500);">
-                <i class="fas fa-info-circle"></i> Select a reviewer for unassigned projects, then click
+                <i class="fas fa-info-circle"></i> Select a reviewer per project — for an already-assigned project the selected reviewer is
+                <strong>added alongside</strong> the existing one (each reviews independently). Then click
                 <strong>Bulk Assign</strong>. Projects with no reviewer selected will be skipped.
                 <span style="margin-left:12px;">
                     <span class="pill review" style="font-size:11px;">{{ $assignedCount }} Assigned</span>
@@ -111,6 +112,7 @@
                     <thead>
                         <tr>
                             <th style="min-width:130px;">Project ID</th>
+                            <th style="min-width:180px;">LPI</th>
                             <th>Title</th>
                             <th>Grant</th>
                             <th>Category</th>
@@ -147,6 +149,14 @@
                         @endphp
                         <tr>
                             <td><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
+                            <td>
+                                @if($cp->lpi)
+                                    <div style="font-weight:500;">{{ $cp->lpi->name }}</div>
+                                    <div style="font-size:11px;color:var(--color-ink-400);">{{ $cp->lpi->email }}</div>
+                                @else
+                                    <span style="font-size:12px;color:var(--ink-400);font-style:italic;">—</span>
+                                @endif
+                            </td>
                             <td><span style="font-weight:500;">{{ $cp->title }}</span></td>
                             <td><span class="pill info" style="font-size:11px;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></td>
                             <td><span class="pill info" style="font-size:11px;">{{ ucfirst($cp->program->grant->category ?? 'N/A') }}</span></td>
@@ -162,29 +172,42 @@
                             </td>
                             <td>
                                 @if($hasReviewer)
-                                    @php
-                                        $hasAccepted = false;
-                                    @endphp
-                                    @if(!$hasAccepted)
-                                        <button type="button" class="btn-danger btn-sm" title="Un-assign reviewer" onclick="confirmUnassignReviewer({{ $cp->id }})">
-                                            <i class="fas fa-user-minus"></i> Un-assign
-                                        </button>
-                                    @else
-                                        <span class="pill accepted" style="font-size:11px;"><i class="fas fa-check"></i> Accepted</span>
-                                    @endif
+                                    @foreach($assignedReviewers as $reviewer)
+                                        <span class="pill review" style="font-size:11px;margin-bottom:2px;">
+                                            {{ $reviewer->name }}@if($reviewer->pivot->claimed_at) <i class="fas fa-check" title="Claimed" style="font-size:9px;"></i> @endif
+                                        </span>
+                                    @endforeach
                                 @else
-                                    <select name="assignments[{{ $index }}][reviewers][]" class="reviewer-select">
-                                        <option value="">— Select Reviewer —</option>
-                                        @foreach($reviewerGroups as $pillarName => $pillarReviewers)
-                                            <optgroup label="{{ $pillarName }}">
-                                                @foreach($pillarReviewers as $reviewer)
-                                                    <option value="{{ $reviewer->id }}">{{ $reviewer->name }}</option>
-                                                @endforeach
-                                            </optgroup>
-                                        @endforeach
-                                    </select>
-                                    <input type="hidden" name="assignments[{{ $index }}][project_id]" value="{{ $cp->id }}">
+                                    <span style="font-size:12px;color:var(--ink-400);font-style:italic;">Unassigned</span>
                                 @endif
+                            </td>
+                            <td>
+                                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+                                    @if($hasReviewer)
+                                        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                                            @foreach($assignedReviewers as $reviewer)
+                                                <button type="button" class="btn-danger btn-sm" title="Un-assign {{ $reviewer->name }}" onclick="confirmUnassignReviewer({{ $cp->id }}, {{ $reviewer->id }})">
+                                                    <i class="fas fa-user-minus"></i> {{ $assignedReviewers->count() > 1 ? $reviewer->name : 'Un-assign' }}
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                        <select name="assignments[{{ $index }}][reviewers][]" class="reviewer-select">
+                                            <option value="">{{ $hasReviewer ? '— Add reviewer —' : '— Select Reviewer —' }}</option>
+                                            @foreach($reviewerGroups as $pillarName => $pillarReviewers)
+                                                <optgroup label="{{ $pillarName }}">
+                                                    @foreach($pillarReviewers as $reviewer)
+                                                        @if(!$assignedReviewers->pluck('id')->contains($reviewer->id))
+                                                            <option value="{{ $reviewer->id }}">{{ $reviewer->name }}</option>
+                                                        @endif
+                                                    @endforeach
+                                                </optgroup>
+                                            @endforeach
+                                        </select>
+                                        <input type="hidden" name="assignments[{{ $index }}][project_id]" value="{{ $cp->id }}">
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         @endforeach
@@ -243,11 +266,11 @@
 <script>
     $(document).ready(function() {
         var table = $('#projectsTable').DataTable({
-            dom: 'rt<"bottom"lip>',
-            order: [[0, 'asc']],
+            dom: 'Brt<"bottom"lip>',
+            order: [],
             columnDefs: [
-                { orderable: false, targets: [5, 6] },
-                { searchable: false, targets: [5, 6] }
+                { orderable: false, targets: [6, 7] },
+                { searchable: false, targets: [6, 7] }
             ]
         });
 

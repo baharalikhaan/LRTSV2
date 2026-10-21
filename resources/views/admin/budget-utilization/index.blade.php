@@ -122,9 +122,9 @@ $(document).ready(function() {
             { data: 'utilization', name: 'utilization', title: 'Utilization', orderable: false, searchable: false, width: '140px' },
             { data: 'action', name: 'action', title: 'Action', orderable: false, searchable: false, className: 'text-center', width: '90px' },
         ],
-        order: [[0, 'desc']],
+        order: [],
         pageLength: 15,
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         drawCallback: function() {
             $('[data-bs-toggle="tooltip"]').tooltip('dispose').tooltip();
         }

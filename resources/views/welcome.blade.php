@@ -8,7 +8,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
-    <link rel="stylesheet" href="/css/qu-theme.css">
+    <link rel="stylesheet" href="{{ asset('css/qu-theme.css') }}">
 
     <style>
         /* ─── Base ─── */
@@ -43,7 +43,7 @@
             display: flex; align-items: center; gap: 18px;
         }
         .wk-brand { display: flex; align-items: center; gap: 14px; text-decoration: none; min-width: 0; }
-        .wk-brand img { width: clamp(130px, 16vw, 176px); height: auto; display: block; }
+        .wk-brand img { width: clamp(200px, 26vw, 300px); height: auto; display: block; }
         .wk-brand-text { line-height: 1.15; min-width: 0; }
         .wk-brand-text strong {
             display: block; font-size: 14.5px; font-weight: 700; color: var(--ink-900);
@@ -122,9 +122,6 @@
         .wk-btn-gold:hover { background: var(--gold-400); border-color: var(--gold-400); }
         .wk-btn-ghost { background: transparent; color: #fff !important; border: 1px solid rgba(255,255,255,.45); }
         .wk-btn-ghost:hover { background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.7); }
-
-        .wk-hero-art { flex: 1 1 40%; min-width: 0; display: flex; align-items: flex-end; justify-content: center; }
-        .wk-hero-art img { width: 100%; max-width: 480px; height: auto; display: block; }
 
         /* ─── Sections ─── */
         .wk-sec { padding: clamp(52px, 8vh, 84px) clamp(18px, 4vw, 40px); }
@@ -267,7 +264,7 @@
             display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
         }
         .wk-footer-brand { display: flex; align-items: center; gap: 12px; }
-        .wk-footer-brand img { width: clamp(110px, 13vw, 150px); height: auto; opacity: .95; }
+        .wk-footer-brand img { width: clamp(150px, 19vw, 230px); height: auto; opacity: .95; filter: brightness(0) invert(1); }
         .wk-footer-brand div { font-size: 12px; line-height: 1.5; }
         .wk-footer-brand b { display: block; color: #fff; font-size: 13px; }
         .wk-footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
@@ -299,8 +296,6 @@
             .wk-kicker::before { display: none; }
             .wk-slogans, .wk-hero-ctas { justify-content: center; }
             .wk-hero p.lead { margin-inline: auto; }
-            .wk-hero-art { order: -1; }
-            .wk-hero-art img { max-width: 320px; }
             .wk-grid-3 { grid-template-columns: 1fr; }
         }
         @media (max-width: 560px) {
@@ -317,12 +312,8 @@
 {{-- ═══════ Sticky header — QU identity on every scroll ═══════ --}}
 <header class="wk-nav">
     <div class="wk-nav-inner">
-        <a class="wk-brand" href="/">
-            <img src="/images/logo-maroon.png" alt="Qatar University">
-            <span class="wk-brand-text">
-                <strong>Research Tracking System</strong>
-                <span>Office of Research &amp; Graduate Studies</span>
-            </span>
+        <a class="wk-brand" href="{{ url('/') }}">
+            <img src="{{ asset('images/research_logo.png') }}" alt="Qatar University">
         </a>
         <button class="wk-burger" id="wk-burger" aria-label="Toggle menu" aria-expanded="false">
             <i class="fa-solid fa-bars"></i>
@@ -361,9 +352,6 @@
                 </div>
             </div>
 
-            <div class="wk-hero-art" aria-hidden="true">
-                <img src="/images/qu-building.svg" alt="">
-            </div>
         </div>
     </section>
 
@@ -574,7 +562,7 @@
                 <div class="wk-contact-card">
                     <div class="wk-card-ico wk-ico-brand"><i class="fa-solid fa-envelope"></i></div>
                     <h3>Email Support</h3>
-                    <p><a href="mailto:rts@rts.edu.qa">rts@rts.edu.qa</a><br>System and account queries</p>
+                    <p><a href="mailto:rts@qu.edu.qa">rts@qu.edu.qa</a><br>System and account queries</p>
                 </div>
                 <div class="wk-contact-card">
                     <div class="wk-card-ico wk-ico-gold"><i class="fa-regular fa-clock"></i></div>
@@ -596,16 +584,12 @@
 <footer class="wk-footer">
     <div class="wk-footer-inner">
         <div class="wk-footer-brand">
-            <img src="/images/logo.png" alt="Qatar University">
-            <div>
-                <b>Research Tracking System</b>
-                Office of Research &amp; Graduate Studies
-            </div>
+            <img src="{{ asset('images/research_logo_footer.png') }}" alt="Qatar University">
         </div>
         <nav class="wk-footer-links" aria-label="Footer">
             <a href="{{ route('about.team') }}">Our Team</a>
             <a href="#login">Sign In</a>
-            <a href="mailto:rts@rts.edu.qa">rts@rts.edu.qa</a>
+            <a href="mailto:rts@qu.edu.qa">rts@qu.edu.qa</a>
         </nav>
         <span class="wk-footer-copy">&copy; {{ date('Y') }} Qatar University &bull; RTS &bull; All rights reserved.</span>
     </div>

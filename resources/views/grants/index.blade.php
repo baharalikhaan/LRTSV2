@@ -152,7 +152,7 @@
 $(document).ready(function() {
     @if($grants->count() > 0)
     var table = $('#grantsTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
             { orderable: false, targets: [7] },

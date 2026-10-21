@@ -428,7 +428,7 @@ class ProgramController extends Controller
     public function show($id)
     {
         $program = Program::with(['grant', 'projects.lpi', 'projects' => function ($q) {
-            $q->orderBy('title');
+            $q->orderBy('id');
         }])->findOrFail($id);
 
         // Get latest status for each project

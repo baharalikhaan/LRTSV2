@@ -113,7 +113,7 @@
         </div>
     @else
         @php $projectId = $project->id ?? ($report->project_id ?? ''); @endphp
-        <form method="POST" action="/grading/{{ $projectId }}/save-final-grade" data-final-grade style="margin-top:4px;">
+        <form method="POST" action="{{ route('grading.saveFinalGrade', $projectId) }}" data-final-grade style="margin-top:4px;">
             @csrf
             <input type="hidden" name="report_type" value="final">
 

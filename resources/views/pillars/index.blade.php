@@ -161,7 +161,7 @@
 $(document).ready(function() {
     @if($pillars->count() > 0)
     var table = $('#pillarsTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
             { orderable: false, targets: [2] },

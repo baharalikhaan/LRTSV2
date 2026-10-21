@@ -17,10 +17,10 @@
         <input type="hidden" name="project_id" value="{{ $project->id }}">
 
         @php
-            // Get currently assigned reviewer with their pivot data
+            // Currently assigned reviewers (multi-reviewer model: assignments are
+            // added alongside the existing ones, never replaced).
             $assignedReviewers = $project->reviewers()->get();
-            $currentReviewer = $assignedReviewers->first();
-            $currentReviewerId = $currentReviewer ? $currentReviewer->id : null;
+            $assignedReviewerIds = $assignedReviewers->pluck('id')->toArray();
 
             // Reviewers who previously rejected this proposal — excluded from the
             // dropdown so the admin doesn't re-assign the same reviewer.
@@ -60,19 +60,13 @@
                 Reviewer
             </label>
 
-            @php
-                $currentReviewerLabel = $currentReviewer
-                    ? $currentReviewer->name . ' (' . $currentReviewer->email . ')'
-                    : '— Select Reviewer —';
-            @endphp
-
             <div class="rv-dropdown" id="reviewerDropdown">
                 <button type="button" class="rv-dd-toggle" onclick="toggleReviewerDd(event)">
-                    <span id="reviewerDdLabel">{{ $currentReviewerLabel }}</span>
+                    <span id="reviewerDdLabel">{{ $assignedReviewers->isNotEmpty() ? '— Add another reviewer —' : '— Select Reviewer —' }}</span>
                     <i class="fas fa-chevron-down"></i>
                 </button>
                 {{-- Kept as the form value; submitAssignment() reads #reviewer_1.value --}}
-                <input type="hidden" name="reviewer_ids[]" id="reviewer_1" value="{{ $currentReviewerId }}">
+                <input type="hidden" name="reviewer_ids[]" id="reviewer_1" value="">
 
                 <div class="rv-dd-menu" id="reviewerDdMenu" style="display:none;">
                     @foreach($reviewerGroups as $pillarName => $groupReviewers)
@@ -82,8 +76,12 @@
                                 <div class="rv-dd-item rv-dd-item--disabled">
                                     {{ $reviewer->name }} ({{ $reviewer->email }}) — previously rejected
                                 </div>
+                            @elseif(in_array($reviewer->id, $assignedReviewerIds))
+                                <div class="rv-dd-item rv-dd-item--disabled">
+                                    {{ $reviewer->name }} ({{ $reviewer->email }}) — already assigned
+                                </div>
                             @else
-                                <div class="rv-dd-item {{ $reviewer->id == $currentReviewerId ? 'is-selected' : '' }}"
+                                <div class="rv-dd-item"
                                      data-id="{{ $reviewer->id }}"
                                      data-label="{{ $reviewer->name }} ({{ $reviewer->email }})"
                                      onclick="pickReviewerDd(this)">
@@ -133,11 +131,13 @@
             .rv-dd-item--disabled:hover { background: transparent; color: var(--ink-400, #8b8592); }
         </style>
 
-        {{-- Already-assigned info --}}
-        @if($currentReviewer)
+        {{-- Already-assigned reviewers (kept — the new one is added alongside) --}}
+        @if($assignedReviewers->isNotEmpty())
             <div style="padding:8px 12px;border-radius:6px;background:var(--color-sand-50);border:1px solid var(--color-sand-200);font-size:12px;color:var(--color-sand-700);margin-bottom:10px;">
                 <i class="fas fa-info-circle"></i>
-                This project already has a reviewer assigned. Selecting a new reviewer will replace the existing assignment.
+                <strong>{{ $assignedReviewers->count() }} reviewer(s) already assigned:</strong>
+                {{ $assignedReviewers->map(function ($r) { return $r->name; })->implode(', ') }}.
+                The reviewer selected below will be <strong>added alongside</strong> them — each reviewer grades independently and keeps his own scores.
             </div>
         @endif
 

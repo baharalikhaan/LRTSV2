@@ -185,8 +185,13 @@ class ReportController extends Controller
         $pillars = Pillar::orderBy('pillar')->get();
         $grants = Grant::orderBy('grant_code')->get();
 
-        $query = Pillar::with('projects.students', 'projects.lpi', 'projects.program.grant')
-            ->orderBy('pillar');
+        $query = Pillar::with([
+            'projects' => function ($q) {
+                $q->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+                  ->orderBy('projects.id');
+            },
+            'projects.students', 'projects.lpi', 'projects.program.grant',
+        ])->orderBy('pillar');
 
         if ($request->filled('pillar_id')) {
             $query->where('id', $request->pillar_id);
@@ -293,6 +298,7 @@ class ReportController extends Controller
             $projects = Project::query()
                 ->where('program_id', $programId)
                 ->with(['lpi', 'program'])
+                ->orderBy('projects.id')
                 ->get();
 
             $projectIds = $projects->pluck('id')->toArray();
@@ -596,7 +602,10 @@ class ReportController extends Controller
             });
         }
 
-        $projects = $query->orderBy('id', 'asc')->get();
+        $projects = $query
+            ->orderBy(\App\Models\Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->get();
 
         // Populate filters based on available data (only cycles/grants with graded projects)
         $gradedProjectIds = $projects->pluck('id');

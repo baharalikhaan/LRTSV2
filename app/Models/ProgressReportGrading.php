@@ -17,6 +17,7 @@ class ProgressReportGrading extends Model
         'achievementsComments', 'publicationsComments', 'studentsComments', 'budgetComments',
         'ethical', 'analysis', 'comments', 'recommendation',
         'publish', 'report_type', 'isAccepted', 'isAdmin',
+        'rejection_type', 'rejection_reason',
     ];
 
     protected $casts = [

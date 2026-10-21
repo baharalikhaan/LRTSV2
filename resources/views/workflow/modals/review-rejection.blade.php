@@ -106,7 +106,7 @@ function submitRejectionReview() {
     var errorDiv = document.getElementById('reviewRejectionError');
     errorDiv.style.display = 'none';
 
-    fetch('/workflow/review-rejection/{{ $project->id }}', {
+    fetch(appUrl('/workflow/review-rejection/{{ $project->id }}'), {
         method: 'POST',
         headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,

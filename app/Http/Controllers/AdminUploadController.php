@@ -50,7 +50,7 @@ class AdminUploadController extends Controller
                 'programs.cycle_id'
             )
             ->leftJoin('programs', 'projects.program_id', '=', 'programs.id')
-            ->with(['lpi', 'program.cycle', 'program.grant', 'submissions']);
+            ->with(['lpi', 'program.cycle', 'program.grant', 'latestStatus', 'submissions']);
 
         // Cycle filter
         $cycleId = $request->input('cycle_id');
@@ -100,25 +100,46 @@ class AdminUploadController extends Controller
             });
         }
 
+        if ($request->boolean('rejected_progress')) {
+            $query->whereRaw(
+                '(SELECT sh.status FROM status_histories sh WHERE sh.project_id = projects.id ORDER BY sh.id DESC LIMIT 1) IN (?, ?)',
+                [Project::STATUS_PROGRESS_REJECTED, Project::STATUS_PROGRESS_REJ_REVIEWED]
+            );
+        }
+
         $total = $query->count();
         $start = (int) $request->input('start', 0);
         $length = (int) $request->input('length', 10);
 
-        $projects = $query->orderByDesc('projects.id')
+        $projects = $query->orderBy('programs.program_title')
+            ->orderBy('projects.id')
             ->skip($start)->take($length)
             ->get();
 
         $data = $projects->map(function ($p) {
             $oldId = $p->old_project_id ?? $p->id;
-            $lpiName = $p->lpi ? $p->lpi->name : '—';
-            $lpiEmail = $p->lpi ? $p->lpi->email : '—';
+            $lpiCell = $p->lpi
+                ? '<div style="font-weight:500;">' . e($p->lpi->name) . '</div><div style="font-size:11px;color:var(--ink-400,#8b8592);">' . e($p->lpi->email) . '</div>'
+                : '<span style="font-size:12px;color:var(--ink-400,#8b8592);font-style:italic;">—</span>';
             $programTitle = $p->program->program_title ?? '—';
             $cycleYear = $p->program->cycle->year ?? '—';
             $grantCode = $p->program->grant->grant_code ?? '—';
 
             // Check existing submissions
             $hasProposal = !empty($p->proposal_filename);
-            $hasProgress = $p->submissions->where('type', 'progress')->first();
+            $progressSubmissions = $p->submissions->where('type', 'progress');
+            $hasProgress = $progressSubmissions->sortByDesc('version')->first();
+            $uploadedVersionLabel = function (string $type) use ($p) {
+                $versions = $p->submissions->where('type', $type)->pluck('version')
+                    ->map(fn ($version) => (int) $version)
+                    ->unique()
+                    ->sort()
+                    ->values();
+
+                return $versions->count() > 1
+                    ? 'Uploaded ' . $versions->map(fn ($version) => 'v' . $version)->implode(',')
+                    : 'Uploaded';
+            };
             $hasFinal = $p->submissions->where('type', 'final')->first();
             $hasReadiness = $p->submissions->where('type', 'readiness')->first();
             $hasEthical = $p->submissions->where('type', 'ethical')->first();
@@ -130,11 +151,21 @@ class AdminUploadController extends Controller
                 : '<span class="pill inactive" style="font-size:10px;"><i class="fas fa-minus" style="font-size:9px;"></i> None</span>';
 
             $progressBadge = $hasProgress
-                ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> Uploaded</span>'
+                ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> ' . e($uploadedVersionLabel('progress')) . '</span>'
                 : '<span class="pill inactive" style="font-size:10px;"><i class="fas fa-minus" style="font-size:9px;"></i> None</span>';
 
+            $progressRejected = in_array($p->currentWorkflowStatus(), [
+                Project::STATUS_PROGRESS_REJECTED,
+                Project::STATUS_PROGRESS_REJ_REVIEWED,
+            ], true) && !$progressSubmissions->contains(function ($submission) {
+                return (int) $submission->version >= 2;
+            });
+            if ($progressRejected) {
+                $progressBadge .= '<div style="font-size:9px;line-height:1.25;color:#a93434;margin-top:3px;">Rejected — next upload will be v2</div>';
+            }
+
             $finalBadge = $hasFinal
-                ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> Uploaded</span>'
+                ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> ' . e($uploadedVersionLabel('final')) . '</span>'
                 : '<span class="pill inactive" style="font-size:10px;"><i class="fas fa-minus" style="font-size:9px;"></i> None</span>';
 
             $readinessBadge = $hasReadiness
@@ -170,15 +201,18 @@ class AdminUploadController extends Controller
             $progress2Badge = !$isExtended
                 ? '<span class="pill inactive" style="font-size:10px;">—</span>'
                 : ($hasProgress2
-                    ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> Uploaded</span>'
+                    ? '<span class="pill success" style="font-size:10px;"><i class="fas fa-check" style="font-size:9px;"></i> ' . e($uploadedVersionLabel('progress2')) . '</span>'
                     : '<span class="pill inactive" style="font-size:10px;"><i class="fas fa-minus" style="font-size:9px;"></i> None</span>');
+
+            $progressIsResubmission = $progressRejected || $p->submissions->contains(function ($submission) {
+                return $submission->type === 'progress' && (int) $submission->version >= 2;
+            });
 
             return [
                 'id'            => $p->id,
                 'old_project_id' => e($oldId),
                 'title'         => '<div style="font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' . e($p->title) . '">' . e($p->title) . '</div>',
-                'lpi'           => '<div style="font-weight:500;">' . e($lpiName) . '</div>',
-                'lpi_email'     => '<span style="font-size:12px;">' . e($lpiEmail) . '</span>',
+                'lpi'           => $lpiCell,
                 'program'       => '<div style="font-weight:500;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' . e($programTitle) . '">' . e($programTitle) . '</div><div style="font-size:11px;color:var(--ink-400,#8b8592);">' . e($cycleYear . ' / ' . $grantCode) . '</div>',
                 'proposal'      => $proposalBadge,
                 'progress'      => $progressBadge,
@@ -187,7 +221,7 @@ class AdminUploadController extends Controller
                 'readiness'      => $readinessBadge,
                 'ethical'       => $ethicalBadge,
                 'missing'       => $missingCell,
-                'action'        => $this->renderUploadForm($p, $oldId, $hasProgress, $hasProgress2, $hasFinal, $hasReadiness),
+                'action'        => $this->renderUploadForm($p, $oldId, $hasProgress, $hasProgress2, $hasFinal, $hasReadiness, $progressIsResubmission),
             ];
         });
 
@@ -202,7 +236,7 @@ class AdminUploadController extends Controller
     /**
      * Render the inline upload form HTML for a project row.
      */
-    private function renderUploadForm(Project $p, string $oldId, $hasProgress, $hasProgress2, $hasFinal, $hasReadiness): string
+    private function renderUploadForm(Project $p, string $oldId, $hasProgress, $hasProgress2, $hasFinal, $hasReadiness, bool $progressIsResubmission = false): string
     {
         $html = '<form class="admin-upload-form" data-project-id="' . $p->id . '" enctype="multipart/form-data" style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap;">';
         $html .= '<input type="hidden" name="_token" value="' . csrf_token() . '">';
@@ -220,10 +254,10 @@ class AdminUploadController extends Controller
         $html .= '</label>';
 
         // Progress
-        $html .= '<label class="admin-upload-label" title="Progress Report">';
+        $html .= '<label class="admin-upload-label" title="' . ($progressIsResubmission ? 'Upload rejected Progress Report as version 2' : 'Progress Report') . '">';
         $html .= '<input type="file" name="progress" accept=".pdf" class="admin-upload-input" data-type="progress">';
         $html .= '<span class="admin-upload-btn btn-sm btn-secondary" style="font-size:10px;padding:3px 8px;cursor:pointer;">';
-        $html .= '<i class="fas fa-file-pdf" style="font-size:10px;"></i> Progress';
+        $html .= '<i class="fas fa-file-pdf" style="font-size:10px;"></i> ' . ($progressIsResubmission ? 'Progress v2' : 'Progress');
         $html .= '</span>';
         $html .= '</label>';
 
@@ -280,13 +314,29 @@ class AdminUploadController extends Controller
             'project_id' => 'required|exists:projects,id',
         ]);
 
+        $uploadTypes = ['proposal', 'progress', 'progress2', 'final', 'readiness', 'ethical'];
+        $receivedFile = false;
+        foreach ($uploadTypes as $type) {
+            if ($request->hasFile($type)) {
+                $receivedFile = true;
+                break;
+            }
+        }
+        if (!$receivedFile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The server did not receive a file. Check that it is a PDF and within the server upload-size limit, then try again.',
+            ], 422);
+        }
+
         $project = Project::with('program.cycle', 'program.grant')->find($request->input('project_id'));
         $user = auth()->user();
 
         $uploaded = 0;
         $errors = [];
+        $progressUploadedAsV2 = false;
 
-        foreach (['proposal', 'progress', 'progress2', 'final', 'readiness', 'ethical'] as $type) {
+        foreach ($uploadTypes as $type) {
             if (!$request->hasFile($type)) {
                 continue;
             }
@@ -297,7 +347,7 @@ class AdminUploadController extends Controller
             }
 
             $file = $request->file($type);
-            if (!$file->isValid() || $file->getClientOriginalExtension() !== 'pdf') {
+            if (!$file->isValid() || strtolower($file->getClientOriginalExtension()) !== 'pdf') {
                 $errors[] = "{$type}: Invalid file";
                 continue;
             }
@@ -306,7 +356,10 @@ class AdminUploadController extends Controller
                 if ($type === 'proposal') {
                     $this->storeProposal($project, $file);
                 } else {
-                    $this->storeReport($project, $type, $file, $user);
+                    $version = $this->storeReport($project, $type, $file, $user);
+                    if ($type === 'progress' && $version === 2) {
+                        $progressUploadedAsV2 = true;
+                    }
                 }
                 $uploaded++;
             } catch (\Exception $e) {
@@ -321,9 +374,14 @@ class AdminUploadController extends Controller
             ], 422);
         }
 
+        $message = "{$uploaded} report(s) uploaded successfully.";
+        if ($progressUploadedAsV2) {
+            $message .= ' Progress Report saved as v2; v1 was preserved.';
+        }
+
         return response()->json([
             'success' => true,
-            'message' => "{$uploaded} report(s) uploaded successfully." . (!empty($errors) ? ' ' . implode(' ', $errors) : ''),
+            'message' => $message . (!empty($errors) ? ' ' . implode(' ', $errors) : ''),
         ]);
     }
 
@@ -356,7 +414,7 @@ class AdminUploadController extends Controller
     /**
      * Store a report file using the same logic as ProgressController.
      */
-    private function storeReport(Project $project, string $type, $file, $user): void
+    private function storeReport(Project $project, string $type, $file, $user): int
     {
         $oldId = $project->getFileSafeOldProjectId();
 
@@ -374,8 +432,50 @@ class AdminUploadController extends Controller
         if (!is_dir($fullDir)) {
             mkdir($fullDir, 0755, true);
         }
-        $storedFilename = $oldId . '_' . $type . '.pdf';
+        $existingProgressV2 = $type === 'progress'
+            ? $project->submissions()->where('type', 'progress')->where('version', 2)->latest('id')->first()
+            : null;
+        $isRejectedProgress = $type === 'progress' && in_array($project->currentWorkflowStatus(), [
+            Project::STATUS_PROGRESS_REJECTED,
+            Project::STATUS_PROGRESS_REJ_REVIEWED,
+        ], true);
+        $version = ($existingProgressV2 || $isRejectedProgress) ? 2 : 1;
+        $storedFilename = $oldId . '_' . $type . ($version === 2 ? '_v2' : '') . '.pdf';
         $path = $dir . '/' . $storedFilename;
+
+        // A rejected Progress Report is resubmitted as v2. Keep its v1 file and
+        // submission row; a repeated admin upload replaces only the old v2.
+        if ($version === 2) {
+            if ($file->storeAs($dir, $storedFilename) === false) {
+                throw new \RuntimeException('Could not store the uploaded file. The existing report was left untouched.');
+            }
+
+            if ($existingProgressV2) {
+                $oldPath = storage_path('app/' . $existingProgressV2->file_path);
+                if ($oldPath !== storage_path('app/' . $path) && file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+                $existingProgressV2->delete();
+            }
+
+            $project->submissions()->create([
+                'type'              => $type,
+                'file_path'         => $path,
+                'stored_filename'   => $storedFilename,
+                'original_filename' => $file->getClientOriginalName(),
+                'version'           => 2,
+                'user_id'           => $user->id,
+                'submitted'         => true,
+                'submitted_at'      => now(),
+            ]);
+
+            $project->recordStatus(Project::STATUS_PROGRESS_ADDED, [
+                'triggered_by' => 'admin_upload',
+                'version' => 2,
+            ], $user->id);
+
+            return 2;
+        }
 
         // Delete ALL existing submissions of this type (deterministic cleanup)
         $project->submissions()->where('type', $type)->get()
@@ -401,5 +501,7 @@ class AdminUploadController extends Controller
             'submitted'         => true,
             'submitted_at'      => now(),
         ]);
+
+        return 1;
     }
 }

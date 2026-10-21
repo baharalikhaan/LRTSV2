@@ -16,8 +16,12 @@
     $progressSubmitted = $submissions->where('type', 'progress')->count() > 0;
     $finalSubmitted = $submissions->where('type', 'final')->count() > 0;
 
-    $isProgressStep = $progressSubmitted && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS_REVIEWED);
-    $isFinalStep    = $finalSubmitted && !$project->hasStatus(\App\Models\Project::STATUS_GRADED);
+            // Each reviewer's form stays open until HE submits his own set —
+            // the project status (set once the multi-reviewer consensus
+            // completes) no longer closes the form for the other reviewers.
+            $isProgressStep  = $progressSubmitted  && (!$progressGrading  || $progressGrading->publish  === 'pending');
+            $isProgress2Step = $progress2Submitted && (!$progress2Grading || $progress2Grading->publish === 'pending');
+            $isFinalStep     = $finalSubmitted     && (!$finalGrading     || $finalGrading->publish     === 'pending');
 
     // Deadline-gated: only show progress/final tabs when deadlines have passed
     $showProgressTab = $progressDeadlinePassed;
@@ -29,9 +33,6 @@
 
     // Progress Report 2 (extended progress) state — mirrors progress report 1
     $progress2Versions = ($progress2Versions ?? $submissions->where('type', 'progress2'))->sortByDesc('version');
-    $isProgress2Step = $progress2Submitted
-        && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS2_REVIEWED)
-        && !$project->hasStatus(\App\Models\Project::STATUS_PROGRESS2_REJECTED);
     $showProgress2Tab = ($project->extended_progress ?? false) && ($progress2DeadlinePassed ?? false);
 
     // Determine default left tab based on project state
@@ -137,7 +138,70 @@
         {{-- Tab: Commitments --}}
         <div class="ws-left-tab-panel" id="ltab-commitments" style="display:{{ $defaultLeftTab === 'ltab-commitments' ? 'block' : 'none' }};">
             <div class="ws-card">
-                <div class="ws-section-title"><span><i class="fas fa-handshake"></i> Commitments vs Outcomes</span></div>
+                <div class="ws-section-title">
+                    <span><i class="fas fa-handshake"></i> Commitments vs Outcomes</span>
+                    @if($isAdmin)
+                    <button type="button" class="btn btn-sm btn-secondary" id="commitmentEditBtn" style="font-size:11px;padding:4px 10px;white-space:nowrap;">
+                        <i class="fas fa-pen" style="font-size:10px;"></i> Edit Commitments
+                    </button>
+                    @endif
+                </div>
+
+                @if($isAdmin)
+                {{-- Admin-only commitment editor (hidden until Edit is pressed) --}}
+                <form id="commitmentEditForm" action="{{ route('projects.update-commitments', $project->id) }}" method="POST" style="display:none;margin-bottom:14px;">
+                    @csrf
+                    <div class="ce-group">
+                        <div class="ce-group-title">Publications</div>
+                        <div class="ce-grid">
+                            <div class="ce-item"><label>Q1 Articles</label><input type="number" name="q1article" min="0" step="1" value="{{ $commitments->q1article ?? 0 }}"></div>
+                            <div class="ce-item"><label>Q2 Articles</label><input type="number" name="q2article" min="0" step="1" value="{{ $commitments->q2article ?? 0 }}"></div>
+                            <div class="ce-item"><label>Q3 Articles</label><input type="number" name="q3article" min="0" step="1" value="{{ $commitments->q3article ?? 0 }}"></div>
+                            <div class="ce-item"><label>Q4 Articles</label><input type="number" name="q4article" min="0" step="1" value="{{ $commitments->q4article ?? 0 }}"></div>
+                            <div class="ce-item"><label>Conference</label><input type="number" name="confArticle" min="0" step="1" value="{{ $commitments->confArticle ?? 0 }}"></div>
+                            <div class="ce-item"><label>Books</label><input type="number" name="books" min="0" step="1" value="{{ $commitments->books ?? 0 }}"></div>
+                            <div class="ce-item"><label>Edited Books</label><input type="number" name="editBooks" min="0" step="1" value="{{ $commitments->editBooks ?? 0 }}"></div>
+                            <div class="ce-item"><label>Chapters</label><input type="number" name="chapters" min="0" step="1" value="{{ $commitments->chapters ?? 0 }}"></div>
+                        </div>
+                    </div>
+                    <div class="ce-group">
+                        <div class="ce-group-title">Intellectual Property &amp; Innovation</div>
+                        <div class="ce-grid">
+                            <div class="ce-item"><label>IP</label><input type="number" name="ip" min="0" step="1" value="{{ $commitments->ip ?? 0 }}"></div>
+                            <div class="ce-item"><label>Filed Patents</label><input type="number" name="filedPatent" min="0" step="1" value="{{ $commitments->filedPatent ?? 0 }}"></div>
+                            <div class="ce-item"><label>Open-Source SW</label><input type="number" name="openSourceSW" min="0" step="1" value="{{ $commitments->openSourceSW ?? 0 }}"></div>
+                            <div class="ce-item ce-check">
+                                <input type="hidden" name="startUp" value="0">
+                                <input type="checkbox" name="startUp" value="1" id="cmt_startUp" {{ ($commitments->startUp ?? 0) ? 'checked' : '' }}>
+                                <label for="cmt_startUp">Start-up</label>
+                            </div>
+                            <div class="ce-item ce-check">
+                                <input type="hidden" name="ethical" value="0">
+                                <input type="checkbox" name="ethical" value="1" id="cmt_ethical" {{ ($commitments->ethical ?? 0) ? 'checked' : '' }}>
+                                <label for="cmt_ethical">Ethical</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ce-group">
+                        <div class="ce-group-title">Students &amp; Training</div>
+                        <div class="ce-grid">
+                            <div class="ce-item"><label>Master Students</label><input type="number" name="master" min="0" step="1" value="{{ $commitments->master ?? 0 }}"></div>
+                            <div class="ce-item"><label>Undergraduate</label><input type="number" name="UG" min="0" step="1" value="{{ $commitments->UG ?? 0 }}"></div>
+                            <div class="ce-item"><label>PhD Students</label><input type="number" name="Phd" min="0" step="1" value="{{ $commitments->Phd ?? 0 }}"></div>
+                            <div class="ce-item ce-check">
+                                <input type="hidden" name="crossCollege" value="0">
+                                <input type="checkbox" name="crossCollege" value="1" id="cmt_crossCollege" {{ ($commitments->crossCollege ?? 0) ? 'checked' : '' }}>
+                                <label for="cmt_crossCollege">Cross-College</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+                        <button type="button" class="btn btn-sm btn-secondary" id="commitmentCancelBtn">Cancel</button>
+                        <button type="submit" class="btn btn-sm btn-primary" id="commitmentSaveBtn"><i class="fas fa-save" style="font-size:11px;"></i> Save Commitments</button>
+                    </div>
+                </form>
+                @endif
+
                 @php
                     $commitOutcomeMap = [
                         'q1article'   => ['label' => 'Q1 Articles',              'outcome_type' => 'journal_q1'],
@@ -186,6 +250,7 @@
                         }
                     }
                 @endphp
+                <div id="commitmentView">
                 @if(count($commitRows))
                     <div style="overflow-x:auto;">
                         <table class="ws-table">
@@ -261,6 +326,7 @@
                 @else
                     <p style="color:var(--ink-400);font-size:13px;margin:0;">No commitments recorded.</p>
                 @endif
+                </div>
             </div>
         </div>
 
@@ -1522,6 +1588,65 @@
 
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ── Admin commitment editor ─────────────────────────────── */
+#commitmentEditForm .ce-group {
+    border: 1px solid var(--ink-100, #eceef2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: var(--sand-50, #faf9f7);
+}
+#commitmentEditForm .ce-group-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-700, #38333e);
+    margin-bottom: 8px;
+}
+#commitmentEditForm .ce-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+}
+#commitmentEditForm .ce-item {
+    display: flex;
+    flex-direction: column;
+    min-width: 92px;
+}
+#commitmentEditForm .ce-item label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-500, #6f6a78);
+    margin-bottom: 2px;
+}
+#commitmentEditForm .ce-item input[type="number"] {
+    width: 88px;
+    padding: 5px 7px;
+    font-size: 12px;
+    border: 1px solid var(--ink-200, #d8d6dc);
+    border-radius: 4px;
+    background: #fff;
+}
+#commitmentEditForm .ce-item input[type="number"]:focus {
+    outline: none;
+    border-color: var(--brand-400, #b8496b);
+    box-shadow: 0 0 0 2px var(--brand-100, #f3d2da);
+}
+#commitmentEditForm .ce-check {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    min-width: auto;
+    padding-top: 16px;
+}
+#commitmentEditForm .ce-check label {
+    margin-bottom: 0;
+}
+#commitmentEditForm .ce-check input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--brand-500, #8d1b3d);
+}
 </style>
 @endpush
 
@@ -2070,6 +2195,56 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+});
+
+// ── Admin: edit commitments (grading page, Commitments tab) ──────
+$(function () {
+    $('#commitmentEditBtn').on('click', function () {
+        $('#commitmentView').hide();
+        $('#commitmentEditForm').show();
+    });
+
+    $('#commitmentCancelBtn').on('click', function () {
+        $('#commitmentEditForm').hide();
+        $('#commitmentView').show();
+    });
+
+    $('#commitmentEditForm').on('submit', function (e) {
+        e.preventDefault();
+        var form = this;
+        var btn = $('#commitmentSaveBtn');
+        var original = btn.html();
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': form.querySelector('input[name="_token"]').value,
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams(new FormData(form)),
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+            if (res.ok && res.data.success) {
+                showToast('success', res.data.message || 'Commitments updated successfully.');
+                setTimeout(function () { location.reload(); }, 900);
+            } else {
+                var msg = res.data.message || 'Failed to save commitments.';
+                if (res.data.errors) {
+                    var first = Object.values(res.data.errors)[0];
+                    if (first) msg = Array.isArray(first) ? first[0] : first;
+                }
+                showToast('error', msg);
+                btn.prop('disabled', false).html(original);
+            }
+        })
+        .catch(function (err) {
+            showToast('error', 'Network error: ' + err.message);
+            btn.prop('disabled', false).html(original);
+        });
+    });
 });
 </script>
 @endpush

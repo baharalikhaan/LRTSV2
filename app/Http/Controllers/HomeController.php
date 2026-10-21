@@ -241,7 +241,8 @@ class HomeController extends Controller
             ->with('publications')
             ->with('students')
             ->with('outcomes')
-            ->orderBy('created_at', 'desc')
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
             ->get();
 
         $statuses = Project::statusLabels();
@@ -564,7 +565,8 @@ class HomeController extends Controller
         $assignedProjects = $user->reviewedProjects()
             ->visibleProgram()
             ->with('latestStatus')
-            ->orderBy('title')
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
             ->get();
 
         $statuses = Project::statusLabels();

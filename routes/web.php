@@ -44,7 +44,7 @@ Auth::routes();
 //   GET  /Auth/metadata(saml2_metadata)
 //   GET  /Auth/sls     (saml2_sls)   - single logout service
 // This is a friendly alias so the login page can link to the SSO login route.
-// NOTE: the URI must be a single segment — the SAML package registers a
+// NOTE: the URI must be a single segment â€” the SAML package registers a
 // catch-all "{idpName}/login" route which shadows any "/{anything}/login"
 // path (e.g. "/saml/login" or "/sso/login"). "/sso" cannot collide.
 Route::get('/sso', function () {
@@ -89,6 +89,9 @@ Route::prefix('programs')->name('programs.')->group(function () {
     Route::post('toggle/{id}', [ProgramController::class, 'toggle'])->name('toggle');
     Route::post('/upload-proposals', [ProgramController::class, 'uploadProposals'])->name('upload-proposals');
     Route::post('/{id}/upload-proposal', [ProgramController::class, 'uploadSingleProposal'])->name('upload-single-proposal');
+    // Research Call report booklet — a printable A4 HTML page (admin-only,
+    // enforced in the controller); printed via the browser / saved as PDF.
+    Route::get('/{id}/booklet', [\App\Http\Controllers\ResearchCallBookletController::class, 'show'])->name('booklet');
 });
 
 // ????????? Projects ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
@@ -110,6 +113,8 @@ Route::prefix('projects')->name('projects.')->group(function () {
     Route::get('/pending-reviews/filter-data', [ProjectController::class, 'pendingReviewFilterData'])->name('pending-reviews.filter-data');
     Route::get('/{id}', [ProjectController::class, 'show'])->name('show');
     Route::get('/{id}/report-card', [ProjectController::class, 'reportCard'])->name('report-card');
+    // Printable A4 version of the project detail page.
+    Route::get('/{id}/printable', [ProjectController::class, 'printable'])->name('printable');
     Route::post('/{id}/upload-proposal', [ProgramController::class, 'uploadSingleProposal'])->name('upload-proposal');
 });
 
@@ -192,14 +197,16 @@ Route::prefix('grading')->name('grading.')->group(function () {
     Route::get('/{id}/grade', [GradingController::class, 'gradeProject'])->name('grade');
     Route::post('/{id}/save-progress-grade', [GradingController::class, 'saveProgressGrade'])->name('saveProgressGrade');
     Route::post('/{id}/save-final-grade', [GradingController::class, 'saveFinalGrade'])->name('saveFinalGrade');
-    Route::post('/{id}/final-grade', [GradingController::class, 'submitFinalGrade'])->name('submitFinalGrade');
-    Route::post('/{id}/submit-grade', [GradingController::class, 'submitGrade'])->name('submitGrade');
     Route::post('/update-verification', [GradingController::class, 'updateVerification'])->name('updateVerification');
 });
 
 // ????????? Project Grading Pages (full page, merged progress + final grading) ???????????????
 Route::get('/projects/{id}/grading', [GradingController::class, 'grading'])
     ->name('projects.grading');
+
+// Admin-only: edit a project's commitments from the grading page
+Route::post('/projects/{id}/commitments', [GradingController::class, 'updateCommitments'])
+    ->name('projects.update-commitments');
 
 // Serve uploaded PDFs (proposals / progress / final / readiness reports)
 // Uses the hierarchical path: {cycle_year}/{program_title}/{type_folder}/{old_id}_{type}.pdf
@@ -350,7 +357,6 @@ Route::prefix('workflow')->name('workflow.')->group(function () {
     Route::post('/record-redirect', [\App\Http\Controllers\WorkflowController::class, 'recordAndRedirect'])->name('record-redirect');
     Route::post('/assign-reviewers', [\App\Http\Controllers\WorkflowController::class, 'assignReviewers'])->name('assign-reviewers');
     Route::post('/submit-decision', [\App\Http\Controllers\WorkflowController::class, 'submitProposalDecision'])->name('submit-decision');
-    Route::post('/submit-progress-review', [\App\Http\Controllers\WorkflowController::class, 'submitProgressReview'])->name('submit-progress-review');
     Route::get('/view-grade/{projectId}', [\App\Http\Controllers\WorkflowController::class, 'viewGrade'])->name('view-grade');
     Route::post('/review-rejection/{id}', [\App\Http\Controllers\WorkflowController::class, 'reviewProgressRejection'])->name('review-rejection');
     Route::post('/unassign-reviewer', [\App\Http\Controllers\WorkflowController::class, 'unassignReviewer'])->name('unassign-reviewer');

@@ -56,8 +56,8 @@
                 <thead>
                     <tr>
                         <th style="min-width:130px;">Project ID</th>
+                        <th style="min-width:180px;">LPI</th>
                         <th style="width:40%; min-width:280px;">Title</th>
-                        <th style="min-width:120px;">LPI</th>
                         <th class="text-center">Reviewed Reports</th>
                         <th class="text-center" style="width:170px; min-width:170px;">Status</th>
                         <th class="text-center" style="min-width:120px;">Action</th>
@@ -96,10 +96,15 @@
                             </a>
                         </td>
                         <td>
-                            <span style="font-weight:400;">{{ $project->title }}</span>
+                            @if($project->lpi)
+                                <div style="font-weight:500;">{{ $project->lpi->name }}</div>
+                                <div style="font-size:11px;color:var(--color-ink-400);">{{ $project->lpi->email }}</div>
+                            @else
+                                <span style="font-size:12px;color:var(--ink-400);font-style:italic;">—</span>
+                            @endif
                         </td>
                         <td>
-                            {{ $project->lpi->name ?? '—' }}
+                            <span style="font-weight:400;">{{ $project->title }}</span>
                         </td>
                         <td class="text-center">
                             @if($hasPG)
@@ -138,11 +143,11 @@
 <script>
     $(document).ready(function() {
         var table = $('#reportCardsTable').DataTable({
-            dom: 'rtbottomlip',
+            dom: 'Brtbottomlip',
             autoWidth: false,
-            order: [[0, 'asc']],
+            order: [],
             columnDefs: [
-                { width: '40%', targets: [1] },
+                { width: '40%', targets: [2] },
                 { width: '170px', targets: [4] },
                 { orderable: false, targets: [5] },
                 { searchable: false, targets: [5] }

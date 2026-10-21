@@ -67,6 +67,7 @@
                 <thead>
                     <tr>
                         <th style="min-width:130px;">Project ID</th>
+                        <th style="min-width:180px;">LPI</th>
                         <th>Title</th>
                         <th>Grant</th>
                         <th>Category</th>
@@ -100,6 +101,14 @@
                     @endphp
                     <tr>
                         <td><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
+                        <td>
+                            @if($cp->lpi)
+                                <div style="font-weight:500;">{{ $cp->lpi->name }}</div>
+                                <div style="font-size:11px;color:var(--color-ink-400);">{{ $cp->lpi->email }}</div>
+                            @else
+                                <span style="font-size:12px;color:var(--ink-400);font-style:italic;">—</span>
+                            @endif
+                        </td>
                         <td><span style="font-weight:500;">{{ $cp->title }}</span></td>
                         <td><span class="pill info" style="font-size:11px;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></td>
                         <td><span class="pill info" style="font-size:11px;">{{ ucfirst($cp->program->grant->category ?? 'N/A') }}</span></td>
@@ -132,11 +141,11 @@
 <script>
     $(document).ready(function() {
         var table = $('#projectsTable').DataTable({
-            dom: 'rt<"bottom"lip>',
-            order: [[0, 'asc']],
+            dom: 'Brt<"bottom"lip>',
+            order: [],
             columnDefs: [
-                { orderable: false, targets: [5] },
-                { searchable: false, targets: [5] }
+                { orderable: false, targets: [6] },
+                { searchable: false, targets: [6] }
             ]
         });
 

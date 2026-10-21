@@ -109,7 +109,7 @@
 $(document).ready(function() {
     @if($cycleConfigs->count() > 0)
     var table = $('#cycleConfigsTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
             { orderable: false, targets: [5] },

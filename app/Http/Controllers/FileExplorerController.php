@@ -71,7 +71,10 @@ class FileExplorerController extends Controller
         $total    = $query->count();
         $start    = (int) $request->input('start', 0);
         $length   = (int) $request->input('length', 10);
-        $projects = $query->orderBy('created_at', 'desc')->skip($start)->take($length)->get();
+        $projects = $query
+            ->orderBy(\App\Models\Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->skip($start)->take($length)->get();
 
         $data = $projects->map(function ($p) {
             $oldId     = $p->old_project_id ?? $p->id;

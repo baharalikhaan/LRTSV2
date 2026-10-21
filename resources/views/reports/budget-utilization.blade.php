@@ -61,7 +61,7 @@
                     $totalCommitted = 0;
                     $totalBalance = 0;
                 @endphp
-                @forelse(\App\Models\ProjectBudget::with('project.program.grant', 'project.program.cycle', 'project.lpi')->orderByDesc('id')->get() as $b)
+                @forelse(\App\Models\ProjectBudget::with('project.program.grant', 'project.program.cycle', 'project.lpi')->orderByRaw('(SELECT program_title FROM programs WHERE programs.id = (SELECT program_id FROM projects WHERE projects.id = project_budgets.project_id)) ASC')->orderBy('project_budgets.project_id', 'asc')->get() as $b)
                     @php
                         $project = $b->project;
                         if (!$project) continue;
@@ -153,8 +153,8 @@
 <script>
 $(document).ready(function() {
     var table = $('#budgetReportTable').DataTable({
-        dom: 'rt<"bottom"lip>',
-        order: [[0, 'desc']],
+        dom: 'Brt<"bottom"lip>',
+        order: [],
         pageLength: 25,
         columnDefs: [{ orderable: false, targets: [1,2,3,8] }],
         drawCallback: function() {

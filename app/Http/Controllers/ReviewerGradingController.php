@@ -93,6 +93,7 @@ class ReviewerGradingController extends Controller
             ->whereHas('reviewers', function ($q) use ($userId) {
                 $q->where('user_id', $userId);
             })
+            ->orderBy('projects.id')
             ->get()
             ->map(function ($project) use ($userId) {
                 $progressGrading = ProgressReportGrading::where('project_id', $project->id)->first();

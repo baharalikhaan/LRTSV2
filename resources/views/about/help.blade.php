@@ -13,21 +13,43 @@
 </div>
 
 @php
-    $tabs = [
+    $allTabs = [
         'general'  => ['icon' => 'fa-globe',       'label' => 'General'],
+        'workflow' => ['icon' => 'fa-diagram-project', 'label' => 'System workflow'],
         'admin'    => ['icon' => 'fa-user-shield', 'label' => 'Administrator'],
         'lpi'      => ['icon' => 'fa-user-tie',    'label' => 'LPI'],
         'reviewer' => ['icon' => 'fa-user-check',  'label' => 'Reviewer'],
     ];
 
+    // Role-based visibility: General and the System workflow overview are for
+    // everyone; admins keep oversight of all role manuals, while an LPI sees
+    // General + System workflow + LPI and a reviewer General + System
+    // workflow + Reviewer.
+    $u = auth()->user();
+    if ($u && $u->isAdmin()) {
+        $tabs = $allTabs;
+    } else {
+        $tabs = [
+            'general'  => $allTabs['general'],
+            'workflow' => $allTabs['workflow'],
+        ];
+        if ($u && $u->isLPI()) {
+            $tabs['lpi'] = $allTabs['lpi'];
+        }
+        if ($u && $u->isReviewer()) {
+            $tabs['reviewer'] = $allTabs['reviewer'];
+        }
+    }
+
+    // A tab outside the allowed set (e.g. ?tab=admin opened by an LPI)
+    // silently falls back to the role default.
     $tab = request('tab');
     if (!is_string($tab) || !array_key_exists($tab, $tabs)) {
-        $u = auth()->user();
         if ($u && $u->isAdmin()) {
             $tab = 'admin';
-        } elseif ($u && $u->isReviewer()) {
+        } elseif ($u && $u->isReviewer() && isset($tabs['reviewer'])) {
             $tab = 'reviewer';
-        } elseif ($u && $u->isLPI()) {
+        } elseif ($u && $u->isLPI() && isset($tabs['lpi'])) {
             $tab = 'lpi';
         } else {
             $tab = 'general';

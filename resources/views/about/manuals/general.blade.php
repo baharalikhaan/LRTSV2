@@ -62,7 +62,7 @@
                     <li><strong>Breadcrumb</strong> — the top-left of the command bar shows where you are.</li>
                     <li><strong>Role switcher</strong> — appears for accounts holding more than one role; switch roles to change the available menus and actions.</li>
                     <li><strong>Notification bell</strong> — pending tasks and reminders relevant to you.</li>
-                    <li><strong>Help menu</strong> (the question-mark icon) — links to the Help Center, the LPI/Reviewer manuals (shown per your role) and the Team page.</li>
+                    <li><strong>Help menu</strong> (the question-mark icon) — links to the Help Center and the Team page.</li>
                     <li><strong>User menu</strong> (top-right) — your profile and sign-out.</li>
                 </ul>
             </div>
@@ -128,10 +128,11 @@
         <section id="support" class="panel manual-section">
             <div class="panel-head"><h2><i class="fas fa-circle-question"></i> 9. Getting Help</h2></div>
             <div class="panel-body">
-                <p>This Help Center provides role-based manuals:</p>
+                <p>This Help Center provides role-based guides:</p>
                 <ul class="manual-steps">
-                    <li><strong>Administrator</strong>, <strong>LPI</strong>, <strong>Reviewer</strong> — full operational references (tabs above).</li>
+                    <li><strong>System workflow</strong> — the complete end-to-end workflow: phases and actors, multi-reviewer consensus grading, all rejection scenarios, statuses, notifications and deadlines.</li>
                     <li><strong>General</strong> — this common guide.</li>
+                    <li><strong>Administrator</strong>, <strong>LPI</strong>, <strong>Reviewer</strong> — role-specific operational references (tabs shown for your role).</li>
                 </ul>
                 <p>If your question is not covered, contact the research office. When reporting an issue, include the project ID, the page you were on and any error message shown.</p>
                 <div class="manual-callout"><i class="fas fa-lightbulb"></i> An AI assistant may be available from the Help Center, depending on whether it is enabled for your deployment.</div>

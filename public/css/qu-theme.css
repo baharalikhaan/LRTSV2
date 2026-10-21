@@ -1017,27 +1017,28 @@ div.dataTables_wrapper div.dataTables_paginate .paginate_button.disabled {
 
 /* DataTables Buttons toolbar */
 div.dt-buttons {
-  margin-bottom: 12px;
+  margin: 6px 2px 12px 10px; /* breathing room all round; left-aligned */
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 div.dt-buttons .btn,
 .btn-dt {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 6px 11px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--ink-200);
-  border-radius: var(--fluent-radius-md);
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: .01em;
+  border: 1px solid var(--brand-300);
+  border-radius: var(--fluent-radius-sm);
   background: #fff;
-  color: var(--ink-600);
+  color: var(--ink-500);
   cursor: pointer;
   transition: all .12s ease;
 }
 div.dt-buttons .btn:hover,
 .btn-dt:hover {
   background: var(--sand-50);
-  border-color: var(--brand-300);
+  border-color: var(--brand-500);
   color: var(--brand-600);
   box-shadow: var(--fluent-depth-2);
 }
@@ -1045,7 +1046,8 @@ div.dt-buttons .btn:active,
 .btn-dt:active {
   transform: translateY(1px);
 }
-div.dt-buttons .btn i { font-size: 12px; }
+div.dt-buttons .btn i,
+.btn-dt i { font-size: 11px; line-height: 1; }
 
 /* Custom dt-toolbar layout */
 .dt-toolbar {
@@ -1056,7 +1058,10 @@ div.dt-buttons .btn i { font-size: 12px; }
   gap: 12px;
 }
 .dt-toolbar .dt-buttons {
-  margin-bottom: 0;
+  /* Inside the shared toolbar the buttons stay left (search sits right);
+     only the standalone button bar (e.g. Research Calls) floats right. */
+  margin: 0;
+  width: auto;
 }
 .dt-toolbar .dataTables_filter {
   margin-bottom: 0;

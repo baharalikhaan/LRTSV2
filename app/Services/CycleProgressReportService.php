@@ -44,6 +44,12 @@ class CycleProgressReportService
             'group' => 'Admin',
             'type' => 'boolean',
         ],
+        'progress2_report' => [
+            'key' => 'progress2_report',
+            'label' => 'Progress Report 2',
+            'group' => 'LPI',
+            'type' => 'boolean',
+        ],
         'final_report' => [
             'key' => 'final_report',
             'label' => 'Final Report',
@@ -92,6 +98,8 @@ class CycleProgressReportService
         $projects = Project::query()
             ->whereIn('program_id', $programIds)
             ->with(['lpi', 'program'])
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
             ->get();
 
         $projectIds = $projects->pluck('id')->toArray();
@@ -135,6 +143,12 @@ class CycleProgressReportService
         $progressReportProjects = DB::table('project_submissions')
             ->whereIn('project_id', $projectIds)
             ->where('type', 'progress')
+            ->distinct()
+            ->pluck('project_id');
+
+        $progress2ReportProjects = DB::table('project_submissions')
+            ->whereIn('project_id', $projectIds)
+            ->where('type', 'progress2')
             ->distinct()
             ->pluck('project_id');
 
@@ -183,7 +197,7 @@ class CycleProgressReportService
         // Build rows
         $rows = $projects->map(function ($project) use (
             $outcomesCounts, $studentsCounts, $contributionsCounts,
-            $progressReportProjects, $finalReportProjects, $readinessReportProjects,
+            $progressReportProjects, $progress2ReportProjects, $finalReportProjects, $readinessReportProjects,
             $reviewerCounts, $progressGradingProjects, $finalGradingProjects,
             $registeredProjects
         ) {
@@ -201,6 +215,8 @@ class CycleProgressReportService
                 'students_count'          => $studentsCounts[$id] ?? 0,
                 'contributions_count'     => $contributionsCounts[$id] ?? 0,
                 'has_progress_report'     => $progressReportProjects->contains($id),
+                'progress2_enabled'       => (bool) $project->extended_progress,
+                'has_progress2_report'    => $progress2ReportProjects->contains($id),
                 'has_final_report'        => $finalReportProjects->contains($id),
                 'has_readiness_report'    => $readinessReportProjects->contains($id),
                 'reviewer_count'          => $reviewerCounts[$id] ?? 0,
@@ -233,10 +249,10 @@ class CycleProgressReportService
         $projects = Project::query()
             ->where('program_id', $programId)
             ->with(['lpi', 'program'])
+            ->orderBy('projects.id')
             ->get();
 
         $projectIds = $projects->pluck('id')->toArray();
-
         if (empty($projectIds)) {
             return [
                 'rows'           => collect(),
@@ -268,6 +284,12 @@ class CycleProgressReportService
         $progressReportProjects = DB::table('project_submissions')
             ->whereIn('project_id', $projectIds)
             ->where('type', 'progress')
+            ->distinct()
+            ->pluck('project_id');
+
+        $progress2ReportProjects = DB::table('project_submissions')
+            ->whereIn('project_id', $projectIds)
+            ->where('type', 'progress2')
             ->distinct()
             ->pluck('project_id');
 
@@ -310,7 +332,7 @@ class CycleProgressReportService
         // Build rows
         $rows = $projects->map(function ($project) use (
             $outcomesCounts, $studentsCounts, $contributionsCounts,
-            $progressReportProjects, $finalReportProjects, $readinessReportProjects,
+            $progressReportProjects, $progress2ReportProjects, $finalReportProjects, $readinessReportProjects,
             $reviewerCounts, $progressGradingProjects, $finalGradingProjects,
             $registeredProjects
         ) {
@@ -328,6 +350,8 @@ class CycleProgressReportService
                 'students_count'          => $studentsCounts[$id] ?? 0,
                 'contributions_count'     => $contributionsCounts[$id] ?? 0,
                 'has_progress_report'     => $progressReportProjects->contains($id),
+                'progress2_enabled'       => (bool) $project->extended_progress,
+                'has_progress2_report'    => $progress2ReportProjects->contains($id),
                 'has_final_report'        => $finalReportProjects->contains($id),
                 'has_readiness_report'    => $readinessReportProjects->contains($id),
                 'reviewer_count'          => $reviewerCounts[$id] ?? 0,
@@ -360,6 +384,7 @@ class CycleProgressReportService
         $projects = Project::query()
             ->where('program_id', $programId)
             ->with(['lpi', 'program'])
+            ->orderBy('projects.id')
             ->get();
 
         $projectIds = $projects->pluck('id')->toArray();
@@ -548,6 +573,11 @@ class CycleProgressReportService
                 'completed' => $rows->where('has_progress_report', true)->count(),
                 'pending'   => $total - $rows->where('has_progress_report', true)->count(),
             ],
+            'progress2_report' => [
+                'completed' => $rows->where('progress2_enabled', true)->where('has_progress2_report', true)->count(),
+                'pending'   => $rows->where('progress2_enabled', true)->where('has_progress2_report', false)->count(),
+                'not_applicable' => $total - $rows->where('progress2_enabled', true)->count(),
+            ],
             'final_report' => [
                 'completed' => $rows->where('has_final_report', true)->count(),
                 'pending'   => $total - $rows->where('has_final_report', true)->count(),
@@ -587,6 +617,8 @@ class CycleProgressReportService
                 return $rows->where('contributions_count', 0);
             case 'progress_report':
                 return $rows->where('has_progress_report', false);
+            case 'progress2_report':
+                return $rows->filter(fn ($row) => ($row['progress2_enabled'] ?? false) && !($row['has_progress2_report'] ?? false));
             case 'final_report':
                 return $rows->where('has_final_report', false);
             case 'readiness_report':
@@ -632,6 +664,11 @@ class CycleProgressReportService
                 return [
                     'subject' => 'Reminder: Progress Report Not Submitted',
                     'message' => 'You have projects with pending progress reports. Please submit the progress report before the deadline.',
+                ];
+            case 'progress2_report':
+                return [
+                    'subject' => 'Reminder: Progress Report 2 Not Submitted',
+                    'message' => 'You have extended-progress projects with pending Progress Report 2 submissions. Please submit Progress Report 2 before the deadline.',
                 ];
             case 'final_report':
                 return [

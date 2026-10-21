@@ -202,7 +202,51 @@ class ProgressController extends Controller
             'submission_notes' => 'nullable|string|max:2000',
         ]);
 
-        DB::transaction(function () use ($project, $validated, $user, $request) {
+        // Write the uploaded progress file BEFORE the DB work: a failed write
+        // must not destroy the previous file or leave rows pointing at nothing.
+        $uploadedProgress = false;
+        if ($request->hasFile('submissions')) {
+            $oldId = $project->getFileSafeOldProjectId();
+            foreach ($request->file('submissions') as $type => $file) {
+                if ($file === null) continue;
+                // Only save progress type files here
+                if ($type !== 'progress' && $type !== 'progress_report') continue;
+                $typeLabel = 'progress';
+                $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
+                $dir = $project->getStorageDir('progress_reports');
+
+                if ($file->storeAs($dir, $storedFilename) === false) {
+                    return response()->json([
+                        'success' => false,
+                        'error'   => 'Could not store the uploaded file. The existing document was left untouched.',
+                    ], 500);
+                }
+                $path = $dir . '/' . $storedFilename;
+
+                // Retire superseded rows only now that the new file is on disk.
+                $existingRows = $project->submissions()->where('type', 'progress')->get();
+                foreach ($existingRows as $existing) {
+                    $oldPath = storage_path('app/' . $existing->file_path);
+                    // Same deterministic filename — that path holds the new file.
+                    if ($oldPath !== storage_path('app/' . $path) && file_exists($oldPath)) {
+                        @unlink($oldPath);
+                    }
+                    $existing->delete();
+                }
+
+                $project->submissions()->create([
+                    'type'              => 'progress',
+                    'file_path'         => $path,
+                    'stored_filename'   => $storedFilename,
+                    'original_filename' => $file->getClientOriginalName(),
+                    'notes'             => $validated['submission_notes'] ?? null,
+                    'user_id'           => $user->id,
+                ]);
+                $uploadedProgress = true;
+            }
+        }
+
+        DB::transaction(function () use ($project, $validated, $user, $uploadedProgress) {
             // Save outcomes
             if (!empty($validated['outcomes'])) {
                 foreach ($validated['outcomes'] as $outcomeData) {
@@ -223,44 +267,17 @@ class ProgressController extends Controller
                 }
             }
 
-            // Save file submissions (progress report only — readiness/final are in final step)
-            if ($request->hasFile('submissions')) {
-                $oldId = $project->getFileSafeOldProjectId();
-                foreach ($request->file('submissions') as $type => $file) {
-                    if ($file === null) continue;
-                    // Only save progress type files here
-                    if ($type !== 'progress' && $type !== 'progress_report') continue;
-                    $typeLabel = 'progress';
-                    $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
-                    $dir = $project->getStorageDir('progress_reports');
-                    $file->storeAs($dir, $storedFilename);
-                    $path = $dir . '/' . $storedFilename;
-
-                    // Replace: remove ALL existing DB rows of this type so no
-                    // duplicate submission records pile up (rows first(), the
-                    // row(s) now reference the freshly overwritten file).
-                    $project->submissions()->where('type', 'progress')->delete();
-                    $project->submissions()->create([
-                        'type'              => 'progress',
-                        'file_path'         => $path,
-                        'stored_filename'   => $storedFilename,
-                        'original_filename' => $file->getClientOriginalName(),
-                        'notes'             => $validated['submission_notes'] ?? null,
-                        'user_id'           => $user->id,
-                    ]);
-                }
-            }
-
             // Record the progress_added status (always record on save, even after rejection)
             $project->recordStatus(Project::STATUS_PROGRESS_ADDED, [
                 'triggered_by' => 'progress',
             ], $user->id);
 
-            // If this progress report was previously graded, archive the last
-            // submitted grading and reset the row so the reviewer's form
-            // re-opens blank for the new version. Scoped to report_type='progress'
-            // so a rejected final/progress2 grading is not reopened by mistake.
-            $this->archiveAndResetGrading($project->id, 'progress');
+            // Archive & re-open the reviewer's grading ONLY when a new progress
+            // file actually arrived (a new version). A text-only form save must
+            // not wipe an in-progress grading set or invent a "previous grade".
+            if ($uploadedProgress) {
+                $this->archiveAndResetGrading($project->id, 'progress');
+            }
         });
 
         // Confirm to the LPI that their progress report was submitted (automatic).
@@ -397,6 +414,16 @@ class ProgressController extends Controller
             ], 423);
         }
 
+        // Progress Report 2 belongs to the extended progress flow only —
+        // mirrors the grading-side gate so the UI-hiddden type cannot be
+        // posted directly.
+        if ($type === 'progress2' && !$project->extended_progress) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Progress Report 2 is not enabled for this project.',
+            ], 403);
+        }
+
         // Map to submission type and version
         $oldId = $project->getFileSafeOldProjectId();
 
@@ -410,7 +437,12 @@ class ProgressController extends Controller
             $storedFilename = $oldId . '_' . $typeLabel . '_' . $next . '.pdf';
             $version = 1;
 
-            $file->storeAs($dir, $storedFilename);
+            if ($file->storeAs($dir, $storedFilename) === false) {
+                return response()->json([
+                    'success' => false,
+                    'error'   => 'Could not store the uploaded file. Please try again.',
+                ], 500);
+            }
             $path = $dir . '/' . $storedFilename;
 
             $submission = $project->submissions()->create([
@@ -462,40 +494,27 @@ class ProgressController extends Controller
             $dir = $project->getStorageDir('progress_reports');
         }
 
+        // Superseded rows are retired only AFTER the new file is safely on
+        // disk (see below) — never before, so a failed write cannot destroy
+        // the previous version.
+        $rowsToDelete = collect();
+
         if ($type === 'readiness') {
             // Readiness: replace existing (single file per type)
-            $existingRows = $project->submissions()->where('type', $submissionType)->get();
-            foreach ($existingRows as $existing) {
-                $oldPath = storage_path('app/' . $existing->file_path);
-                if (file_exists($oldPath)) {
-                    @unlink($oldPath);
-                }
-                $existing->delete();
-            }
+            $rowsToDelete = $project->submissions()->where('type', $submissionType)->get();
             $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
             $version = 1;
         } elseif ($type === 'final' && ($project->hasStatus(Project::STATUS_FINAL_REJECTED) || $project->hasStatus(Project::STATUS_FINAL_REJ_REVIEWED))) {
             // Admin resubmission: keep v1, write/overwrite v2 only
             $existingV2 = $project->submissions()->where('type', $submissionType)->where('version', 2)->first();
             if ($existingV2) {
-                $oldPath = storage_path('app/' . $existingV2->file_path);
-                if (file_exists($oldPath)) {
-                    @unlink($oldPath);
-                }
-                $existingV2->delete();
+                $rowsToDelete = collect([$existingV2]);
             }
             $storedFilename = $oldId . '_' . $typeLabel . '_v2.pdf';
             $version = 2;
         } elseif ($type === 'final') {
             // Final: replace existing (single file per type)
-            $existingRows = $project->submissions()->where('type', $submissionType)->get();
-            foreach ($existingRows as $existing) {
-                $oldPath = storage_path('app/' . $existing->file_path);
-                if (file_exists($oldPath)) {
-                    @unlink($oldPath);
-                }
-                $existing->delete();
-            }
+            $rowsToDelete = $project->submissions()->where('type', $submissionType)->get();
             $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
             $version = 1;
         } elseif ($type === 'progress2' && ($project->hasStatus(Project::STATUS_PROGRESS2_REJECTED)
@@ -507,24 +526,13 @@ class ProgressController extends Controller
             // Progress 2 admin resubmission: keep v1, write/overwrite v2 only
             $existingV2 = $project->submissions()->where('type', $submissionType)->where('version', 2)->first();
             if ($existingV2) {
-                $oldPath = storage_path('app/' . $existingV2->file_path);
-                if (file_exists($oldPath)) {
-                    @unlink($oldPath);
-                }
-                $existingV2->delete();
+                $rowsToDelete = collect([$existingV2]);
             }
             $storedFilename = $oldId . '_' . $typeLabel . '_v2.pdf';
             $version = 2;
         } elseif ($type === 'progress2') {
             // Progress 2 normal upload: replace existing (single file)
-            $existingRows = $project->submissions()->where('type', $submissionType)->get();
-            foreach ($existingRows as $existing) {
-                $oldPath = storage_path('app/' . $existing->file_path);
-                if (file_exists($oldPath)) {
-                    @unlink($oldPath);
-                }
-                $existing->delete();
-            }
+            $rowsToDelete = $project->submissions()->where('type', $submissionType)->get();
             $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
             $version = 1;
         } elseif ($project->hasStatus(Project::STATUS_PROGRESS_REJECTED)
@@ -535,30 +543,36 @@ class ProgressController extends Controller
             // Admin resubmission: keep v1, write/overwrite v2 only
             $existingV2 = $project->submissions()->where('type', $submissionType)->where('version', 2)->first();
             if ($existingV2) {
-                $oldPath = storage_path('app/' . $existingV2->file_path);
-                if (file_exists($oldPath)) {
-                    @unlink($oldPath);
-                }
-                $existingV2->delete();
+                $rowsToDelete = collect([$existingV2]);
             }
             $storedFilename = $oldId . '_' . $typeLabel . '_v2.pdf';
             $version = 2;
         } else {
             // Normal upload: replace existing (single file per type)
-            $existingRows = $project->submissions()->where('type', $submissionType)->get();
-            foreach ($existingRows as $existing) {
-                $oldPath = storage_path('app/' . $existing->file_path);
-                if (file_exists($oldPath)) {
-                    @unlink($oldPath);
-                }
-                $existing->delete();
-            }
+            $rowsToDelete = $project->submissions()->where('type', $submissionType)->get();
             $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
             $version = 1;
         }
 
-        $file->storeAs($dir, $storedFilename);
+        // Write the NEW file first; only retire the superseded rows once the
+        // replacement is confirmed on disk.
+        if ($file->storeAs($dir, $storedFilename) === false) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Could not store the uploaded file. The existing document was left untouched.',
+            ], 500);
+        }
         $path = $dir . '/' . $storedFilename;
+
+        foreach ($rowsToDelete as $existing) {
+            $oldPath = storage_path('app/' . $existing->file_path);
+            // A v1 replace reuses the same deterministic filename — that path
+            // now holds the new file, so it must not be unlinked.
+            if ($oldPath !== storage_path('app/' . $path) && file_exists($oldPath)) {
+                @unlink($oldPath);
+            }
+            $existing->delete();
+        }
 
         $submission = $project->submissions()->create([
             'type'              => $submissionType,
@@ -591,7 +605,13 @@ class ProgressController extends Controller
         }
 
         // Render the download link HTML snippet
-        $downloadUrl = route('serveFile2', ['type' => $submissionType, 'id' => $project->id]);
+        // submission_id is required: a v2 upload keeps v1 on disk under the
+        // deterministic name, so a type+id link would serve the stale v1.
+        $downloadUrl = route('serveFile2', [
+            'type'          => $submissionType,
+            'id'            => $project->id,
+            'submission_id' => $submission->id,
+        ]);
         $linkHtml = '<a href="' . $downloadUrl . '" target="_blank" style="color:var(--brand-500);font-size:12px;font-weight:500;">'
                   . '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>'
                   . e($submission->stored_filename)
@@ -701,55 +721,70 @@ class ProgressController extends Controller
         }
 
         if ($reportType === 'final') {
-            $row = \App\Models\FinalReportGrading::where('project_id', $projectId)->first();
-            if (!$row) {
-                return;
-            }
+            $rows = \App\Models\FinalReportGrading::where('project_id', $projectId)
+                ->orderBy('id')
+                ->get();
 
+            // Multi-reviewer: archive & re-open EVERY user's set for the new
+            // version — each reviewer grades v2 with his own (blank) set.
+            foreach ($rows as $row) {
+                if (in_array($row->publish, ['accepted', 'rejected'], true)) {
+                    $row->previous_grading = $row->only([
+                        'gradeA', 'scoreA', 'commentA',
+                        'gradeB', 'scoreB', 'commentB',
+                        'gradeC', 'scoreC', 'commentC',
+                        'gradeD', 'commentD', 'total',
+                        'publish', 'isAccepted', 'user_id',
+                    ]);
+                    foreach (['gradeA', 'scoreA', 'commentA', 'gradeB', 'scoreB', 'commentB',
+                              'gradeC', 'scoreC', 'commentC', 'gradeD', 'commentD', 'total'] as $field) {
+                        $row->{$field} = null;
+                    }
+                }
+
+                $row->publish = 'pending';
+                $row->isAccepted = 0;
+                $row->rejection_type = null;
+                $row->rejection_reason = null;
+                $row->save();
+            }
+            return;
+        }
+
+        $rows = \App\Models\ProgressReportGrading::where('project_id', $projectId)
+            ->when(
+                $reportType === 'progress2',
+                fn ($q) => $q->where('report_type', 'progress2'),
+                fn ($q) => $q->where(function ($w) {
+                    $w->where('report_type', 'progress')->orWhereNull('report_type');
+                })
+            )
+            ->orderBy('id')
+            ->get();
+
+        // Multi-reviewer: archive & re-open EVERY user's set for the new
+        // version — each reviewer grades v2 with his own (blank) set.
+        foreach ($rows as $row) {
             if (in_array($row->publish, ['accepted', 'rejected'], true)) {
                 $row->previous_grading = $row->only([
-                    'gradeA', 'scoreA', 'commentA',
-                    'gradeB', 'scoreB', 'commentB',
-                    'gradeC', 'scoreC', 'commentC',
-                    'gradeD', 'commentD', 'total',
+                    'achievementsRating', 'publicationsRating', 'studentsRating', 'budgetRating',
+                    'achievementsComments', 'publicationsComments', 'studentsComments', 'budgetComments',
+                    'ethical', 'analysis', 'comments', 'recommendation', 'path',
                     'publish', 'isAccepted', 'user_id',
                 ]);
-                foreach (['gradeA', 'scoreA', 'commentA', 'gradeB', 'scoreB', 'commentB',
-                          'gradeC', 'scoreC', 'commentC', 'gradeD', 'commentD', 'total'] as $field) {
+                foreach (['achievementsRating', 'publicationsRating', 'studentsRating', 'budgetRating',
+                          'achievementsComments', 'publicationsComments', 'studentsComments', 'budgetComments',
+                          'ethical', 'analysis', 'comments', 'recommendation', 'path'] as $field) {
                     $row->{$field} = null;
                 }
             }
 
             $row->publish = 'pending';
             $row->isAccepted = 0;
+            $row->rejection_type = null;
+            $row->rejection_reason = null;
             $row->save();
-            return;
         }
-
-        $row = \App\Models\ProgressReportGrading::where('project_id', $projectId)
-            ->where('report_type', $reportType)
-            ->first();
-        if (!$row) {
-            return;
-        }
-
-        if (in_array($row->publish, ['accepted', 'rejected'], true)) {
-            $row->previous_grading = $row->only([
-                'achievementsRating', 'publicationsRating', 'studentsRating', 'budgetRating',
-                'achievementsComments', 'publicationsComments', 'studentsComments', 'budgetComments',
-                'ethical', 'analysis', 'comments', 'recommendation', 'path',
-                'publish', 'isAccepted', 'user_id',
-            ]);
-            foreach (['achievementsRating', 'publicationsRating', 'studentsRating', 'budgetRating',
-                      'achievementsComments', 'publicationsComments', 'studentsComments', 'budgetComments',
-                      'ethical', 'analysis', 'comments', 'recommendation', 'path'] as $field) {
-                $row->{$field} = null;
-            }
-        }
-
-        $row->publish = 'pending';
-        $row->isAccepted = 0;
-        $row->save();
     }
 
     /**
@@ -770,8 +805,11 @@ class ProgressController extends Controller
         if ($type === 'progress2') {
             return $program->prog_rpt2_deadline;
         }
+        // Readiness is a final-phase deliverable: it follows the FINAL report
+        // period (deadline AND rejection hold), matching the UI and the rule
+        // that outcomes/readiness/ethical/final are all bound to that window.
         if ($type === 'readiness') {
-            return $program->prog_rpt2_deadline;
+            return $program->final_rpt_deadline;
         }
         if ($type === 'final') {
             return $program->final_rpt_deadline;
@@ -787,31 +825,31 @@ class ProgressController extends Controller
     protected function isResubmitRequested(Project $project, string $type): bool
     {
         if ($type === 'final') {
-            $last = $project->statusHistories()->where('status', Project::STATUS_FINAL_REJ_REVIEWED)->latest()->first();
+            $last = $project->statusHistories()->where('status', Project::STATUS_FINAL_REJ_REVIEWED)->latest('id')->first();
             return $last
                 && ($last->metadata['action'] ?? null) === 'send_to_lpi'
                 && !$project->statusHistories()
                     ->whereIn('status', [Project::STATUS_GRADED, Project::STATUS_FINAL_REJECTED])
-                    ->where('created_at', '>', $last->created_at)
+                    ->where('id', '>', $last->id)
                     ->exists();
         }
 
         if ($type === 'progress2') {
-            $last = $project->statusHistories()->where('status', Project::STATUS_PROGRESS2_REJ_REVIEWED)->latest()->first();
+            $last = $project->statusHistories()->where('status', Project::STATUS_PROGRESS2_REJ_REVIEWED)->latest('id')->first();
             return $last
                 && ($last->metadata['action'] ?? null) === 'send_to_lpi'
                 && !$project->statusHistories()
                     ->whereIn('status', [Project::STATUS_PROGRESS2_REVIEWED, Project::STATUS_PROGRESS2_REJECTED])
-                    ->where('created_at', '>', $last->created_at)
+                    ->where('id', '>', $last->id)
                     ->exists();
         }
 
-        $last = $project->statusHistories()->where('status', Project::STATUS_PROGRESS_REJ_REVIEWED)->latest()->first();
+        $last = $project->statusHistories()->where('status', Project::STATUS_PROGRESS_REJ_REVIEWED)->latest('id')->first();
         return $last
             && ($last->metadata['action'] ?? null) === 'send_to_lpi'
             && !$project->statusHistories()
                 ->whereIn('status', [Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED])
-                ->where('created_at', '>', $last->created_at)
+                ->where('id', '>', $last->id)
                 ->exists();
     }
 
@@ -838,14 +876,14 @@ class ProgressController extends Controller
             $laterStatuses = [Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED];
         }
 
-        $last = $project->statusHistories()->where('status', $rejectionStatus)->latest()->first();
+        $last = $project->statusHistories()->where('status', $rejectionStatus)->latest('id')->first();
         if (!$last || !in_array($last->metadata['rejection_type'] ?? 'report', ['ethical', 'other'], true)) {
             return false;
         }
 
         return !$project->statusHistories()
             ->whereIn('status', $laterStatuses)
-            ->where('created_at', '>', $last->created_at)
+            ->where('id', '>', $last->id)
             ->exists();
     }
 
@@ -969,38 +1007,57 @@ class ProgressController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($project, $validated, $user, $request) {
-            if ($request->hasFile('submissions')) {
-                $oldId = $project->getFileSafeOldProjectId();
-                foreach ($request->file('submissions') as $type => $file) {
-                    if ($file === null) continue;
-                    if (!in_array($type, ['readiness', 'final'])) continue;
+        // Write the uploaded files BEFORE the DB work: a failed write must not
+        // leave rows pointing at nothing, and the superseded rows are only
+        // retired once the replacement is confirmed on disk.
+        if ($request->hasFile('submissions')) {
+            $oldId = $project->getFileSafeOldProjectId();
+            foreach ($request->file('submissions') as $type => $file) {
+                if ($file === null) continue;
+                if (!in_array($type, ['readiness', 'final'])) continue;
 
-                    $typeLabel = $type === 'readiness' ? 'readiness' : 'final';
-                    $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
-                    $dir = $project->getStorageDir($type === 'readiness' ? 'readiness_reports' : 'final_reports');
+                $typeLabel = $type === 'readiness' ? 'readiness' : 'final';
+                $storedFilename = $oldId . '_' . $typeLabel . '.pdf';
+                $dir = $project->getStorageDir($type === 'readiness' ? 'readiness_reports' : 'final_reports');
 
-                    $file->storeAs($dir, $storedFilename);
-                    $path = $dir . '/' . $storedFilename;
-
-                    // Replace: remove ALL existing DB rows of this type so no
-                    // duplicate submission records pile up.
-                    $project->submissions()->where('type', $type)->delete();
-                    $project->submissions()->create([
-                        'type'              => $type,
-                        'file_path'         => $path,
-                        'stored_filename'   => $storedFilename,
-                        'original_filename' => $file->getClientOriginalName(),
-                        'notes'             => $validated['submission_notes'] ?? null,
-                        'user_id'           => $user->id,
-                    ]);
+                if ($file->storeAs($dir, $storedFilename) === false) {
+                    return response()->json([
+                        'success' => false,
+                        'error'   => 'Could not store the uploaded file. The existing document was left untouched.',
+                    ], 500);
                 }
-            }
+                $path = $dir . '/' . $storedFilename;
 
-            // Record the final_added status (always record on save, even if files already uploaded)
-            $project->recordStatus(Project::STATUS_FINAL_ADDED, [
-                'triggered_by' => 'final-report',
-            ], $user->id);
+                // Retire superseded rows now that the new file is on disk.
+                $existingRows = $project->submissions()->where('type', $type)->get();
+                foreach ($existingRows as $existing) {
+                    $oldPath = storage_path('app/' . $existing->file_path);
+                    if ($oldPath !== storage_path('app/' . $path) && file_exists($oldPath)) {
+                        @unlink($oldPath);
+                    }
+                    $existing->delete();
+                }
+
+                $project->submissions()->create([
+                    'type'              => $type,
+                    'file_path'         => $path,
+                    'stored_filename'   => $storedFilename,
+                    'original_filename' => $file->getClientOriginalName(),
+                    'notes'             => $validated['submission_notes'] ?? null,
+                    'user_id'           => $user->id,
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($project, $user) {
+            // Record final_added ONLY when an actual final report exists. A
+            // readiness-only submit must not claim the final report was added
+            // (the reviewer is hard-blocked until a final file is present).
+            if ($project->submissions()->where('type', 'final')->exists()) {
+                $project->recordStatus(Project::STATUS_FINAL_ADDED, [
+                    'triggered_by' => 'final-report',
+                ], $user->id);
+            }
 
             // Re-open the reviewer's grading for a resubmitted final report
             // (archive the rejected grading so it stays visible read-only under
@@ -1045,21 +1102,29 @@ class ProgressController extends Controller
         ]);
 
         DB::transaction(function () use ($project, $validated, $user) {
-            // Get only the types being saved in this request
-            $incomingTypes = collect($validated['outcomes'])->pluck('type')->unique()->values()->toArray();
+            $contributionTypes = ['ip_disclosure', 'provisional_patent', 'patent_granted', 'open_source_sw', 'startup'];
 
-            // Delete existing outcomes only for these specific types (clean re-insert)
-            $project->outcomes()->whereIn('type', $incomingTypes)->delete();
-
-            // Insert each outcome
+            // UPSERT only — never delete. A delete-then-reinsert would wipe rows
+            // created record-by-record via saveSingleOutcome, along with their
+            // verification flags, scores and linked publications. Removal is
+            // owned exclusively by the deleteOutcome endpoint.
             foreach ($validated['outcomes'] as $outcomeData) {
                 $type = $outcomeData['type'];
                 $submitted = $outcomeData['submitted'] ?? 'No';
                 $detail = $outcomeData['detail'] ?? null;
 
-                // Contribution types (toggle-based) — only save if submitted == 'Yes'
-                if (in_array($type, ['ip_disclosure', 'provisional_patent', 'patent_granted', 'open_source_sw', 'startup'])) {
-                    if ($submitted === 'Yes') {
+                // Contribution/IP types are toggles — only present when submitted=Yes.
+                if (in_array($type, $contributionTypes)) {
+                    if ($submitted !== 'Yes') {
+                        continue; // absent/"No": leave any existing row untouched
+                    }
+                    $existing = $project->outcomes()->where('type', $type)->first();
+                    if ($existing) {
+                        // Keep verification/score/link; only refresh the note.
+                        if ($detail !== null) {
+                            $existing->update(['identifier' => $detail]);
+                        }
+                    } else {
                         $project->outcomes()->create([
                             'user_id'     => $user->id,
                             'type'        => $type,
@@ -1073,18 +1138,27 @@ class ProgressController extends Controller
                     continue;
                 }
 
-                // Scholarly types (text-based DOI) — only save non-empty detail
-                if (!empty($detail)) {
-                    $project->outcomes()->create([
-                        'user_id'     => $user->id,
-                        'type'        => $type,
-                        'identifier'  => $detail,
-                        'online_date' => null,
-                        'verifcation_by_system'   => 'pending',
-                        'verifcation_by_reviewer' => 'pending',
-                        'score'       => 0,
-                    ]);
+                // Scholarly types (text-based DOI) — skip empty details, and
+                // create only when the same (type, identifier) is not already stored.
+                if (empty($detail)) {
+                    continue;
                 }
+                $alreadyStored = $project->outcomes()
+                    ->where('type', $type)
+                    ->where('identifier', $detail)
+                    ->exists();
+                if ($alreadyStored) {
+                    continue; // re-save must not reset verification/score
+                }
+                $project->outcomes()->create([
+                    'user_id'     => $user->id,
+                    'type'        => $type,
+                    'identifier'  => $detail,
+                    'online_date' => null,
+                    'verifcation_by_system'   => 'pending',
+                    'verifcation_by_reviewer' => 'pending',
+                    'score'       => 0,
+                ]);
             }
         });
 

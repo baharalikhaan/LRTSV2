@@ -137,7 +137,7 @@
 @push('scripts')
 <script>
     $(document).ready(function() {
-        $('#assignmentsTable').DataTable({ order: [[6, 'desc']] });
+        $('#assignmentsTable').DataTable({ order: [] });
     });
 </script>
 @endpush

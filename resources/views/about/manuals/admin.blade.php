@@ -141,6 +141,7 @@
                 <p>Administrators oversee grading rather than performing it. Key surfaces:</p>
                 <ul class="manual-steps">
                     <li><strong>Report Cards</strong> — published grading summaries for projects, printable (A4).</li>
+                    <li><strong>Edit Commitments</strong> (grading page, Commitments tab) — admins can update a project's commitment values inline; reviewers and LPIs have view-only access.</li>
                     <li><strong>Reviewer Grading</strong> — reviewer activity and performance across assigned projects.</li>
                     <li><strong>Grading Form</strong> (System Settings) — configure the grading sections and their scoring.</li>
                     <li><strong>Scores</strong> (System Settings) — the weighted score map that powers auto-scoring of outcomes.</li>

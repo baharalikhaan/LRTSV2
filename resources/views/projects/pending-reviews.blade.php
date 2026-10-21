@@ -63,16 +63,16 @@
             <div class="empty-state py-5">
                 <i class="fas fa-check-circle" style="opacity:0.3;"></i>
                 <h5>No Pending Reviews</h5>
-                <p>All reviewers are up to date — nothing to step in for.</p>
+                <p>Nothing is waiting for your grade — you have submitted your set for every ready stage.</p>
             </div>
         @else
             <table class="fluent-table w-100" id="pendingReviewsTable">
                 <thead>
                     <tr>
                         <th style="min-width:130px;">Project ID</th>
+                        <th style="min-width:180px;">LPI</th>
                         <th>Title</th>
                         <th>Program</th>
-                        <th>LPI</th>
                         <th style="min-width:180px;">Assigned Reviewer</th>
                         <th style="min-width:160px;">Review Type</th>
                         <th class="text-center" style="min-width:150px;">Action</th>
@@ -82,9 +82,16 @@
                     @foreach($pendingReviews as $item)
                     <tr>
                         <td><a href="{{ route('projects.show', $item->project->id) }}"><code>{{ $item->project->old_project_id ?? $item->project->id }}</code></a></td>
+                        <td>
+                            @if($item->project->lpi)
+                                <div style="font-weight:500;">{{ $item->project->lpi->name }}</div>
+                                <div style="font-size:11px;color:var(--color-ink-400);">{{ $item->project->lpi->email }}</div>
+                            @else
+                                <span style="font-size:12px;color:var(--ink-400);font-style:italic;">—</span>
+                            @endif
+                        </td>
                         <td><span style="font-weight:500;">{{ $item->project->title ?? $item->project->project_title ?? '—' }}</span></td>
                         <td>{{ $item->project->program->program_title ?? '—' }}</td>
-                        <td>{{ $item->project->lpi->name ?? '—' }}</td>
                         <td>{{ $item->reviewer }}</td>
                         <td>
                             @php
@@ -116,8 +123,8 @@
 <script>
     $(document).ready(function() {
         var table = $('#pendingReviewsTable').DataTable({
-            dom: 'rt<"bottom"lip>',
-            order: [[0, 'asc']],
+            dom: 'Brt<"bottom"lip>',
+            order: [],
             pageLength: 25,
             language: { emptyTable: 'No pending reviews found.' }
         });

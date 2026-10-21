@@ -32,14 +32,14 @@ RTS manages the full lifecycle of research projects: Research Call creation → 
 ## Project Lifecycle (10 stages)
 1. **Import** — Admin imports projects from Excel → status: `imported`
 2. **Registration** — LPI registers via wizard → status: `registered`
-3. **Reviewer Assignment** — Admin assigns reviewer → status: `Assigned`
-4. **Proposal Acceptance** — Reviewer accepts → status: `Claimed`; or rejects → status: `proposal_rejected`
+3. **Reviewer Assignment** — Admin assigns one or more reviewers (several can be assigned at the same time; each keeps his own grading set) → status: `Assigned`
+4. **Proposal Acceptance** — each reviewer accepts for himself (per-reviewer `claimed_at`; the first claim from a pre-claim state records `Claimed`, later claims never regress a post-claim status) or rejects → `proposal_rejected` (removes only his own assignment; a reviewer who rejected can never be re-assigned)
 5. **Progress Report** — LPI uploads progress report → status: `progress_added`
-6. **Progress Review** — Reviewer accepts → `progress_reviewed`; rejects → `progress_rejected`
+6. **Progress Review** — consensus: the status records only when EVERY assigned reviewer has submitted his own set (a standalone admin grade completes immediately); any rejected set wins → `progress_rejected`, otherwise → `progress_reviewed`; the LPI graded-email fires once at completion and a completed stage is frozen (a reviewer added later stores his set but never re-opens or flips the status)
 7. **Final Report** — LPI uploads final report → status: `final_added`
-8. **Final Grading** — Reviewer grades → status: `Graded`
+8. **Final Grading** — same consensus rule → status: `Graded` (or `final_rejected` when any set rejected)
 9. **Report Card** — Available after grading
-10. **Rejection Flow** — Reviewer rejects with a rejection type → `report` rejections: Admin reviews → sends back to LPI for resubmission; `ethical`/`other` rejections: no admin step, no new version — the reviewer edits the existing grading in place
+10. **Rejection Flow** — a rejection is stored on that reviewer's set immediately; the rejected status records when the stage's consensus completes (un-assigning the blocking reviewer also completes it). Then `report` rejections: Admin reviews → sends back to LPI for resubmission; `ethical`/`other` rejections: no admin step, no new version — the reviewer edits the existing grading in place
 
 ## Status Flow
 `imported → registered → Assigned → Claimed → progress_added → progress_reviewed → final_added → Graded`
@@ -75,34 +75,37 @@ Score = min(round((actual / expected) × 5, 2), 5)
 - Score map configured in Admin → Scores
 
 ### Grade Behavior
-- **Accept**: Records status, grading persisted
-- **Reject**: Grading record persists as a read-only panel showing the rejection reason and type (stored in status history metadata); the form reopens when the LPI resubmits a new version
-- **Reject types**: `report` (default — Admin reviews, LPI resubmits v2), `ethical` (Missing/Invalid Ethical Approval), `other` — see **Report Rejection Workflows** below for the full flows
-- **Draft**: `publish = pending`, can be saved without full validation
-- **Submit**: `publish` required, `rejection_reason` + `rejection_type` required if rejected
+- **Per-user sets**: every reviewer (and the admin) grades his own independent set for the same project — drafts stay editable until he submits, then read-only for him; the grading page never shows another user's scores (all sets appear together on the project page / report card)
+- **Claim required**: the grading page and both save endpoints require the reviewer's own claim (`claimed_at`) — direct URL/POST without claiming returns 403
+- **Accept**: grading persisted as your own set; the stage status records only when the consensus completes
+- **Reject**: stored on your set immediately; the rejected status records at consensus completion with reason/type copied onto the status history; the form reopens when the LPI resubmits a new version (v2 archives and re-opens EVERY reviewer's set)
+- **Reject types**: `report` (default — Admin reviews, LPI resubmits v2), `ethical` (Missing/Invalid Ethical Approval), `other` — all three now route through the Admin; see **Report Rejection Workflows** below for the full flows
+- **Draft**: `publish = pending`, per user, can be saved without full validation
+- **Submit**: `publish` required, `rejection_reason` + `rejection_type` required if rejected; the toast notes when the stage is still waiting for other reviewers
 
 ## Report Rejection Workflows (Progress 1, Progress 2, Final Reports)
 
 Rejections can be applied to progress report 1, progress report 2 and the final report. The reviewer picks a **rejection type** in the grading form when publish status is Rejected, plus a required rejection reason:
 
-| Type | Label | Admin review step | New report version from LPI |
-|------|-------|-------------------|------------------------------|
-| `report` (default) | {Report} Rejection | Yes — Admin reviews and sends to LPI | Yes — LPI uploads a new version (v2) |
-| `ethical` | Missing/Invalid Ethical Approval | No | No — grading edited in place |
-| `other` | Other | No | No — grading edited in place |
+| Type | Label | Admin review step | What the LPI re-sends |
+|------|-------|-------------------|------------------------|
+| `report` (default) | {Report} Rejection | Yes — Admin reviews and sends to LPI | A new report version (v2) |
+| `ethical` | Missing/Invalid Ethical Approval | Yes — Admin reviews and sends to LPI | The ethical approval document (the report itself is NOT re-uploaded) |
+| `other` | Other | Yes — Admin reviews and sends to LPI | As directed by the admin (typically the ethical approval / supporting document) |
 
 ### Flow A — `report` rejections (Admin review + resubmission)
-1. Reviewer rejects on the grading page → status `progress_rejected` / `progress2_rejected` / `final_rejected`; the reason, rejection type and rejected-by are stored with the status history
+1. Reviewer rejects on the grading page → his set stores the reason, rejection type and rejected-by immediately; the status `progress_rejected` / `progress2_rejected` / `final_rejected` records when the stage's consensus completes (every assigned reviewer submitted — or the blocking reviewer was un-assigned), and the reason/type/rejected-by are copied onto the status history
 2. Admin opens the project → **Review Progress Rejection / Review Final Rejection** action → review modal shows the reviewer name/time, type badge and reason → admin writes a required "Message to LPI" → **Send to LPI**
 3. Status becomes `*_rejection_reviewed`, the LPI receives a "{Report} Resubmission Required" email, and a red resubmission banner quoting the reviewer's reason appears on the LPI's project page
 4. LPI uploads a new report version (v2 — filename gets `_v2`; the previous file and its rejected grading remain visible as read-only "previous grading" for comparison)
 5. The rejected grading is archived and a blank grading form re-opens for the reviewer; the rejection is resolved when the reviewer accepts or re-rejects the new version
 
-### Flow B — `ethical` / `other` rejections (edit-in-place)
-1. Reviewer rejects with type `ethical` or `other` → same rejected status is recorded, but there is NO admin review step and NO new version is expected — the admin review endpoint explicitly refuses these rejections
-2. The LPI's upload window is locked (rejection hold); a banner explains that no new report version is required and shows the reviewer's reason
-3. The rejected grading stays active and shows as a read-only panel (Type + Reason) on the grading page with an **Edit Grading** button
-4. Clicking **Edit Grading** reopens the grading form pre-filled with the existing grades and previous rejection type/reason; re-submitting (e.g., switching publish to Accepted) resolves the rejection and lifts the hold
+### Flow B — `ethical` / `other` rejections (admin forwards; LPI re-sends the approval)
+1. Reviewer rejects with type `ethical` or `other` → same rejected status is recorded with the type in its metadata
+2. Admin sees it like any other rejection (**Review … Rejection** action + the bell task) → writes a required "Message to LPI" → **Send to LPI**
+3. Status becomes `*_rejection_reviewed` (carrying `rejection_type`), and the LPI is notified to **re-send the ethical approval document** — the progress/final report itself is NOT re-uploaded and its upload window stays locked
+4. The LPI uploads the ethical approval (that upload type is never deadline- or hold-gated)
+5. The reviewer re-reviews (Edit Grading → switch publish to Accepted) → the rejection resolves and the stage advances; nothing is reset because no new report version exists
 
 ### Who can reject / edit grading
 - Only the assigned Reviewer, or Admin grading on behalf — grading rows are per project + user, so an admin's grading does not overwrite the reviewer's row
@@ -182,6 +185,19 @@ Deadline alerts, My Projects table, Announcements
 Total Assigned, Pending Proposals, Pending Grading, Graded, Average Rating (out of 5)
 Donut chart: Projects by Status, My Reviews table, Performance Rating table
 
+## Notification Bell (pending tasks)
+
+The bell dropdown contains a server-rendered, role-aware **Pending Tasks** section plus announcements loaded over AJAX:
+
+| Role | Pending tasks shown |
+|------|---------------------|
+| **Admin** | `N projects pending reviewer assignment`; `N projects pending grading`; **`N rejected report(s) awaiting your review`** — counts rejections whose rejection round is still un-reviewed (mirrors the Review Rejection action: latest row of the round is still a rejection — including ethical/other, which the admin forwards so the LPI re-sends the approval; graded projects never count) |
+| **LPI** | `N projects pending registration`; `N projects pending progress report`; **`N rejected report(s) needing resubmission`** — keyed on the LATEST workflow status, so it appears the moment a rejection lands and clears automatically when he resubmits or the project is graded |
+| **Reviewer** | `N project(s) pending your review` (assigned, not yet Graded — the whole queue); `N accepted project(s) ready to grade` (claimed AND a progress/final report exists with its deadline passed) |
+
+- Admins do not receive announcements (they create them for others); everyone else also gets role-targeted announcements.
+- "No new updates" shows only when there are neither announcements nor pending tasks; the bell dot lights up when the Pending Tasks section is present.
+
 ## Key Workflows
 
 ### How to submit a progress report
@@ -193,18 +209,19 @@ Donut chart: Projects by Status, My Reviews table, Performance Rating table
 6. Save as Draft or Submit
 
 ### How to grade a project
-1. Go to Projects → click "Grade" on assigned project
-2. Select grade (1-5) for each section
-3. Add comments for each section
-4. Set publish status (Accepted/Rejected); when rejecting, choose a rejection type (Report Rejection / Missing/Invalid Ethical Approval / Other) and enter a rejection reason
-5. Save as Draft or Submit
+1. Go to Projects → accept the proposal first (**Accept/Reject Proposal** in the Actions menu) if you have not claimed the project yet — the grading form is locked until your own claim exists
+2. Open the project → click "Grade"
+3. Select grade (1-5) for each section
+4. Add comments for each section
+5. Set publish status (Accepted/Rejected); when rejecting, choose a rejection type (Report Rejection / Missing/Invalid Ethical Approval / Other) and enter a rejection reason
+6. Save as Draft or Submit — the stage status advances only once every assigned reviewer has submitted
 
 ### How to assign reviewers
-1. Go to Projects → Reviewer Assignment
+1. Go to Projects → Reviewer Assignment (or Projects → Actions → Assign Reviewer / Add Reviewer)
 2. Select a research call
-3. Check projects to assign
-4. Select reviewer from dropdown
-5. Click Assign
+3. Pick reviewer(s) — new reviewers are added **alongside** the existing ones; each keeps his own grading set
+4. Click Assign / Bulk Assign
+5. Use the per-reviewer **Un-assign** control to remove someone (an admin may also pull a claimed-but-silent reviewer — reason required, the reviewer is notified, and `reviewer_unassigned` is recorded only when nobody remains)
 
 ### How to create a research call
 1. Go to Research Calls → click "New Research Call"
@@ -218,7 +235,7 @@ Donut chart: Projects by Status, My Reviews table, Performance Rating table
 3. See full evaluation with all grades, outcomes, students
 
 ## Version History
-- **v2.3.1 (Oct 2026)**: Mandatory nationality selection modal after login; Research Pillars and Colleges pages restyled to match Grant Types; AI system prompt updated with detailed report rejection workflows (report/ethical/other types, admin resubmission review, edit-in-place grading)
+- **v2.3.1 (Oct 2026)**: Mandatory nationality selection modal after login; Research Pillars and Colleges pages restyled to match Grant Types; multi-reviewer / consensus grading with per-user grade sets and per-reviewer claims; notification-bell rejection tasks (admin review queue, LPI resubmission task); ethical/other rejections now route through the admin too (the LPI re-sends the ethical approval document, never the report); AI system prompt updated with detailed report rejection workflows (report/ethical/other types, admin resubmission review)
 - **v2.3.0 (Sep 2026)**: Rejection type dropdown when rejecting a report (Report Rejection / Missing/Invalid Ethical Approval / Other); ethical and other rejections skip the admin step and edit the existing grading in place; rejected grades persist as read-only panels; AI system prompt updated
 - **v2.2.0 (Sep 2026)**: Redesigned dashboards (KPI cards, donut charts), notification bell with pending tasks, AI Assistant chat widget in Help Center
 - **v2.1.0 (Aug 2026)**: Access control, Fluent UI redesign, workflow engine, Report Card, DataTables with CSV/Excel/PDF/Print export, reviewer assignment, outcomes management, grade on behalf, user pillar multi-select
@@ -252,6 +269,17 @@ Use GitHub Flavored Markdown (GFM) for all responses:
 ## Recent Features (latest releases)
 The following were added after v2.3.0 — describe them accurately.
 
+### Multi-reviewer & consensus grading (late v2.3.1)
+- A project can have **several reviewers assigned at the same time**; the Assign modal, Reviewer Assignment page and the Projects action menu add reviewers alongside existing ones (never replacing), and each assignment is un-assigned individually.
+- **Per-user grade sets**: each reviewer and the admin keeps an independent set (draft → editable, submitted → read-only for that user); other sets are invisible on the grading page and aggregated on the project page/report card.
+- **Claim is per reviewer and enforced server-side** (grading page + save endpoints return 403 without your own claim).
+- **Consensus statuses**: `progress_reviewed` / `progress_rejected` / `Graded` / `final_rejected` record only when every assigned reviewer submitted (standalone admin grades complete immediately; any rejected set wins; completed stages are frozen for later-added reviewers). The LPI graded-email fires once at completion; a v2 resubmission re-opens EVERY reviewer's set.
+- **Evaluate Projects** (`/projects/pending-reviews`) is the admin's personal queue — rows leave only once he submits his own set; labels list every owed stage (e.g. `Progress Report 1 · Final Report`).
+- Policy/enforcement: proposal upload API is admin-only; commitments are admin-editable (grading page → Commitments tab); removed legacy bypass endpoints `/grading/{id}/submit-grade`, `/grading/{id}/final-grade`, `/workflow/submit-progress-review`.
+
+### Notification bell tasks
+- The bell's Pending Tasks section is role-aware — see **Notification Bell (pending tasks)** above for the exact per-role items, including the admin's rejection review queue and the LPI's resubmission task.
+
 ### Proposal & file handling
 - Proposal filenames are standardized to the project id alone, with "/" removed (e.g. `QUIKT-CENG-26/27-1014` → `QUIKT-CENG-2627-1014.pdf`). Legacy `_Application` / `_proposal` names are still accepted on upload.
 - Report files (progress, progress 2, readiness, final, ethical) use the same file-safe project id.
@@ -276,7 +304,8 @@ The following were added after v2.3.0 — describe them accurately.
 - The **Assign Reviewer** modal dropdown groups reviewers by research pillar (maroon headers; themed hover/selection).
 
 ### Help & manuals
-- The Help Center is a tabbed reference: **Administrator / LPI / Reviewer / General**, each with a full manual (including annotated screenshots).
+- The Help Center is a tabbed reference: **General** and **System workflow** (an illustrated end-to-end walkthrough: phases and actors, assignment/claiming, consensus grading, all rejection scenarios, the full status reference, notification-bell tasks and deadlines) are shown to every role; role manuals are role-based — an **LPI** additionally sees **LPI**, a **reviewer** additionally sees **Reviewer**, admins see all five tabs; a restricted tab opened by URL falls back to the user's own manual.
+- The top-bar "?" menu lists only **Help Center** and **Our Team** (the direct LPI/Reviewer manual links were removed).
 - System Settings uses underline tabs (Gauges, Grading Form, Scores, AI Assistant).
 
 ### Admin diagnostics

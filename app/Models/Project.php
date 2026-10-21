@@ -223,7 +223,8 @@ class Project extends Model
      */
     public function reviewers(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'projects_reviewers', 'project_id', 'user_id');
+        return $this->belongsToMany(User::class, 'projects_reviewers', 'project_id', 'user_id')
+            ->withPivot(['claimed_at', 'role']);
     }
 
     /**
@@ -324,7 +325,7 @@ class Project extends Model
 
         $latest = $this->statusHistories()
             ->whereIn('status', $relevant)
-            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->first();
 
         if (!$latest) {
@@ -338,12 +339,9 @@ class Project extends Model
             return false;
         }
 
-        // Ethical/Other rejections skip the admin review step — no resubmission
-        // is expected, the reviewer edits and resubmits the grading directly.
-        if (in_array($latest->metadata['rejection_type'] ?? 'report', ['ethical', 'other'], true)) {
-            return false;
-        }
-
+        // Ethical/Other rejections ALSO route through the admin review step:
+        // the admin forwards them to the LPI, who re-sends the ethical
+        // approval document (the progress/final report itself is not re-uploaded).
         return true;
     }
 
@@ -507,18 +505,26 @@ class Project extends Model
             // Proposal are rendered separately by the UI and remain available.
             $adminLocked = ($currentStatus === self::STATUS_ASSIGNED);
 
+            $hasReviewerEntry = DB::table('projects_reviewers')
+                ->where('project_id', $this->id)
+                ->exists();
+
+            // Assign / Add Reviewer — multi-reviewer model: another reviewer can
+            // be added at any point before the project is graded (it never
+            // replaces or disturbs the reviewers already assigned), so this is
+            // available even while the workflow sits with a reviewer.
+            if ($hasRegistered && !$hasGraded) {
+                $adminActions[] = [
+                    'action' => 'assign',
+                    'label'  => $hasReviewerEntry ? 'Add Reviewer' : 'Assign Reviewer',
+                ];
+            }
+
             if (!$adminLocked) {
-                $hasReviewerEntry = DB::table('projects_reviewers')
-                    ->where('project_id', $this->id)
-                    ->exists();
-
-                // Assign Reviewer
-                if ($hasRegistered && !$hasGraded && !$hasReviewerEntry) {
-                    $adminActions[] = ['action' => 'assign', 'label' => 'Assign Reviewer'];
-                }
-
-                // Un-assign Reviewer
-                if ($hasReviewerEntry && $hasAssigned && !$hasGraded && !$hasClaimed) {
+                // Un-assign Reviewer — the menu appears while the project is not
+                // graded; the server enforces per-reviewer (a reviewer who has
+                // already claimed cannot be removed).
+                if ($hasReviewerEntry && !$hasGraded) {
                     $adminActions[] = ['action' => 'unassign-reviewer', 'label' => 'Un-assign Reviewer'];
                 }
 
@@ -587,12 +593,18 @@ class Project extends Model
 
     /**
      * Get reviewer-specific actions for the workflow.
+     *
+     * Claiming is tracked per reviewer (projects_reviewers.claimed_at): each
+     * assigned reviewer must accept/reject the proposal himself before his own
+     * grading form unlocks — one reviewer's claim never unlocks (or locks)
+     * another reviewer's actions.
      */
     private function getReviewerActions($user): array
     {
         $actions = [];
-        $isAssigned = $this->reviewers()->where('user_id', $user->id)->exists();
-        $hasClaimed = $this->hasStatus(self::STATUS_CLAIMED);
+        $pivot = $this->reviewers()->where('user_id', $user->id)->first();
+        $isAssigned = $pivot !== null;
+        $hasClaimed = $isAssigned && $pivot->pivot->claimed_at;
         $hasGraded = $this->hasStatus(self::STATUS_GRADED);
 
         if ($hasGraded) {
@@ -604,7 +616,7 @@ class Project extends Model
             $actions[] = ['action' => 'claim', 'label' => 'Accept/Reject Proposal'];
         }
 
-        if ($hasClaimed) {
+        if ($isAssigned && $hasClaimed) {
             $actions[] = ['action' => 'open-grading', 'label' => 'Grade Project'];
         }
 

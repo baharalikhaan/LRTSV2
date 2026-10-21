@@ -19,6 +19,8 @@
     </coverage>
     <php>
         <server name="APP_ENV" value="testing"/>
+        <!-- Pin the app URL so tests never inherit a dev .env URL (e.g. subfolder installs). -->
+        <server name="APP_URL" value="http://localhost"/>
         <server name="BCRYPT_ROUNDS" value="4"/>
         <server name="CACHE_DRIVER" value="array"/>
         <!-- Tests run against a dedicated database so the real data is never touched. -->

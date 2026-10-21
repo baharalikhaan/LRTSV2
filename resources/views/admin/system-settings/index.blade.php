@@ -326,7 +326,7 @@
 $(document).ready(function() {
     @if($scores->count() > 0)
     var scoresTbl = $('#scoresTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[2, 'desc']],
         pageLength: 25,
         drawCallback: function() { $('[data-bs-toggle="tooltip"]').tooltip('dispose').tooltip(); }

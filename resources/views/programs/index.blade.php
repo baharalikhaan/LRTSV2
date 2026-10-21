@@ -80,8 +80,8 @@
                     <th>Research Call Title</th>
                     <th class="text-center">Projects</th>
                     <th>Grant</th>
-                    <th class="text-center">Type</th>
                     <th>Prog. Report Deadline</th>
+                    <th>Prog. Report 2 Deadline</th>
                     <th>Final Report Deadline</th>
                     <th class="text-center">Status
                         <i class="fas fa-question-circle" style="color:var(--color-ink-300);font-size:11px;margin-left:4px;cursor:help;"
@@ -93,7 +93,7 @@
                             data-bs-toggle="tooltip" data-bs-html="true"
                             title="When the admin marks it <strong>Visible</strong>, it is visible to reviewers.<br>Otherwise it will be <strong>Hidden</strong> from reviewers."></i>
                     </th>
-                    <th class="text-center" style="min-width: 160px;">Actions</th>
+                    <th class="text-center no-export" style="min-width: 160px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -106,20 +106,24 @@
                     </td>
                     <td>
                         @if($program->grant)
-                            <span class="pill primary">{{ $program->grant->grant_code }}</span>
+                            <div style="font-weight:600;color:var(--ink-700,#38333e);">{{ $program->grant->grant_code }}</div>
+                            <div style="font-size:10px;color:var(--ink-400,#8b8592);margin-top:3px;">
+                                {{ $program->grant->category ? ucfirst($program->grant->category) : '—' }}
+                            </div>
                         @else
                             <span class="pill primary">N/A</span>
                         @endif
                     </td>
-                    <td class="text-center">
-                        @php $category = $program->grant ? strtolower($program->grant->category ?? '') : ''; @endphp
-                        <span class="pill {{ $category === 'student' ? 'info' : ($category === 'regular' ? 'primary' : 'inactive') }}">
-                            {{ $category ? ucfirst($category) : '—' }}
-                        </span>
-                    </td>
                     <td>
                         @if($program->prog_rpt_deadline)
                             <span class="text-nowrap"><i class="far fa-calendar-alt me-1" style="color:var(--color-ink-400);"></i> {{ $program->prog_rpt_deadline->format('d-m-Y') }}</span>
+                        @else
+                            <span class="text-muted">&mdash;</span>
+                        @endif
+                    </td>
+                    <td>
+                        @if($program->prog_rpt2_deadline)
+                            <span class="text-nowrap"><i class="far fa-calendar-alt me-1" style="color:var(--color-ink-400);"></i> {{ $program->prog_rpt2_deadline->format('d-m-Y') }}</span>
                         @else
                             <span class="text-muted">&mdash;</span>
                         @endif
@@ -154,9 +158,10 @@
                                 @if(auth()->user()->isAdmin())
                                 <a class="dropdown-item" href="#" data-modal-edit=""
                                     data-field-id="{{ $program->id }}"
-                                    data-field-prog_rpt_deadline="{{ $program->prog_rpt_deadline ? $program->prog_rpt_deadline->format('Y-m-d') : '' }}"
-                                    data-field-prog_rpt2_deadline="{{ $program->prog_rpt2_deadline ? $program->prog_rpt2_deadline->format('Y-m-d') : '' }}"
-                                    data-field-final_rpt_deadline="{{ $program->final_rpt_deadline ? $program->final_rpt_deadline->format('Y-m-d') : '' }}"
+                                    data-field-title="{{ $program->program_title }}"
+                                    data-field-prog-rpt-deadline="{{ $program->prog_rpt_deadline ? $program->prog_rpt_deadline->format('Y-m-d') : '' }}"
+                                    data-field-prog-rpt2-deadline="{{ $program->prog_rpt2_deadline ? $program->prog_rpt2_deadline->format('Y-m-d') : '' }}"
+                                    data-field-final-rpt-deadline="{{ $program->final_rpt_deadline ? $program->final_rpt_deadline->format('Y-m-d') : '' }}"
                                     data-field-description="{{ $program->description }}"
                                     onclick="closeAllMenus();" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                     <i class="fas fa-edit" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Edit Research Call
@@ -168,6 +173,9 @@
                                 <div style="border-top:1px solid #eee;margin:4px 0;"></div>
                                 <a class="dropdown-item" href="{{ route('projects.available') }}?program_id={{ $program->id }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                     <i class="fas fa-folder-open" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> View Projects
+                                </a>
+                                <a class="dropdown-item" href="{{ route('programs.booklet', $program->id) }}" target="_blank" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                    <i class="fas fa-book-open" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Report Booklet
                                 </a>
                                 <a class="dropdown-item" href="#" onclick="closeAllMenus();openBulkUploadModalForProgram({{ $program->id }})" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                     <i class="fas fa-file-archive" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Upload Proposals ZIP
@@ -187,7 +195,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="9">
+                    <td colspan="10">
                         <div class="empty-state py-4">
                             <i class="fas fa-sync-alt"></i>
                             <h5>No Research Calls Found</h5>
@@ -391,31 +399,37 @@
 
 {{-- Edit Research Call Modal --}}
 <div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:600px;">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:760px;">
         <div class="modal-content">
             <form method="POST" action="" id="editForm">
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="_method" id="editMethod" value="PUT">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i> Edit Deadlines</h5>
+                    <div>
+                        <h5 class="modal-title" style="margin:0;"><i class="fas fa-edit me-2"></i> Edit Deadlines</h5>
+                    </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div style="font-size:14px;color:var(--ink-700,#38333e);margin-bottom:18px;">
+                        Editing deadlines of the research call
+                        <strong id="editProgramTitle" style="font-weight:700;color:var(--brand-600,#7a1636);"></strong>
+                    </div>
                     <div class="row gx-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group mb-2">
                                 <label class="form-label" style="font-size:12px;">Progress Report Deadline</label>
                                 <input type="date" name="prog_rpt_deadline" id="edit_prog_rpt_deadline" class="form-control form-control-sm">
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group mb-2">
                                 <label class="form-label" style="font-size:12px;">Prog. Report 2 Deadline</label>
                                 <input type="date" name="prog_rpt2_deadline" id="edit_prog_rpt2_deadline" class="form-control form-control-sm">
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="form-group mb-2">
                                 <label class="form-label" style="font-size:12px;">Final Report Deadline</label>
                                 <input type="date" name="final_rpt_deadline" id="edit_final_rpt_deadline" class="form-control form-control-sm">
@@ -602,7 +616,7 @@ function onGrantTypeChange(el) {
 $(document).ready(function() {
     @if($programs->count() > 0)
     var table = $('#programsTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
             { orderable: false, targets: [9] },
@@ -693,7 +707,8 @@ $(document).ready(function() {
         var data = $(this).data();
         $('#editMethod').val('PUT');
         $('#editRecordId').val(data.fieldId || '');
-        $('#editForm').attr('action', '/programs/' + data.fieldId);
+        $('#editForm').attr('action', appUrl('/programs/' + data.fieldId));
+        $('#editProgramTitle').text(data.fieldTitle || '');
         $('#edit_prog_rpt_deadline').val(data.fieldProgRptDeadline || '');
         $('#edit_prog_rpt2_deadline').val(data.fieldProgRpt2Deadline || '');
         $('#edit_final_rpt_deadline').val(data.fieldFinalRptDeadline || '');
@@ -917,7 +932,7 @@ function submitSingleUpload() {
     formData.append('pdf', singleFile);
 
     $.ajax({
-        url: '/programs/' + singleProjectId + '/upload-proposal',
+        url: appUrl('/programs/' + singleProjectId + '/upload-proposal'),
         method: 'POST',
         data: formData,
         processData: false,

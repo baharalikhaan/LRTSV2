@@ -281,8 +281,8 @@
 $(document).ready(function() {
     @if($totalProjects > 0)
     $('#projectsTable').DataTable({
-        dom: 'rt<"bottom"lip>',
-        order: [[0, 'asc']],
+        dom: 'Brt<"bottom"lip>',
+        order: [],
         pageLength: 25
     });
     @endif

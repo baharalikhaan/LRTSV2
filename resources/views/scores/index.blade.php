@@ -132,7 +132,7 @@
 $(document).ready(function() {
     @if($scores->count() > 0)
     var table = $('#scoresTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[2, 'desc']],
         pageLength: 25,
         drawCallback: function() {

@@ -48,6 +48,11 @@
                 <button type="button" class="chip" data-missing="ethical">Ethical</button>
             </div>
 
+            <div class="filter-group rejected-filters">
+                <span class="filter-label">Rejected reports:</span>
+                <button type="button" class="chip" data-rejected="progress">Progress</button>
+            </div>
+
             <div class="upload-legend">
                 <span class="pill success" style="font-size:9px;padding:2px 6px;"><i class="fas fa-check" style="font-size:8px;"></i> Uploaded</span>
                 <span class="pill inactive" style="font-size:9px;padding:2px 6px;"><i class="fas fa-minus" style="font-size:8px;"></i> None</span>
@@ -106,15 +111,16 @@ $(document).ready(function() {
         ajax: {
             url: '{{ route("admin-upload.ajax-list") }}',
             data: function(d) {
-                d.missing = $('.chip.active').map(function() { return $(this).data('missing'); }).get();
+                d.missing = $('.chip.active[data-missing]').map(function() { return $(this).data('missing'); }).get();
+                d.rejected_progress = $('.chip.active[data-rejected="progress"]').length ? 1 : 0;
                 d.cycle_id = $('#cycleFilter').val();
             }
         },
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         columns: [
             { data: 'old_project_id', name: 'old_project_id', title: 'ID', width: '100px', className: 'nowrap' },
+            { data: 'lpi', name: 'lpi', title: 'LPI', orderable: false, searchable: false, width: '150px' },
             { data: 'title', name: 'title', title: 'Title', orderable: false, searchable: true },
-            { data: 'lpi', name: 'lpi', title: 'LPI', orderable: false, searchable: false, width: '120px', className: 'nowrap' },
 
             { data: 'proposal', name: 'proposal', title: 'Proposal', orderable: false, searchable: false, className: 'text-center', width: '70px' },
             { data: 'progress', name: 'progress', title: 'PR1', orderable: false, searchable: false, className: 'text-center', width: '55px' },
@@ -124,7 +130,7 @@ $(document).ready(function() {
             { data: 'ethical', name: 'ethical', title: 'Ethical', orderable: false, searchable: false, className: 'text-center', width: '70px' },
             { data: 'action', name: 'action', title: 'Upload', orderable: false, searchable: false, className: 'text-center', width: '180px' },
         ],
-        order: [[0, 'desc']],
+        order: [],
         pageLength: 15,
         drawCallback: function() {
             initUploadForms();

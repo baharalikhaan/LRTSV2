@@ -210,7 +210,7 @@
 $(document).ready(function() {
     @if($teamMembers->count() > 0)
     var table = $('#teamsTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         pageLength: 25,
         columnDefs: [{ orderable: false, targets: [5] }],
@@ -264,7 +264,7 @@ $(document).ready(function() {
         modal.find('#teamModal_path').val(btn.data('field-path'));
         modal.find('#teamModalTitleText').text('Edit Team Member');
         modal.find('#teamModalSubmitText').text('Update Member');
-        modal.find('form').attr('action', '/teams/' + btn.data('field-id'));
+        modal.find('form').attr('action', appUrl('/teams/' + btn.data('field-id')));
         modal.modal('show');
     });
 

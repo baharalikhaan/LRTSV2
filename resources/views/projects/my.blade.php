@@ -138,8 +138,8 @@
 <script>
     $(document).ready(function() {
         var table = $('#projectsTable').DataTable({
-            dom: 'rt<"bottom"lip>',
-            order: [[0, 'desc']],
+            dom: 'Brt<"bottom"lip>',
+            order: [],
             columnDefs: [
                 { orderable: false, targets: [7] },
                 { searchable: false, targets: [7] }

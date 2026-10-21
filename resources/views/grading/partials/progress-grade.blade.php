@@ -279,7 +279,7 @@
         </div>
     @else
         @php $projectId = $project->id ?? ($report->project_id ?? ''); @endphp
-        <form method="POST" action="/grading/{{ $projectId }}/save-progress-grade" data-progress-grade style="margin-top:4px;">
+        <form method="POST" action="{{ route('grading.saveProgressGrade', $projectId) }}" data-progress-grade style="margin-top:4px;">
             @csrf
             <input type="hidden" name="report_type" value="{{ $reportType }}">
 

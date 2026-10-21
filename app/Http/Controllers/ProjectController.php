@@ -23,6 +23,21 @@ class ProjectController extends Controller
 
     public function show($id)
     {
+        return view('projects.show', $this->projectShowData($id));
+    }
+
+    /** Printable (A4) version of the project detail page. */
+    public function printable($id)
+    {
+        return view('projects.printable', $this->projectShowData($id));
+    }
+
+    /**
+     * Shared payload for the project detail page and its printable version,
+     * so both always render the same data.
+     */
+    private function projectShowData($id): array
+    {
         $project = Project::with([
             'program.grant',
             'lpi',
@@ -62,10 +77,10 @@ class ProjectController extends Controller
             ->where('publish', '!=', 'pending')
             ->orderBy('user_id')->get();
 
-        return view('projects.show', compact(
+        return compact(
             'project', 'commitment', 'hasCommitments', 'commitmentsData',
             'finalGradings', 'progressGradings', 'progress2Gradings'
-        ));
+        );
     }
 
     public function reportCard($id)
@@ -194,7 +209,7 @@ class ProjectController extends Controller
             $status = $status ?? ($filters['status'] ?? null);
         }
 
-        $query = Project::with(['program.grant', 'lpi']);
+        $query = Project::with(['program.grant', 'lpi', 'reviewers']);
 
         // ─── Role-based filtering ────────────────────────────────────────
         // Admin: see all projects (no filter)
@@ -221,20 +236,22 @@ class ProjectController extends Controller
             $query->where('program_id', $programId);
         }
 
-        $confProjects = $query->orderBy('created_at', 'desc')->get();
+        $confProjects = $query
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->get();
 
-        // Apply status filter client-side (since status is derived from relationships)
+        // Apply status filter client-side (since status is derived from relationships).
+        // "unregistered" is a computed pseudo-status (imported but never claimed);
+        // every real workflow status matches the project's LATEST status — the
+        // same value the Status pill displays.
         if ($status === 'unregistered') {
             $confProjects = $confProjects->filter(function ($cp) {
                 return !$cp->hasStatus(Project::STATUS_REGISTERED) || !$cp->lpi_id;
             });
-        } elseif ($status === 'registered') {
-            $confProjects = $confProjects->filter(function ($cp) use ($user) {
-                return $cp->hasStatus(Project::STATUS_REGISTERED) && $cp->lpi_id === $user->id;
-            });
-        } elseif ($status === 'claimed') {
-            $confProjects = $confProjects->filter(function ($cp) use ($user) {
-                return $cp->hasStatus(Project::STATUS_REGISTERED) && $cp->lpi_id && $cp->lpi_id !== $user->id;
+        } elseif ($status) {
+            $confProjects = $confProjects->filter(function ($cp) use ($status) {
+                return $cp->currentWorkflowStatus() === $status;
             });
         }
 
@@ -371,7 +388,10 @@ class ProjectController extends Controller
             $query->where('program_id', $programId);
         }
 
-        $projects = $query->orderBy('created_at', 'desc')->get();
+        $projects = $query
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->get();
         $programs = Program::with('grant')->active()->orderBy('program_title')->get();
         $cycleConfigs = CycleConfig::orderBy('year', 'desc')->get();
 
@@ -389,6 +409,7 @@ class ProjectController extends Controller
             ->whereNotIn('id', function ($q) {
                 $q->select('project_id')->from('projects_reviewers');
             })
+            ->orderBy('projects.id')
             ->get();
 
         // Get available reviewers with their pillars
@@ -420,18 +441,26 @@ class ProjectController extends Controller
                 $projectId = $assignment['project_id'] ?? null;
                 $reviewerIds = array_filter($assignment['reviewers'] ?? []);
 
-                foreach ($reviewerIds as $reviewerId) {
-                    if ($projectId && $reviewerId) {
-                        DB::table('projects_reviewers')->updateOrInsert(
-                            ['project_id' => $projectId, 'user_id' => $reviewerId],
-                            ['created_at' => now(), 'updated_at' => now()]
-                        );
-                    }
+                if (!$projectId || count($reviewerIds) === 0) {
+                    continue;
                 }
 
-                // Record the assigned status for this project only when at least
-                // one reviewer was actually selected.
-                if ($projectId && count($reviewerIds) > 0) {
+                // Multi-reviewer model: add without removing the existing ones.
+                $hadReviewers = DB::table('projects_reviewers')
+                    ->where('project_id', $projectId)
+                    ->exists();
+
+                foreach ($reviewerIds as $reviewerId) {
+                    DB::table('projects_reviewers')->updateOrInsert(
+                        ['project_id' => $projectId, 'user_id' => $reviewerId],
+                        ['created_at' => now(), 'updated_at' => now()]
+                    );
+                }
+
+                // Record the assigned status only for the first assignment —
+                // adding a reviewer to an in-review project must not roll its
+                // workflow status (Claimed/progress_*) back to Assigned.
+                if (!$hadReviewers) {
                     $project = Project::find($projectId);
                     if ($project) {
                         $project->recordStatus(Project::STATUS_ASSIGNED);
@@ -456,15 +485,16 @@ class ProjectController extends Controller
         // 2. Assigned (reviewer assigned, awaiting claim)
         // 3. Proposal rejected (reviewer rejected, needs reassignment)
         // 4. Progress rejected (report rejected, may need reassignment)
-        $query = Project::with('program.grant', 'reviewers', 'latestStatus')
+        $query = Project::with('program.grant', 'lpi', 'reviewers', 'latestStatus')
             ->where(function ($q) {
                 // Not assigned yet
                 $q->whereDoesntHave('reviewers')
                   // Latest status is one of the states that need reviewer
-                  // attention (awaiting claim, proposal rejected, or a
-                  // rejected progress report).
+                  // attention (awaiting claim, claimed — another reviewer may
+                  // be added alongside —, proposal rejected, or a rejected
+                  // progress report).
                   ->orWhere(function ($q2) {
-                      $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status IN ('Assigned', 'proposal_rejected', 'progress_rejected') AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
+                      $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status IN ('Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected') AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
                   });
             });
 
@@ -485,7 +515,10 @@ class ProjectController extends Controller
             $query->whereDoesntHave('reviewers');
         }
 
-        $confProjects = $query->orderBy('created_at', 'desc')->get();
+        $confProjects = $query
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->get();
 
         // Research calls are narrowed to the selected cycle (cascading filter).
         $programsQuery = Program::with('grant')->orderBy('program_title');
@@ -543,7 +576,7 @@ class ProjectController extends Controller
         $programId = $request->input('program_id');
         $status = $request->input('status');
 
-        $query = Project::with('program.grant');
+        $query = Project::with('program.grant', 'lpi');
 
         if ($cycleId) {
             $query->whereHas('program', function ($q) use ($cycleId) {
@@ -555,7 +588,10 @@ class ProjectController extends Controller
             $query->where('program_id', $programId);
         }
 
-        $confProjects = $query->orderBy('created_at', 'desc')->get();
+        $confProjects = $query
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->get();
 
         // Apply status filter client-side (status is derived from relationships)
         if ($status === 'unregistered') {
@@ -620,6 +656,8 @@ class ProjectController extends Controller
                 'lpi.name as lpi_name',
                 'lpi.email as lpi_email'
             )
+            ->orderBy('programs.program_title')
+            ->orderBy('projects.id')
             ->get();
 
         // ─── Stats for reviewer dashboard ─────────────────────────────────
@@ -666,8 +704,12 @@ class ProjectController extends Controller
         $grantId   = $request->input('grant_id');
         $status    = $request->input('status');
 
-        $query = Project::with(['lpi', 'program', 'program.grant', 'reviewers', 'latestStatus'])
-            ->whereHas('reviewers');
+        $adminId = $user->id;
+
+        $query = Project::with([
+            'lpi', 'program', 'program.grant', 'reviewers', 'latestStatus',
+            'submissions', 'progressGradings', 'progress2Gradings', 'finalGradings',
+        ]);
 
         if ($cycleId) {
             $query->whereHas('program', function ($q) use ($cycleId) {
@@ -683,44 +725,54 @@ class ProjectController extends Controller
             });
         }
 
-        $projects = $query->get();
+        $projects = $query
+            ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
+            ->orderBy('projects.id')
+            ->get();
 
         $pendingReviews = collect();
         foreach ($projects as $project) {
             $currentStatus = $project->currentWorkflowStatus();
 
-            // Skip graded projects
-            if ($currentStatus === Project::STATUS_GRADED) {
-                continue;
+            // Personal queue: stages that are ready to grade where THIS admin
+            // has not submitted his own set yet. A row disappears from the
+            // queue only for him — once he submits — never because another
+            // reviewer already graded (consensus is tracked in the status).
+            $owed = [];
+
+            if ($project->submissions->contains('type', 'progress')
+                && !$project->progressGradings->contains(function ($g) use ($adminId) {
+                    return (int) $g->user_id === (int) $adminId
+                        && $g->publish !== 'pending'
+                        && in_array($g->report_type, ['progress', null], true);
+                })) {
+                $owed[] = ['progress_report', 'Progress Report 1'];
             }
 
-            // Determine review type based on current status
-            $rt = null;
-            if ($currentStatus === Project::STATUS_PROGRESS_ADDED) {
-                $rt = 'progress_report';
-            } elseif ($currentStatus === Project::STATUS_PROGRESS2_ADDED) {
-                $rt = 'progress2_report';
-            } elseif ($currentStatus === Project::STATUS_FINAL_ADDED) {
-                $rt = 'final_report';
-            } elseif ($currentStatus === Project::STATUS_CLAIMED) {
-                $rt = 'pending_upload';
-            } elseif ($currentStatus === Project::STATUS_ASSIGNED) {
-                $rt = 'awaiting_claim';
-            } else {
-                $rt = strtolower(str_replace(' ', '_', $currentStatus ?? 'unknown'));
+            if (($project->extended_progress ?? false)
+                && $project->submissions->contains('type', 'progress2')
+                && !$project->progress2Gradings->contains(function ($g) use ($adminId) {
+                    return (int) $g->user_id === (int) $adminId && $g->publish !== 'pending';
+                })) {
+                $owed[] = ['progress2_report', 'Progress Report 2'];
             }
 
-            $reviewTypeLabel = match($rt) {
-                'progress_report'   => 'Progress Report 1',
-                'progress2_report'  => 'Progress Report 2',
-                'final_report'      => 'Final Report',
-                'pending_upload'    => 'Pending Progress Upload',
-                'awaiting_claim'    => 'Awaiting Reviewer Claim',
-                default             => ucfirst(str_replace('_', ' ', $currentStatus ?? 'unknown')),
-            };
+            if ($project->submissions->contains('type', 'final')
+                && !$project->finalGradings->contains(function ($g) use ($adminId) {
+                    return (int) $g->user_id === (int) $adminId && $g->publish !== 'pending';
+                })) {
+                $owed[] = ['final_report', 'Final Report'];
+            }
 
-            // Reviewer info from pivot
-            $reviewerName  = $project->reviewers->first()->name ?? '—';
+            if (empty($owed)) {
+                continue; // he has submitted his set for every ready stage
+            }
+
+            $rt = $owed[0][0];
+            $reviewTypeLabel = implode(' · ', array_column($owed, 1));
+
+            // Assigned reviewer(s) for display
+            $reviewerName = $project->reviewers->pluck('name')->implode(', ') ?: '—';
 
             // Filter by status
             if ($status && $currentStatus !== $status) {

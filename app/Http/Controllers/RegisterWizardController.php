@@ -142,6 +142,12 @@ class RegisterWizardController extends Controller
     {
         $project = Project::findOrFail($id);
 
+        // Proposals are managed by the research office only — the wizard's
+        // upload UI was removed for LPIs, and the API must not stay open.
+        if (!auth()->check() || !auth()->user()->isAdmin()) {
+            return response()->json(['error' => 'Only administrators can upload proposal documents.'], 403);
+        }
+
         // Ownership parity with wizard(): already-registered projects are
         // locked, claimed projects belong to their LPI only.
         if ($project->hasStatus(Project::STATUS_REGISTERED)) {

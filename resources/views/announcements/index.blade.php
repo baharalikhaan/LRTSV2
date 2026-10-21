@@ -274,7 +274,7 @@
 $(document).ready(function() {
     @if($announcements->count() > 0)
     var table = $('#announcementsTable').DataTable({
-        dom: 'rt<"bottom"lip>',
+        dom: 'Brt<"bottom"lip>',
         order: [[0, 'asc']],
         columnDefs: [
             { orderable: false, targets: [3, 4, 5] },
