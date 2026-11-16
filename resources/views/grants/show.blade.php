@@ -44,11 +44,11 @@
                     </tr>
                     <tr>
                         <td style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-400);">Funding Agency</td>
-                        <td>{{ $grant->funding_agency ?? 'â€”' }}</td>
+                        <td>{{ $grant->funding_agency ?? '—' }}</td>
                     </tr>
                     <tr>
                         <td style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-400);">Max Duration</td>
-                        <td>{{ $grant->max_duration_years ? $grant->max_duration_years . ' year(s)' : 'â€”' }}</td>
+                        <td>{{ $grant->max_duration_years ? $grant->max_duration_years . ' year(s)' : '—' }}</td>
                     </tr>
                     <tr>
                         <td style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-400);">Status</td>

@@ -243,7 +243,7 @@
                         @if($score->label)
                             <span class="pill info" style="font-size:11px;padding:1px 6px;">{{ $score->label }}</span>
                         @else
-                            <span class="text-muted" style="font-size:12px;">â€”</span>
+                            <span class="text-muted" style="font-size:12px;">—</span>
                         @endif
                     </td>
                     <td style="font-weight:500;font-size:12.5px;">{{ number_format($score->value, 2) }}</td>

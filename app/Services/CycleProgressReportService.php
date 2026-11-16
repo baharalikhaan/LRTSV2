@@ -635,70 +635,300 @@ class CycleProgressReportService
     }
 
     /**
-     * Determine the email subject and body hint for a given column.
+     * Official Qatar University page that hosts all post-award report forms
+     * (Progress, Final and Readiness Mapping templates). The reminder emails
+     * link here instead of to a local copy, so the LPI always downloads the
+     * current form.
+     */
+    public const TEMPLATE_URL = 'https://www.qu.edu.qa/en-us/Research/offices/research-support/post-awards-forms';
+
+    /**
+     * Report templates offered in the reminder, keyed by the column type and
+     * labelled for the "Online templates" instruction.
+     */
+    public const REPORT_TEMPLATES = [
+        'progress'  => 'Progress Report template',
+        'final'     => 'Final Report template',
+        'readiness' => 'Readiness Mapping Report template',
+    ];
+
+    /**
+     * Submission requirements listed under "Instructions" in every reminder
+     * sent to an LPI. The first point carries the template links.
+     *
+     * @return array<int, array{label:string,text:string,templates?:bool}>
+     */
+    public static function instructionPoints(): array
+    {
+        return [
+            [
+                'label'     => 'Online templates',
+                'text'      => 'The official templates are available online — use the one for the report you are submitting.',
+                'templates' => true,
+            ],
+            [
+                'label' => 'Required signature',
+                'text'  => 'The report must be signed by the Associate Dean of Research of the respective College or Center.',
+            ],
+            [
+                'label' => 'Grant information',
+                'text'  => 'The grant number must match the one provided in the email.',
+            ],
+            [
+                'label' => 'Project title',
+                'text'  => 'The project title must exactly match the title provided in the email.',
+            ],
+            [
+                'label' => 'Support and queries',
+                'text'  => 'If you encounter any issues, have questions, or need clarification, please email ros-submissions@qu.edu.qa. Our team will be happy to assist you.',
+            ],
+        ];
+    }
+
+    /** Off-campus access notice shown at the end of the LPI reminders. */
+    public const DISCLAIMER = \App\Mail\GenericEmailMail::DISCLAIMER;
+
+    /**
+     * Determine the email subject, message, guidance and the deadline that
+     * belongs to a given column.
+     *
+     * Returned keys:
+     *   subject        — email subject
+     *   message        — short one-line summary (kept for backwards compatibility)
+     *   intro          — opening paragraph of the email
+     *   guidance       — array of bullet points explaining what is required
+     *   action         — closing paragraph telling the recipient what to do
+     *   deadline_field — Program column holding the deadline (null = none)
+     *   deadline_label — human label for that deadline
+     *   template_type  — report template offered for that column (null = none)
+     *   template_label — human label for that template
+     *   instructions   — merged checklist: the guidance points followed by the
+     *                    submission requirements (the latter LPI-only)
+     *   templates      — report templates to link (LPI reminders only)
+     *   disclaimer     — off-campus access notice (LPI reminders only)
      */
     public function getColumnEmailContext(string $column): array
+    {
+        $context = $this->columnContext($column);
+
+        // "What is required" and "Instructions" were merged into one
+        // "Instructions" checklist: the stage-specific guidance first, then the
+        // general submission requirements.
+        $points = [];
+        foreach (($context['guidance'] ?? []) as $guidancePoint) {
+            $points[] = ['label' => null, 'text' => $guidancePoint];
+        }
+
+        // Only the LPI reminders carry the submission requirements and the VPN
+        // disclaimer; reviewers and admins action the project in RTS.
+        if ($this->getRecipientType($column) === 'lpi') {
+            // Link the official QU post-award forms page, labelled with the
+            // report this reminder is asking for (Progress Report 2 is
+            // submitted on the Progress Report form).
+            $type = $context['template_type'] ?? null;
+            if ($type === 'progress2') {
+                $type = 'progress';
+            }
+
+            $templates = ($type && isset(self::REPORT_TEMPLATES[$type]))
+                ? [self::REPORT_TEMPLATES[$type] => self::TEMPLATE_URL]
+                : ['Post-Award Forms' => self::TEMPLATE_URL];
+
+            $requirements = self::instructionPoints();
+            $requirements[0]['text'] = count($templates) === 1 && $type
+                ? 'The official template for this report is available online — please use it for your submission.'
+                : 'The official templates are available online — use the one for the report you are submitting.';
+
+            foreach ($requirements as $requirement) {
+                $points[] = $requirement;
+            }
+
+            $context['templates']  = $templates;
+            $context['disclaimer'] = self::DISCLAIMER;
+        }
+
+        $context['instructions'] = $points;
+
+        return $context;
+    }
+
+    /**
+     * Raw per-column context (without the merged instructions / disclaimer).
+     */
+    private function columnContext(string $column): array
     {
         switch ($column) {
             case 'registration':
                 return [
-                    'subject' => 'Reminder: Project Registration Pending',
-                    'message' => 'You have projects pending registration in the current cycle. Please complete the registration at your earliest convenience.',
+                    'subject'        => 'Project Registration Required',
+                    'message'        => 'You have projects pending registration in the current cycle. Please complete the registration at your earliest convenience.',
+                    'intro'          => 'Our records show that the project below has not been registered for the current research cycle yet.',
+                    'guidance'       => [
+                        'Complete the registration form: team, research pillars and administering college.',
+                        'Confirm the budget, objectives, methodology and expected outcomes.',
+                        'Registration is required before any report can be submitted.',
+                    ],
+                    'action'         => 'Please complete the registration at your earliest convenience so the project can move to the review stage.',
+                    'deadline_field' => null,
+                    'deadline_label' => null,
                 ];
+
             case 'outcomes':
                 return [
-                    'subject' => 'Reminder: Outcomes Not Yet Added',
-                    'message' => 'You have projects with no outcomes recorded. Please add your research outcomes.',
+                    'subject'        => 'Outcome Documentation Required',
+                    'message'        => 'You have projects with no outcomes recorded. Please add your research outcomes.',
+                    'intro'          => 'Our records show that no research outcomes have been recorded for the project below.',
+                    'guidance'       => [
+                        'Record each outcome: journal articles, conference papers, books or chapters.',
+                        'Include intellectual property: disclosures, patents, software, prototypes or awards.',
+                        'Add the identifier (DOI or patent number) and the online date.',
+                    ],
+                    'action'         => 'Please add the outcomes achieved so far. They are compared against the commitments declared at registration and drive the project evaluation.',
+                    'deadline_field' => 'prog_rpt_deadline',
+                    'deadline_label' => 'Progress Report 1 deadline',
                 ];
+
             case 'students':
                 return [
-                    'subject' => 'Reminder: Students Not Yet Added',
-                    'message' => 'You have projects with no students recorded. Please add your research students.',
+                    'subject'        => 'Student Involvement Details Required',
+                    'message'        => 'You have projects with no students recorded. Please add your research students.',
+                    'intro'          => 'Our records show that no students have been recorded against the project below.',
+                    'guidance'       => [
+                        'Add every student on the project — undergraduate, master\'s or PhD.',
+                        'Record the QU student ID, study level, role and days contributed.',
+                    ],
+                    'action'         => 'Please add the students involved so the project record is complete and the student commitments can be verified.',
+                    'deadline_field' => 'prog_rpt_deadline',
+                    'deadline_label' => 'Progress Report 1 deadline',
                 ];
+
             case 'contributions':
                 return [
-                    'subject' => 'Reminder: Contributions Not Yet Added',
-                    'message' => 'You have projects with no contributions recorded. Please add your research contributions.',
+                    'subject'        => 'Team Contribution Details Required',
+                    'message'        => 'You have projects with no contributions recorded. Please add your research contributions.',
+                    'intro'          => 'Our records show that no contributions have been recorded for the project below.',
+                    'guidance'       => [
+                        'Record one entry per team member with a short description of their role.',
+                        'Contributions cover methodology, data collection, analysis, software and writing.',
+                    ],
+                    'action'         => 'Please add the contributions so the involvement of the whole team is documented.',
+                    'deadline_field' => 'prog_rpt_deadline',
+                    'deadline_label' => 'Progress Report 1 deadline',
                 ];
+
             case 'progress_report':
                 return [
-                    'subject' => 'Reminder: Progress Report Not Submitted',
-                    'message' => 'You have projects with pending progress reports. Please submit the progress report before the deadline.',
+                    'template_type'  => 'progress',
+                    'template_label' => 'Progress Report 1 template',
+                    'subject'        => 'Progress Report 1 Submission Required',
+                    'message'        => 'You have projects with pending progress reports. Please submit the progress report before the deadline.',
+                    'intro'          => 'Our records show that the Progress Report 1 for the project below has not been submitted yet.',
+                    'guidance'       => [
+                        'Upload the report as a PDF.',
+                    ],
+                    'action'         => 'Please submit the progress report before the deadline shown above.',
+                    'deadline_field' => 'prog_rpt_deadline',
+                    'deadline_label' => 'Progress Report 1 deadline',
                 ];
+
             case 'progress2_report':
                 return [
-                    'subject' => 'Reminder: Progress Report 2 Not Submitted',
-                    'message' => 'You have extended-progress projects with pending Progress Report 2 submissions. Please submit Progress Report 2 before the deadline.',
+                    'template_type'  => 'progress2',
+                    'template_label' => 'Progress Report 2 template',
+                    'subject'        => 'Progress Report 2 Submission Required',
+                    'message'        => 'You have extended-progress projects with pending Progress Report 2 submissions. Please submit Progress Report 2 before the deadline.',
+                    'intro'          => 'The project below has extended progress enabled, and its Progress Report 2 has not been submitted yet.',
+                    'guidance'       => [
+                        'Complete the outcomes, students and contributions for the extended period.',
+                    ],
+                    'action'         => 'Please submit Progress Report 2 before the deadline shown above.',
+                    'deadline_field' => 'prog_rpt2_deadline',
+                    'deadline_label' => 'Progress Report 2 deadline',
                 ];
+
             case 'final_report':
                 return [
-                    'subject' => 'Reminder: Final Report Not Submitted',
-                    'message' => 'You have projects with pending final reports. Please submit the final report before the deadline.',
+                    'template_type'  => 'final',
+                    'template_label' => 'Final Report template',
+                    'subject'        => 'Final Report Submission Required',
+                    'message'        => 'You have projects with pending final reports. Please submit the final report before the deadline.',
+                    'intro'          => 'Our records show that the final report for the project below has not been submitted yet.',
+                    'guidance'       => [
+                        'Complete the final outcomes, students and contributions sections.',
+                    ],
+                    'action'         => 'Please submit the final report before the deadline shown above.',
+                    'deadline_field' => 'final_rpt_deadline',
+                    'deadline_label' => 'Final report deadline',
                 ];
+
             case 'readiness_report':
                 return [
-                    'subject' => 'Reminder: Readiness Report Not Submitted',
-                    'message' => 'You have projects with pending readiness reports. Please submit the readiness report before the deadline.',
+                    'template_type'  => 'readiness',
+                    'template_label' => 'Readiness Report template',
+                    'subject'        => 'Readiness Report Submission Required',
+                    'message'        => 'You have projects with pending readiness reports. Please submit the readiness report before the deadline.',
+                    'intro'          => 'The readiness report for the project below has not been submitted yet.',
+                    'guidance'       => [
+                        'Upload the readiness report as a PDF from the project page.',
+                    ],
+                    'action'         => 'Please submit the readiness report so the final evaluation can proceed.',
+                    'deadline_field' => 'final_rpt_deadline',
+                    'deadline_label' => 'Final report deadline',
                 ];
+
             case 'reviewer_count':
                 return [
-                    'subject' => 'Action Required: Assign Reviewers',
-                    'message' => 'The following projects have no reviewers assigned. Kindly assign reviewers to proceed with the evaluation.',
+                    'subject'        => 'Reviewer Assignment Required',
+                    'message'        => 'The following projects have no reviewers assigned. Kindly assign reviewers to proceed with the evaluation.',
+                    'intro'          => 'The projects listed below do not have a reviewer assigned yet.',
+                    'guidance'       => [
+                        'Each project needs at least one reviewer.',
+                        'Assign from the Reviewer Assignment page, avoiding conflicts of interest.',
+                    ],
+                    'action'         => 'Please assign reviewers so the evaluation of these projects can start.',
+                    'deadline_field' => null,
+                    'deadline_label' => null,
                 ];
+
             case 'progress_grading':
                 return [
-                    'subject' => 'Reminder: Progress Grading Pending',
-                    'message' => 'The following projects have not been graded for their progress reports.',
+                    'subject'        => 'Progress Report Evaluation Pending',
+                    'message'        => 'The following projects have not been graded for their progress reports.',
+                    'intro'          => 'The progress reports of the projects below are waiting for your evaluation.',
+                    'guidance'       => [
+                        'Review the report against the commitments declared at registration.',
+                        'Score the four sections and add your comments.',
+                        'Submit the evaluation to release the outcome to the LPI.',
+                    ],
+                    'action'         => 'Please complete the progress grading at your earliest convenience.',
+                    'deadline_field' => 'prog_rpt_deadline',
+                    'deadline_label' => 'Progress Report 1 deadline',
                 ];
+
             case 'final_grading':
                 return [
-                    'subject' => 'Reminder: Final Grading Pending',
-                    'message' => 'The following projects have not been graded for their final reports.',
+                    'subject'        => 'Final Report Evaluation Pending',
+                    'message'        => 'The following projects have not been graded for their final reports.',
+                    'intro'          => 'The final reports of the projects below are waiting for your evaluation.',
+                    'guidance'       => [
+                        'Review the final report and the outcomes recorded against it.',
+                        'Score sections A to C and add the overall assessment (D).',
+                        'Submit the evaluation to complete the project.',
+                    ],
+                    'action'         => 'Please complete the final grading at your earliest convenience.',
+                    'deadline_field' => 'final_rpt_deadline',
+                    'deadline_label' => 'Final report deadline',
                 ];
+
             default:
                 return [
-                    'subject' => 'Reminder: Action Required',
-                    'message' => 'You have pending items in the cycle progress report.',
+                    'subject'        => 'Action Required',
+                    'message'        => 'You have pending items in the cycle progress report.',
+                    'intro'          => 'There are pending items requiring your attention in the research call below.',
+                    'guidance'       => [],
+                    'action'         => 'Please review the research call and complete the outstanding items.',
+                    'deadline_field' => null,
+                    'deadline_label' => null,
                 ];
         }
     }

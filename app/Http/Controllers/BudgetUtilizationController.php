@@ -75,9 +75,15 @@ class BudgetUtilizationController extends Controller
         $length = (int) $request->input('length', 10);
 
         $budgets = $query->orderByRaw('(SELECT program_title FROM programs WHERE programs.id = (SELECT program_id FROM projects WHERE projects.id = project_budgets.project_id)) ASC')
-            ->orderBy('project_budgets.project_id', 'asc')
-            ->skip($start)->take($length)
-            ->get();
+            ->orderBy('project_budgets.project_id', 'asc');
+
+        // DataTables sends length = -1 for the "All" page-length option; an
+        // OFFSET without a LIMIT is invalid SQL, so both are dropped together.
+        if ($length > 0) {
+            $budgets = $budgets->skip($start)->take($length);
+        }
+
+        $budgets = $budgets->get();
 
         $data = $budgets->map(function ($b) {
             $project = $b->project;

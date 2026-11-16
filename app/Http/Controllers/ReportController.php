@@ -12,6 +12,7 @@ use App\Models\College;
 use App\Models\User;
 use App\Models\ReportReminderSent;
 use App\Services\CycleProgressReportService;
+use App\Services\ProjectDetailsReportService;
 use App\Mail\ProjectReminderMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -19,6 +20,9 @@ use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
+    /** Session key holding the user's chosen Project Details fields. */
+    public const FIELD_SESSION_KEY = 'reports.project_details.fields';
+
     public function __construct()
     {
         $this->middleware('auth');
@@ -466,7 +470,13 @@ class ReportController extends Controller
 
                 foreach ($projects as $project) {
                     Mail::to($email)->queue(
-                        new ProjectReminderMail($columnKey, $project->title, $programTitle, $lpiName)
+                        new ProjectReminderMail(
+                            $columnKey,
+                            $project->title,
+                            $programTitle,
+                            $lpiName,
+                            ProjectReminderMail::detailsForProject($project, $columnKey)
+                        )
                     );
 
                     ReportReminderSent::create([
@@ -498,7 +508,13 @@ class ReportController extends Controller
                 }
 
                 Mail::to($reviewerUser->email)->queue(
-                    new ProjectReminderMail($columnKey, $project->title, $programTitle, $reviewerUser->name)
+                    new ProjectReminderMail(
+                        $columnKey,
+                        $project->title,
+                        $programTitle,
+                        $reviewerUser->name,
+                        ProjectReminderMail::detailsForProject($project, $columnKey)
+                    )
                 );
 
                 ReportReminderSent::create([
@@ -513,16 +529,29 @@ class ReportController extends Controller
                 $emailCount++;
             }
         } else {
-            // Admin: send to all admin users
-            $admins = User::where('type', 'Admin')
-                ->orWhere('type', 'Admin+LPI+Reviewer')
+            // Admin: send to every active admin (the query is wrapped so the
+            // orWhere cannot escape the is_active filter).
+            $admins = User::where('is_active', true)
+                ->whereIn('type', ['Admin', 'Admin+LPI+Reviewer'])
                 ->get();
 
-            $pendingTitles = $pendingProjects->pluck('title')->implode(', ');
+            // A single admin email lists every pending project (id + title).
+            $pendingList = $pendingProjects->map(function ($row) {
+                return [
+                    'id'    => $row['old_project_id'] ?? ($row['id'] ?? null),
+                    'title' => $row['title'] ?? null,
+                ];
+            })->values()->all();
 
             foreach ($admins as $admin) {
                 Mail::to($admin->email)->queue(
-                    new ProjectReminderMail($columnKey, $pendingTitles, $programTitle, $admin->name)
+                    new ProjectReminderMail(
+                        $columnKey,
+                        count($pendingList) . ' project(s) awaiting action',
+                        $programTitle,
+                        $admin->name,
+                        ['pending' => $pendingList]
+                    )
                 );
 
                 foreach ($pendingProjects as $project) {
@@ -623,5 +652,105 @@ class ReportController extends Controller
         )->orderBy('grant_code')->get();
 
         return view('reports.report-cards', compact('projects', 'cycleConfigs', 'grants', 'cycleId', 'grantId'));
+    }
+
+    /**
+     * Project Details Report — every piece of information about every project,
+     * flattened into a single record per project (one row) and exportable
+     * to Excel. The user picks which fields are shown / exported.
+     */
+    public function projectDetailsReport(Request $request)
+    {
+        $requested = $this->sanitizeFields($request->input('fields'));
+
+        if ($requested) {
+            // Remember the choice, then drop the long fields[] parameter from
+            // the URL so the address bar stays readable.
+            session([self::FIELD_SESSION_KEY => $requested]);
+
+            return redirect()->route('reports.project-details', array_filter(
+                $request->only(['cycle_id', 'grant_id', 'program_id', 'status']),
+                fn($v) => $v !== null && $v !== ''
+            ));
+        }
+
+        $filters = $this->projectDetailsFilters($request);
+        $selectedFields = session(self::FIELD_SESSION_KEY) ?: ProjectDetailsReportService::DEFAULT_FIELDS;
+
+        $data = ProjectDetailsReportService::build($filters, $selectedFields);
+
+        $cycles = CycleConfig::orderBy('year', 'desc')->get();
+        $grants = Grant::orderBy('grant_code')->get();
+        $programs = Program::with('cycleConfig')->orderByDesc('id')->get();
+        $statuses = \App\Models\StatusHistory::select('status')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->filter()
+            ->values();
+
+        $groups = [];
+        $sourceMeta = ProjectDetailsReportService::sources();
+        foreach (ProjectDetailsReportService::columns() as $column) {
+            $source = $column['source'];
+            $groups[$source]['label'] = $sourceMeta[$source]['label'] ?? $source;
+            $groups[$source]['table'] = $sourceMeta[$source]['table'] ?? $source;
+            $groups[$source]['columns'][] = $column;
+        }
+
+        // Column groups for the two-level table header.
+        $headerGroups = ProjectDetailsReportService::groups($data['columns']);
+
+        return view('reports.project-details', compact(
+            'data', 'cycles', 'grants', 'programs', 'statuses', 'filters',
+            'selectedFields', 'groups', 'headerGroups'
+        ));
+    }
+
+    /**
+     * Export the Project Details Report to Excel (.xlsx) — one row per project,
+     * using exactly the fields the user selected.
+     */
+    public function projectDetailsExport(Request $request)
+    {
+        $filters = $this->projectDetailsFilters($request);
+
+        $requested = $this->sanitizeFields($request->input('fields'));
+        $selectedFields = $requested ?: (session(self::FIELD_SESSION_KEY) ?: ProjectDetailsReportService::DEFAULT_FIELDS);
+
+        $data = ProjectDetailsReportService::build($filters, $selectedFields);
+
+        return ProjectDetailsReportService::exportExcel($data, $filters);
+    }
+
+    /**
+     * Keep only known column keys, in the canonical order.
+     */
+    private function sanitizeFields($fields): array
+    {
+        if (is_string($fields)) {
+            $fields = array_filter(explode(',', $fields));
+        }
+
+        if (!is_array($fields) || empty($fields)) {
+            return [];
+        }
+
+        $valid = array_column(ProjectDetailsReportService::columns(), 'key');
+
+        return array_values(array_intersect($valid, $fields));
+    }
+
+    /**
+     * Normalise the filters accepted by the Project Details Report.
+     */
+    private function projectDetailsFilters(Request $request): array
+    {
+        return array_filter([
+            'cycle_id' => $request->input('cycle_id'),
+            'grant_id' => $request->input('grant_id'),
+            'program_id' => $request->input('program_id'),
+            'status' => $request->input('status'),
+        ], fn($v) => $v !== null && $v !== '');
     }
 }

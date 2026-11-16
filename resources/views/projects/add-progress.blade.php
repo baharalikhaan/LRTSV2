@@ -1080,9 +1080,9 @@
                         {{ $progressResubmitRequested ? 'Re-Upload Progress Report (v' . $progressNextVersion . ')' : ($progressLatest ? 'Re-Upload' : 'Upload Progress Report') }}
                     </button>
                     <div class="ws-upload-status"></div>
-                    <a href="{{ route('download.template', 'progress') }}" target="_blank" class="ws-template-link">
+                    <a href="{{ \App\Services\CycleProgressReportService::TEMPLATE_URL }}" target="_blank" rel="noopener" class="ws-template-link" title="Official Qatar University post-award forms">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Download Template (DOCX)
+                        Download Template (QU website)
                     </a>
                 @else
                     <div class="ws-upload-locked">
@@ -1147,9 +1147,9 @@
                         {{ $progress2ResubmitRequested ? 'Re-Upload Progress Report 2 (v' . $progress2NextVersion . ')' : ($progress2Latest ? 'Re-Upload' : 'Upload Progress Report 2') }}
                     </button>
                     <div class="ws-upload-status"></div>
-                    <a href="{{ route('download.template', 'progress') }}" target="_blank" class="ws-template-link">
+                    <a href="{{ \App\Services\CycleProgressReportService::TEMPLATE_URL }}" target="_blank" rel="noopener" class="ws-template-link" title="Official Qatar University post-award forms">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Download Template (DOCX)
+                        Download Template (QU website)
                     </a>
                 @else
                     <div class="ws-upload-locked">
@@ -1225,9 +1225,9 @@
                         {{ $finalResubmitRequested ? 'Re-Upload Final Report (v' . $finalNextVersion . ')' : ($finalLatest ? 'Re-Upload Final Report' : 'Upload Final Report') }}
                     </button>
                     <div class="ws-upload-status"></div>
-                    <a href="{{ route('download.template', 'final') }}" target="_blank" class="ws-template-link">
+                    <a href="{{ \App\Services\CycleProgressReportService::TEMPLATE_URL }}" target="_blank" rel="noopener" class="ws-template-link" title="Official Qatar University post-award forms">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Download Template (DOCX)
+                        Download Template (QU website)
                     </a>
                 @else
                     <div class="ws-upload-locked">
@@ -1278,9 +1278,9 @@
                         {{ $readinessLatest ? 'Re-Upload' : 'Upload Readiness Report' }}
                     </button>
                     <div class="ws-upload-status"></div>
-                    <a href="{{ route('download.template', 'readiness') }}" target="_blank" class="ws-template-link">
+                    <a href="{{ \App\Services\CycleProgressReportService::TEMPLATE_URL }}" target="_blank" rel="noopener" class="ws-template-link" title="Official Qatar University post-award forms">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Download Template (DOCX)
+                        Download Template (QU website)
                     </a>
                 @else
                     <div class="ws-upload-locked">

@@ -813,7 +813,6 @@ document.getElementById('emailForm').addEventListener('submit', function(e) {
     }
     // DEBUG POINT 1 — visible + console, confirms submit started
     showDebug('[' + new Date().toLocaleTimeString() + '] Submit STARTED, ' + select.selectedOptions.length + ' recipient(s) selected — waiting for server response (if this stays forever, the webserver didn\u2019t answer; check DevTools Network).');
-    console.log('[send-email] submit started', {recipients: select.selectedOptions.length});
     const btn = document.getElementById('sendBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';

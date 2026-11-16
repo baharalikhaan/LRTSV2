@@ -35,19 +35,11 @@ class Project extends Model
     public const STATUS_PROGRESS2_REJECTED = 'progress2_rejected';
     public const STATUS_PROGRESS2_REJ_REVIEWED = 'progress2_rejection_reviewed';
 
-    // Deprecated/removed (kept so old status_history records don't break)
+    // Deprecated/removed values still found in older status_history rows. They
+    // are only strings now; no code writes them any more.
     public const STATUS_PROGRESS           = 'progress_add';
     public const STATUS_PROGRESS_SUBMITTED = 'progress_submitted';
     public const STATUS_FINAL_SUBMITTED    = 'final_submitted';
-    public const STATUS_REJECTED           = 'rejected';
-    public const STATUS_CLAIM1 = 'Claim-1';
-    public const STATUS_CLAIM2 = 'Claim-2';
-    public const STATUS_GRADE1 = 'Grade-1';
-    public const STATUS_GRADE2 = 'Grade-2';
-    public const STATUS_ACCEPTED = 'accepted';
-    public const STATUS_REVIEWED = 'reviewed';
-    public const STATUS_REPORT = 'report';
-    public const STATUS_PROGRESS_LEGACY = 'progress_added';
 
     protected $fillable = [
         'program_id',

@@ -112,9 +112,15 @@ class AdminUploadController extends Controller
         $length = (int) $request->input('length', 10);
 
         $projects = $query->orderBy('programs.program_title')
-            ->orderBy('projects.id')
-            ->skip($start)->take($length)
-            ->get();
+            ->orderBy('projects.id');
+
+        // DataTables sends length = -1 for the "All" page-length option; an
+        // OFFSET without a LIMIT is invalid SQL, so both are dropped together.
+        if ($length > 0) {
+            $projects = $projects->skip($start)->take($length);
+        }
+
+        $projects = $projects->get();
 
         $data = $projects->map(function ($p) {
             $oldId = $p->old_project_id ?? $p->id;

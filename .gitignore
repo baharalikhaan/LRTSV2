@@ -13,3 +13,8 @@ npm-debug.log
 yarn-error.log
 /.idea
 /.vscode
+
+# Environment files (any backup/variant may hold real credentials)
+.env
+.env.*
+!.env.example

@@ -8,8 +8,11 @@ use App\Models\CycleConfig;
 use App\Models\User;
 use App\Models\Pillar;
 use App\Models\College;
+use App\Models\ReviewerRejection;
+use App\Services\EventMailService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class ProjectController extends Controller
@@ -397,35 +400,6 @@ class ProjectController extends Controller
 
         return view('projects.my', compact('projects', 'programs', 'programId', 'cycleConfigs', 'cycleId'));
     }
-
-    // ─── ADMIN: Reviewer assignment page ────────────────────────────────────
-
-    public function assignView($cycleId)
-    {
-        $cycle = Program::with('grant')->findOrFail($cycleId);
-
-        // Get projects that have NO reviewers assigned yet
-        $projects = Project::where('program_id', $cycleId)
-            ->whereNotIn('id', function ($q) {
-                $q->select('project_id')->from('projects_reviewers');
-            })
-            ->orderBy('projects.id')
-            ->get();
-
-        // Get available reviewers with their pillars
-        $reviewers = User::with('pillars')
-            ->whereIn('type', ['Reviewer', 'LPI+Reviewer'])
-            ->where('is_active', true)
-            ->orderBy('name')
-            ->get()
-            ->map(function ($reviewer) {
-                $reviewer->pillar_names = $reviewer->getRelation('pillars')->pluck('pillar')->filter()->implode(', ');
-                return $reviewer;
-            });
-
-        return view('projects.assign-reviewer', compact('cycle', 'projects', 'reviewers'));
-    }
-
     // ─── ADMIN: Bulk assign reviewers ────────────────────────────────────────
 
     public function bulkAssign(Request $request)
@@ -436,7 +410,11 @@ class ProjectController extends Controller
 
         $assignments = $request->input('assignments', []);
 
-        DB::transaction(function () use ($assignments) {
+        /** @var array<int, array<int, int>> $newlyAssigned  project_id => reviewer ids */
+        $newlyAssigned = [];
+        $skippedRejected = 0;
+
+        DB::transaction(function () use ($assignments, &$newlyAssigned, &$skippedRejected) {
             foreach ($assignments as $assignment) {
                 $projectId = $assignment['project_id'] ?? null;
                 $reviewerIds = array_filter($assignment['reviewers'] ?? []);
@@ -451,25 +429,85 @@ class ProjectController extends Controller
                     ->exists();
 
                 foreach ($reviewerIds as $reviewerId) {
-                    DB::table('projects_reviewers')->updateOrInsert(
-                        ['project_id' => $projectId, 'user_id' => $reviewerId],
-                        ['created_at' => now(), 'updated_at' => now()]
-                    );
+                    // A reviewer who rejected this project must not be reassigned.
+                    if (Schema::hasTable('reviewer_rejections')
+                        && ReviewerRejection::where('project_id', $projectId)->where('user_id', $reviewerId)->exists()) {
+                        $skippedRejected++;
+                        continue;
+                    }
+
+                    $alreadyAssigned = DB::table('projects_reviewers')
+                        ->where('project_id', $projectId)
+                        ->where('user_id', $reviewerId)
+                        ->exists();
+
+                    if ($alreadyAssigned) {
+                        continue; // idempotent — already on the team
+                    }
+
+                    DB::table('projects_reviewers')->insert([
+                        'project_id' => $projectId,
+                        'user_id'    => $reviewerId,
+                        'role'       => 'Reviewer',
+                        'claimed_at' => null, // each reviewer claims for himself
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                    $newlyAssigned[$projectId][] = (int) $reviewerId;
                 }
 
                 // Record the assigned status only for the first assignment —
                 // adding a reviewer to an in-review project must not roll its
                 // workflow status (Claimed/progress_*) back to Assigned.
-                if (!$hadReviewers) {
+                if (!$hadReviewers && !empty($newlyAssigned[$projectId])) {
                     $project = Project::find($projectId);
                     if ($project) {
-                        $project->recordStatus(Project::STATUS_ASSIGNED);
+                        $project->recordStatus(Project::STATUS_ASSIGNED, [
+                            'triggered_by' => 'bulk-assign',
+                            'reviewer_id'  => $newlyAssigned[$projectId][0],
+                        ], auth()->id());
                     }
                 }
             }
         });
 
-        return redirect()->back()->with('success', 'Reviewers assigned successfully.');
+        // Notify the newly assigned reviewers — the same assignment email the
+        // single-project modal sends. Already-assigned reviewers are not
+        // notified again. Gated by MAIL_ENABLED inside EventMailService.
+        $actor = auth()->user();
+        $notified = 0;
+        $notifiedProjects = [];
+
+        foreach ($newlyAssigned as $projectId => $reviewerIds) {
+            $project = Project::find($projectId);
+            if (!$project) {
+                continue;
+            }
+
+            foreach ($reviewerIds as $reviewerId) {
+                $reviewer = User::find($reviewerId);
+                if (!$reviewer) {
+                    continue;
+                }
+
+                app(EventMailService::class)->send('reviewer_assigned', $reviewer, $project, $actor);
+                $notified++;
+                $notifiedProjects[$projectId] = true;
+            }
+        }
+
+        $message = $notified > 0
+            ? "Reviewers assigned successfully. {$notified} assignment notification" . ($notified === 1 ? '' : 's')
+                . ' queued for ' . count($notifiedProjects) . ' project' . (count($notifiedProjects) === 1 ? '' : 's') . '.'
+            : 'Reviewers assigned successfully. No new reviewer was added (already assigned or previously rejected).';
+
+        if ($skippedRejected > 0) {
+            $message .= " {$skippedRejected} selection" . ($skippedRejected === 1 ? '' : 's')
+                . ' skipped because the reviewer previously rejected that project.';
+        }
+
+        return redirect()->back()->with('success', $message);
     }
 
     // ─── ADMIN: Reviewer Assignment page (bulk assign, projects-page style) ──
@@ -515,6 +553,20 @@ class ProjectController extends Controller
             $query->whereDoesntHave('reviewers');
         }
 
+        // Workflow status filter (matches the latest status history entry).
+        $status = $request->input('status');
+        if ($status) {
+            $latestStatus = "(SELECT sh2.status FROM status_histories sh2 WHERE sh2.project_id = projects.id ORDER BY sh2.id DESC LIMIT 1)";
+
+            if ($status === 'unregistered') {
+                $query->whereRaw("COALESCE({$latestStatus}, 'imported') = 'imported'");
+            } elseif ($status === 'registered') {
+                $query->whereRaw("{$latestStatus} = 'registered'");
+            } elseif ($status === 'claimed') {
+                $query->whereRaw("{$latestStatus} = 'Claimed'");
+            }
+        }
+
         $confProjects = $query
             ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
             ->orderBy('projects.id')
@@ -549,7 +601,7 @@ class ProjectController extends Controller
         ksort($reviewerGroups);
 
         return view('projects.reviewer-assignment', compact(
-            'confProjects', 'programs', 'programId', 'cycleConfigs', 'cycleId', 'reviewerGroups', 'assignment'
+            'confProjects', 'programs', 'programId', 'cycleConfigs', 'cycleId', 'reviewerGroups', 'assignment', 'status'
         ));
     }
 

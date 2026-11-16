@@ -85,22 +85,23 @@
             $assignedCount = $confProjects->filter(fn($p) => $p->reviewers->isNotEmpty())->count();
             $unassignedCount = $confProjects->filter(fn($p) => $p->reviewers->isEmpty())->count();
         @endphp
-        <div class="panel-head" style="border-bottom:1px solid var(--ink-100);background:var(--sand-50);">
-            <span style="font-size:13px;color:var(--ink-500);">
+        <div class="panel-head" style="border-bottom:1px solid var(--ink-100);background:var(--sand-50);gap:16px;">
+            <span style="flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:var(--ink-500);">
                 <i class="fas fa-info-circle"></i> Select a reviewer per project — for an already-assigned project the selected reviewer is
                 <strong>added alongside</strong> the existing one (each reviews independently). Then click
-                <strong>Bulk Assign</strong>. Projects with no reviewer selected will be skipped.
-                <span style="margin-left:12px;">
+                <strong>Bulk Assign</strong>. Projects with no reviewer selected will be skipped; every newly assigned reviewer receives
+                an assignment email.
+                <span style="display:inline-flex;gap:6px;margin-left:10px;vertical-align:middle;">
                     <span class="pill review" style="font-size:11px;">{{ $assignedCount }} Assigned</span>
                     <span class="pill warning" style="font-size:11px;">{{ $unassignedCount }} Unassigned</span>
                 </span>
             </span>
-            <button type="submit" class="btn btn-primary btn-sm" id="bulkAssignBtn">
+            <button type="submit" class="btn btn-primary btn-sm" id="bulkAssignBtn" style="flex-shrink:0;">
                 <i class="fas fa-user-check"></i> Bulk Assign Reviewers
             </button>
         </div>
         @endif
-        <div class="panel-body p-0">
+        <div class="panel-body p-0" style="overflow-x:auto;">
             @if($confProjects->isEmpty())
                 <div class="empty-state py-5">
                     <i class="fas fa-check-circle" style="opacity:0.3;"></i>
@@ -109,16 +110,26 @@
                 </div>
             @else
                 <table class="fluent-table w-100" id="projectsTable">
+                    <colgroup>
+                        <col style="width:130px;">
+                        <col style="width:170px;">
+                        <col>
+                        <col style="width:90px;">
+                        <col style="width:100px;">
+                        <col style="width:120px;">
+                        <col style="width:180px;">
+                        <col style="width:210px;">
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th style="min-width:130px;">Project ID</th>
-                            <th style="min-width:180px;">LPI</th>
-                            <th>Title</th>
+                            <th>Project ID</th>
+                            <th>LPI</th>
+                            <th>Project title</th>
                             <th>Grant</th>
                             <th>Category</th>
                             <th>Status</th>
-                            <th style="min-width:200px;">Assigned Reviewer</th>
-                            <th style="min-width:100px;">Action</th>
+                            <th>Assigned reviewer</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -126,7 +137,7 @@
                         @php
                             $flowStatus = $cp->currentWorkflowStatus();
                             $isRegistered = $cp->hasStatus(\App\Models\Project::STATUS_REGISTERED) && $cp->lpi_id;
-                            $statusLabel = (!$isRegistered && $flowStatus === 'imported') ? 'Unregistered' : ucfirst($flowStatus ?? '—');
+                            $statusLabel = (!$isRegistered && $flowStatus === 'imported') ? 'Unregistered' : ucfirst(str_replace('_', ' ', $flowStatus ?? '—'));
                             switch ($flowStatus) {
                                 case 'imported': $statusPillClass = 'warning'; break;
                                 case 'registered': $statusPillClass = 'accepted'; break;
@@ -148,41 +159,36 @@
                             $hasReviewer = $assignedReviewers->isNotEmpty();
                         @endphp
                         <tr>
-                            <td><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
+                            <td style="white-space:nowrap;"><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
                             <td>
                                 @if($cp->lpi)
                                     <div style="font-weight:500;">{{ $cp->lpi->name }}</div>
-                                    <div style="font-size:11px;color:var(--color-ink-400);">{{ $cp->lpi->email }}</div>
+                                    <div title="{{ $cp->lpi->email }}" style="font-size:11px;color:var(--color-ink-400);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $cp->lpi->email }}</div>
                                 @else
                                     <span style="font-size:12px;color:var(--ink-400);font-style:italic;">—</span>
                                 @endif
                             </td>
-                            <td><span style="font-weight:500;">{{ $cp->title }}</span></td>
-                            <td><span class="pill info" style="font-size:11px;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></td>
-                            <td><span class="pill info" style="font-size:11px;">{{ ucfirst($cp->program->grant->category ?? 'N/A') }}</span></td>
+                            <td>
+                                <span title="{{ $cp->title }}" style="font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ $cp->title }}</span>
+                            </td>
+                            <td><span class="pill info" style="font-size:11px;white-space:nowrap;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></td>
+                            <td><span class="pill info" style="font-size:11px;white-space:nowrap;">{{ ucfirst($cp->program->grant->category ?? 'N/A') }}</span></td>
                             <td><span class="pill {{ $statusPillClass }}">{{ $statusLabel }}</span></td>
                             <td>
                                 @if($hasReviewer)
-                                    @foreach($assignedReviewers as $reviewer)
-                                        <span class="pill review" style="font-size:11px;margin-bottom:2px;">{{ $reviewer->name }}</span>
-                                    @endforeach
+                                    <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;">
+                                        @foreach($assignedReviewers as $reviewer)
+                                            <span class="pill review" style="font-size:11px;">
+                                                {{ $reviewer->name }}@if($reviewer->pivot->claimed_at) <i class="fas fa-check" title="Claimed" style="font-size:9px;"></i> @endif
+                                            </span>
+                                        @endforeach
+                                    </div>
                                 @else
                                     <span style="font-size:12px;color:var(--ink-400);font-style:italic;">Unassigned</span>
                                 @endif
                             </td>
                             <td>
-                                @if($hasReviewer)
-                                    @foreach($assignedReviewers as $reviewer)
-                                        <span class="pill review" style="font-size:11px;margin-bottom:2px;">
-                                            {{ $reviewer->name }}@if($reviewer->pivot->claimed_at) <i class="fas fa-check" title="Claimed" style="font-size:9px;"></i> @endif
-                                        </span>
-                                    @endforeach
-                                @else
-                                    <span style="font-size:12px;color:var(--ink-400);font-style:italic;">Unassigned</span>
-                                @endif
-                            </td>
-                            <td>
-                                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+                                <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;">
                                     @if($hasReviewer)
                                         <div style="display:flex;flex-wrap:wrap;gap:4px;">
                                             @foreach($assignedReviewers as $reviewer)
@@ -192,21 +198,19 @@
                                             @endforeach
                                         </div>
                                     @endif
-                                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                                        <select name="assignments[{{ $index }}][reviewers][]" class="reviewer-select">
-                                            <option value="">{{ $hasReviewer ? '— Add reviewer —' : '— Select Reviewer —' }}</option>
-                                            @foreach($reviewerGroups as $pillarName => $pillarReviewers)
-                                                <optgroup label="{{ $pillarName }}">
-                                                    @foreach($pillarReviewers as $reviewer)
-                                                        @if(!$assignedReviewers->pluck('id')->contains($reviewer->id))
-                                                            <option value="{{ $reviewer->id }}">{{ $reviewer->name }}</option>
-                                                        @endif
-                                                    @endforeach
-                                                </optgroup>
-                                            @endforeach
-                                        </select>
-                                        <input type="hidden" name="assignments[{{ $index }}][project_id]" value="{{ $cp->id }}">
-                                    </div>
+                                    <select name="assignments[{{ $index }}][reviewers][]" class="reviewer-select">
+                                        <option value="">{{ $hasReviewer ? '— Add reviewer —' : '— Select Reviewer —' }}</option>
+                                        @foreach($reviewerGroups as $pillarName => $pillarReviewers)
+                                            <optgroup label="{{ $pillarName }}">
+                                                @foreach($pillarReviewers as $reviewer)
+                                                    @if(!$assignedReviewers->pluck('id')->contains($reviewer->id))
+                                                        <option value="{{ $reviewer->id }}">{{ $reviewer->name }}</option>
+                                                    @endif
+                                                @endforeach
+                                            </optgroup>
+                                        @endforeach
+                                    </select>
+                                    <input type="hidden" name="assignments[{{ $index }}][project_id]" value="{{ $cp->id }}">
                                 </div>
                             </td>
                         </tr>
@@ -221,8 +225,20 @@
 
 @push('styles')
 <style>
+    /* Fixed layout so the column widths declared in the DataTable config are
+       honoured exactly (the title column would otherwise be squeezed by the
+       wide LPI / action cells). */
+    #projectsTable {
+        table-layout: fixed;
+    }
+    #projectsTable th,
+    #projectsTable td {
+        overflow-wrap: anywhere;
+    }
+
     .reviewer-select {
-        width: 210px;
+        width: 100%;
+        min-width: 160px;
         max-width: 100%;
         padding: 5px 26px 5px 10px;
         font-size: 12px;
@@ -268,9 +284,20 @@
         var table = $('#projectsTable').DataTable({
             dom: 'Brt<"bottom"lip>',
             order: [],
+            autoWidth: false,
+            pageLength: 25,
+            columns: [
+                { width: '9%' },   // Project ID
+                { width: '14%' },  // LPI
+                { width: '20%' },  // Project title
+                { width: '9%' },   // Grant
+                { width: '9%' },   // Category
+                { width: '11%' },  // Status
+                { width: '13%' },  // Assigned reviewer
+                { width: '15%' }   // Action
+            ],
             columnDefs: [
-                { orderable: false, targets: [6, 7] },
-                { searchable: false, targets: [6, 7] }
+                { orderable: false, searchable: false, targets: [6, 7] }
             ]
         });
 

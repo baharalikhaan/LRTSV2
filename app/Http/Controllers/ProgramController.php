@@ -427,7 +427,24 @@ class ProgramController extends Controller
 
     public function show($id)
     {
-        $program = Program::with(['grant', 'projects.lpi', 'projects' => function ($q) {
+        return view('programs.show', $this->programShowData($id));
+    }
+
+    /**
+     * Printable (A4) version of the research call page.
+     */
+    public function printable($id)
+    {
+        return view('programs.printable', $this->programShowData($id));
+    }
+
+    /**
+     * Shared payload for the research call page and its printable version,
+     * so both always render the same data.
+     */
+    private function programShowData($id): array
+    {
+        $program = Program::with(['grant', 'cycleConfig', 'projects.lpi', 'projects' => function ($q) {
             $q->orderBy('id');
         }])->findOrFail($id);
 
@@ -441,7 +458,40 @@ class ProgramController extends Controller
             ->pluck('count', 'status')
             ->toArray();
 
-        return view('programs.show', compact('program', 'statusCounts'));
+        // Status display config: key => [label, pill class, icon]
+        $statusConfig = [
+            'registered'             => ['Registered',             'ink',       'fa-circle'],
+            'Assigned'               => ['Assigned',               'review',    'fa-user-check'],
+            'Claimed'                => ['Claimed',                'accepted',  'fa-handshake'],
+            'proposal_rejected'      => ['Proposal Rejected',      'danger',    'fa-times-circle'],
+            'progress_added'         => ['Progress Added',         'info',      'fa-file-upload'],
+            'progress_reviewed'      => ['Progress Reviewed',      'accepted',  'fa-check-circle'],
+            'progress_rejected'      => ['Progress Rejected',      'danger',    'fa-times-circle'],
+            'final_added'            => ['Final Added',            'info',      'fa-file-upload'],
+            'Graded'                 => ['Graded',                 'accepted',  'fa-award'],
+            'final_rejected'         => ['Final Rejected',         'danger',    'fa-times-circle'],
+            'reviewer_unassigned'    => ['Reviewer Unassigned',    'warning',   'fa-user-slash'],
+            'progress2_added'        => ['Progress 2 Added',       'info',      'fa-file-upload'],
+            'progress2_reviewed'     => ['Progress 2 Reviewed',    'accepted',  'fa-check-circle'],
+            'progress2_rejected'     => ['Progress 2 Rejected',    'danger',    'fa-times-circle'],
+        ];
+
+        // Build ordered list from config, only include statuses that have counts
+        $orderedStatuses = [];
+        foreach ($statusConfig as $key => $cfg) {
+            if (isset($statusCounts[$key]) && $statusCounts[$key] > 0) {
+                $orderedStatuses[$key] = $cfg + ['count' => $statusCounts[$key]];
+            }
+        }
+        // Add any statuses not in config
+        foreach ($statusCounts as $key => $count) {
+            if (!isset($orderedStatuses[$key]) && $count > 0) {
+                $orderedStatuses[$key] = [ucfirst(str_replace('_', ' ', $key)), 'ink', 'fa-circle', 'count' => $count];
+            }
+        }
+
+        return compact('program', 'statusCounts', 'orderedStatuses')
+            + ['statusTotal' => array_sum($statusCounts)];
     }
 
     public function index(Request $request)

@@ -287,7 +287,7 @@ class WorkflowController extends Controller
                     ->exists();
 
                 if ($alreadyAssigned) {
-                    continue; // idempotent â€” already on the team
+                    continue; // idempotent — already on the team
                 }
 
                 DB::table('projects_reviewers')->insert([
@@ -301,7 +301,7 @@ class WorkflowController extends Controller
                 $newlyAssigned[] = $reviewerId;
             }
 
-            // Record Assigned status only for the FIRST assignment â€” adding
+            // Record Assigned status only for the FIRST assignment — adding
             // another reviewer to an already in-review project must not roll
             // its workflow status (Claimed/progress_*) back to Assigned.
             if (!$hadReviewers && !empty($newlyAssigned)) {
@@ -372,7 +372,7 @@ class WorkflowController extends Controller
             // pre-claim state (no status yet / registered / assigned / proposal
             // rejected / reviewer un-assigned): the FIRST claim of a round
             // records it, a later reviewer's claim never regresses a post-claim
-            // status (progress_added, final_added, graded, â€¦), and the LPI is
+            // status (progress_added, final_added, graded, …), and the LPI is
             // mailed once per round instead of once per reviewer.
             $current = $project->currentWorkflowStatus();
             $preClaimStates = [
@@ -434,7 +434,7 @@ class WorkflowController extends Controller
                 $recorded = true;
             }
 
-            // Notify the LPI once per rejection round â€” in lock-step with the
+            // Notify the LPI once per rejection round — in lock-step with the
             // status guard above, so a second rejecting reviewer does not mail
             // the same "proposal rejected" event again.
             if ($recorded) {
@@ -578,20 +578,30 @@ class WorkflowController extends Controller
             : ($validated['report_type'] === 'progress2' ? 'Progress Report 2' : 'Progress Report');
 
         if ($isEthicalOrOther) {
-            $subject = "Ethical Approval Re-send Required";
-            $body = "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
-                "Reason ({$rejectionType}): {$validated['message']}\n\n" .
-                "Please re-send the ethical approval document for this project. The {$reportLabel} itself does not need to be re-uploaded.";
+            $subject = "Ethical Approval Documentation Required";
+            $body = "Following the research office's review of the reviewer's decision on your {$reportLabel}, "
+                . "the ethical approval documentation for this project must be re-submitted.\n\n"
+                . "Reason ({$rejectionType}): {$validated['message']}";
             $message = "Ethical approval re-send request sent to LPI.";
+            $guidance = [
+                'Upload the current ethical approval document for the project from the project page.',
+                "The {$reportLabel} itself does not need to be uploaded again.",
+                'The reviewer will re-evaluate the report once the document is in place.',
+            ];
         } else {
             $subject = "{$reportLabel} Resubmission Required";
-            $body = "The admin has reviewed the reviewer's rejection of your {$reportLabel} for: {$project->title}\n\n" .
-                "Admin message: {$validated['message']}\n\n" .
-                "Please resubmit your {$reportLabel}.";
+            $body = "Following the research office's review of the reviewer's decision, "
+                . "your {$reportLabel} for this project requires resubmission.\n\n"
+                . "Message from the research office: {$validated['message']}";
             $message = "{$reportLabel} sent to LPI for resubmission.";
+            $guidance = [
+                "Open the project and upload the revised {$reportLabel} as a new version.",
+                'Address the points raised by the reviewer before resubmitting.',
+                'The reviewer will evaluate the new version once it is submitted.',
+            ];
         }
 
-        $this->sendNotificationToLpi($project, $user, $subject, $body);
+        $this->sendNotificationToLpi($project, $user, $subject, $body, $guidance);
 
         return response()->json(['success' => true, 'message' => $message]);
     }
@@ -640,7 +650,7 @@ class WorkflowController extends Controller
                 ->whereIn('id', $entries->pluck('id'))
                 ->delete();
 
-            // Only step the project back to "unassigned" when nobody is left â€”
+            // Only step the project back to "unassigned" when nobody is left —
             // with another reviewer still assigned the review simply continues.
             $remaining = DB::table('projects_reviewers')
                 ->where('project_id', $project->id)
@@ -655,125 +665,130 @@ class WorkflowController extends Controller
         });
 
         // Consensus re-check: removing this reviewer may leave only reviewers
-        // who already submitted â€” complete whatever stage he was blocking
+        // who already submitted — complete whatever stage he was blocking
         // (recordStageCompletion is a no-op when nothing changed).
         $grading = app(GradingController::class);
         $grading->recordStageCompletion($project, 'progress', Project::STATUS_PROGRESS_REVIEWED, Project::STATUS_PROGRESS_REJECTED, $user, ['triggered_by' => 'unassign-consensus']);
         $grading->recordStageCompletion($project, 'progress2', Project::STATUS_PROGRESS2_REVIEWED, Project::STATUS_PROGRESS2_REJECTED, $user, ['triggered_by' => 'unassign-consensus']);
         $grading->recordStageCompletion($project, 'final', Project::STATUS_GRADED, Project::STATUS_FINAL_REJECTED, $user, ['triggered_by' => 'unassign-consensus']);
 
-        // Notify the un-assigned reviewer(s)
-        foreach ($removedUsers as $removedUser) {
-            $this->sendNotificationToReviewers(
-                $project,
-                $user,
-                'Reviewer Un-assignment',
-                "You have been un-assigned from project: {$project->title} (ID: {$project->old_project_id}).\n\n" .
-                (!empty($validated['reason']) ? "Reason: {$validated['reason']}\n\n" : '') .
-                "Please contact the admin if you have any questions."
-            );
-        }
+        // ─────────────────────────────────────────────────────────────────────
+        // TEMPORARILY DISABLED: no email is sent to the un-assigned reviewer.
+        // The withdrawal notice is kept below (commented out) so it can be
+        // reinstated by removing this comment block — nothing else needs to
+        // change: sendNotificationToReviewer(), the disclaimer/support options
+        // and the templates are all still in place.
+        //
+        // foreach ($removedUsers as $removedUser) {
+        //     $this->sendNotificationToReviewer(
+        //         $project,
+        //         $user,
+        //         $removedUser,
+        //         'Reviewer Assignment Withdrawn',
+        //         "You have been withdrawn from the review of the project below.\n\n" .
+        //         (!empty($validated['reason']) ? "Reason given by the research office: {$validated['reason']}\n\n" : '') .
+        //         "You no longer need to review this project or submit a grading for it.",
+        //         [
+        //             'The project has been returned to the research office for reassignment.',
+        //             'Any evaluation you already submitted in RTS is retained in the project record.',
+        //             'If you believe this withdrawal is an error, please contact the research office.',
+        //         ],
+        //         [
+        //             'disclaimer'     => GenericEmailMail::DISCLAIMER,
+        //             'support_email'  => GenericEmailMail::SUPPORT_EMAIL,
+        //             'project_except' => GenericEmailMail::REVIEWER_HIDDEN_ROWS,
+        //         ]
+        //     );
+        // }
+        // ─────────────────────────────────────────────────────────────────────
 
         return response()->json(['success' => true, 'message' => 'Reviewer un-assigned successfully. You can now assign a new reviewer.']);
     }
 
     /**
-     * Send notification email to all active admins.
+     * Queue one project notification using the shared rich email layout
+     * (academic heading, "what is required" bullets, project details,
+     * deadlines and a call-to-action) and record it in the send log.
      */
-    private function sendNotificationToAdmins(Project $project, User $sender, string $subject, string $body): void
-    {
-        if (!config('mail.enabled')) return;
-
-        $admins = User::where('type', 'Admin')->where('is_active', true)->get();
-        $subject = "{$subject} - {$project->title}";
-
-        foreach ($admins as $admin) {
-            try {
-                Mail::to($admin->email)->queue(new GenericEmailMail(
-                    $subject,
-                    $body,
-                    'Research Tracking System',
-                    $admin->name
-                ));
-
-                EmailSendLog::create([
-                    'sent_by' => $sender->id,
-                    'recipient_email' => $admin->email,
-                    'recipient_name' => $admin->name,
-                    'subject' => $subject,
-                    'body' => $body,
-                    'status' => 'queued',
-                ]);
-            } catch (\Exception $e) {
-                \Log::error("Failed to send notification to admin {$admin->email}: " . $e->getMessage());
-            }
+    private function queueNotification(
+        Project $project,
+        User $sender,
+        User $recipient,
+        string $baseSubject,
+        string $body,
+        array $guidance = [],
+        array $options = []
+    ): void {
+        if (!config('mail.enabled') || !$recipient || !$recipient->email) {
+            return;
         }
+
+        $subject = $this->notificationSubject($project, $baseSubject);
+
+        try {
+            Mail::to($recipient->email)->queue(new GenericEmailMail(
+                $subject,
+                $body,
+                'Research Tracking System',
+                $recipient->name ?? '',
+                null,
+                null,
+                [
+                    'heading'       => $baseSubject,
+                    'project'       => GenericEmailMail::projectContext(
+                        $project,
+                        $options['project_except'] ?? []
+                    ),
+                    'guidance'      => $guidance,
+                    'action_url'    => route('projects.show', $project->id),
+                    'action_label'  => 'Open the project',
+                    'disclaimer'    => $options['disclaimer'] ?? null,
+                    'support_email' => $options['support_email'] ?? null,
+                ]
+            ));
+
+            EmailSendLog::create([
+                'sent_by'         => $sender->id,
+                'recipient_email' => $recipient->email,
+                'recipient_name'  => $recipient->name,
+                'subject'         => $subject,
+                'body'            => $body,
+                'status'          => 'queued',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Failed to send notification to {$recipient->email}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Academic subject line: "<base> — <project id> (<research call>)".
+     */
+    private function notificationSubject(Project $project, string $base): string
+    {
+        $id   = $project->old_project_id ?: $project->id;
+        $call = $project->program->program_title ?? null;
+
+        return $base . ' — ' . $id . ($call ? ' (' . $call . ')' : '');
     }
 
     /**
      * Send notification email to the project's LPI.
      */
-    private function sendNotificationToLpi(Project $project, User $sender, string $subject, string $body): void
+    private function sendNotificationToLpi(Project $project, User $sender, string $subject, string $body, array $guidance = []): void
     {
-        if (!config('mail.enabled')) return;
-
         $lpi = $project->lpi;
-        if (!$lpi) return;
-
-        $subject = "{$subject} - {$project->title}";
-
-        try {
-            Mail::to($lpi->email)->queue(new GenericEmailMail(
-                $subject,
-                $body,
-                'Research Tracking System',
-                $lpi->name
-            ));
-
-            EmailSendLog::create([
-                'sent_by' => $sender->id,
-                'recipient_email' => $lpi->email,
-                'recipient_name' => $lpi->name,
-                'subject' => $subject,
-                'body' => $body,
-                'status' => 'queued',
-            ]);
-        } catch (\Exception $e) {
-            \Log::error("Failed to send notification to LPI {$lpi->email}: " . $e->getMessage());
+        if ($lpi) {
+            $this->queueNotification($project, $sender, $lpi, $subject, $body, $guidance);
         }
     }
 
     /**
-     * Send notification email to all reviewers assigned to the project.
+     * Send notification email to one specific reviewer (e.g. the one that was
+     * just un-assigned, who is no longer in the project's reviewer list).
      */
-    private function sendNotificationToReviewers(Project $project, User $sender, string $subject, string $body): void
+    private function sendNotificationToReviewer(Project $project, User $sender, User $reviewer, string $subject, string $body, array $guidance = [], array $options = []): void
     {
-        if (!config('mail.enabled')) return;
-
-        $reviewers = $project->reviewers;
-        $subject = "{$subject} - {$project->title}";
-
-        foreach ($reviewers as $reviewer) {
-            try {
-                Mail::to($reviewer->email)->queue(new GenericEmailMail(
-                    $subject,
-                    $body,
-                    'Research Tracking System',
-                    $reviewer->name
-                ));
-
-                EmailSendLog::create([
-                    'sent_by' => $sender->id,
-                    'recipient_email' => $reviewer->email,
-                    'recipient_name' => $reviewer->name,
-                    'subject' => $subject,
-                    'body' => $body,
-                    'status' => 'queued',
-                ]);
-            } catch (\Exception $e) {
-                \Log::error("Failed to send notification to reviewer {$reviewer->email}: " . $e->getMessage());
-            }
-        }
+        $this->queueNotification($project, $sender, $reviewer, $subject, $body, $guidance, $options);
     }
 
 }

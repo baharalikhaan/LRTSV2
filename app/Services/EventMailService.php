@@ -24,6 +24,38 @@ class EventMailService
     public const SENDER_NAME = 'Research Tracking System';
 
     /**
+     * "Action required" steps rendered after the project details, per event.
+     * Only the events that ask the recipient to do something in RTS carry
+     * steps; the others rely on their template body alone.
+     */
+    public const ACTION_POINTS = [
+        'reviewer_assigned' => [
+            'Evaluate the Progress Report against the approved proposal using the provided rubric.',
+            'Provide scores and detailed feedback justifying your assessment.',
+            'Recommend whether the project should Continue or Be Discontinued [with justification].',
+        ],
+    ];
+
+    /**
+     * Events whose email should carry the off-campus access disclaimer.
+     */
+    public const DISCLAIMER_EVENTS = ['reviewer_assigned'];
+
+    /**
+     * Events whose email should point the recipient at the support mailbox.
+     */
+    public const SUPPORT_EVENTS = ['reviewer_assigned'];
+
+    /**
+     * Project detail rows to leave out of an event's email. The reviewer
+     * assignment email only identifies the project (ID, title, research call);
+     * the grant, the cycle year and the report deadlines belong to the LPI.
+     */
+    public const HIDDEN_DETAILS = [
+        'reviewer_assigned' => GenericEmailMail::REVIEWER_HIDDEN_ROWS,
+    ];
+
+    /**
      * Send the given event template to a recipient in the context of a project.
      *
      * @param  string  $eventKey  One of EmailTemplate::eventKeys()
@@ -79,7 +111,21 @@ class EventMailService
             $subject,
             $body,
             self::SENDER_NAME,
-            $recipient->name ?? ''
+            $recipient->name ?? '',
+            null,
+            null,
+            [
+                'heading'       => EmailTemplate::EVENTS[$eventKey]['name'] ?? 'Notification',
+                'project'       => self::projectDetailsFor($eventKey, $project),
+                'action_label'  => 'Open the project',
+                'action_points' => self::ACTION_POINTS[$eventKey] ?? [],
+                'disclaimer'    => in_array($eventKey, self::DISCLAIMER_EVENTS, true)
+                    ? GenericEmailMail::DISCLAIMER
+                    : null,
+                'support_email' => in_array($eventKey, self::SUPPORT_EVENTS, true)
+                    ? GenericEmailMail::SUPPORT_EMAIL
+                    : null,
+            ]
         );
 
         $deliver = function () use ($recipient, $mailable, $log) {
@@ -104,6 +150,15 @@ class EventMailService
         }
 
         return true;
+    }
+
+    /**
+     * Project details for an event's email: the shared context minus the rows
+     * that event does not need (see HIDDEN_DETAILS).
+     */
+    public static function projectDetailsFor(string $eventKey, Project $project): array
+    {
+        return GenericEmailMail::projectContext($project, self::HIDDEN_DETAILS[$eventKey] ?? []);
     }
 
     /**
@@ -132,6 +187,7 @@ class EventMailService
             '*email*'          => $recipient->email ?? '',
             '*old_project_id*' => $project->old_project_id ?: $project->id,
             '*project_title*'  => $project->title ?? '',
+            '*program_title*'  => $program->program_title ?? '',
             '*cycle*'          => $cycleYear,
             '*deadline*'       => $deadline,
             '*grant_title*'    => $grantTitle,

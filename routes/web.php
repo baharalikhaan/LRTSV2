@@ -44,7 +44,7 @@ Auth::routes();
 //   GET  /Auth/metadata(saml2_metadata)
 //   GET  /Auth/sls     (saml2_sls)   - single logout service
 // This is a friendly alias so the login page can link to the SSO login route.
-// NOTE: the URI must be a single segment â€” the SAML package registers a
+// NOTE: the URI must be a single segment — the SAML package registers a
 // catch-all "{idpName}/login" route which shadows any "/{anything}/login"
 // path (e.g. "/saml/login" or "/sso/login"). "/sso" cannot collide.
 Route::get('/sso', function () {
@@ -83,27 +83,25 @@ Route::prefix('programs')->name('programs.')->group(function () {
     Route::get('/visibility', [ProgramController::class, 'visibilityIndex'])->name('visibility');
     Route::post('/{id}/toggle-visibility', [ProgramController::class, 'toggleVisibility'])->name('toggle-visibility');
     Route::get('/{id}', [ProgramController::class, 'show'])->name('show');
+    // Printable (A4) version of the research call page — printed via the
+    // browser / saved as PDF.
+    Route::get('/{id}/printable', [ProgramController::class, 'printable'])->name('printable');
     Route::post('/', [ProgramController::class, 'store'])->name('store');
     Route::put('/{id}', [ProgramController::class, 'update'])->name('update');
     Route::delete('/{id}', [ProgramController::class, 'destroy'])->name('destroy');
     Route::post('toggle/{id}', [ProgramController::class, 'toggle'])->name('toggle');
     Route::post('/upload-proposals', [ProgramController::class, 'uploadProposals'])->name('upload-proposals');
     Route::post('/{id}/upload-proposal', [ProgramController::class, 'uploadSingleProposal'])->name('upload-single-proposal');
-    // Research Call report booklet — a printable A4 HTML page (admin-only,
-    // enforced in the controller); printed via the browser / saved as PDF.
-    Route::get('/{id}/booklet', [\App\Http\Controllers\ResearchCallBookletController::class, 'show'])->name('booklet');
 });
 
 // ????????? Projects ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 Route::prefix('projects')->name('projects.')->group(function () {
     Route::get('/', [ProjectController::class, 'availableProjects'])->name('available');
-    Route::get('/available', [ProjectController::class, 'availableProjects'])->name('available.alias');
     Route::get('/register/{id}', [ProjectController::class, 'register'])->name('register');
     Route::post('/register', [ProjectController::class, 'storeRegistration'])->name('store-registration');
     Route::get('/my', function () {
         return redirect()->route('projects.available');
     })->name('my');
-    Route::get('/assign-review/{cycleId}', [ProjectController::class, 'assignView'])->name('assign-review');
     Route::post('/bulk-assign', [ProjectController::class, 'bulkAssign'])->name('bulk-assign');
     Route::get('/reviewer-assignment', [ProjectController::class, 'reviewerAssignment'])->name('reviewer-assignment');
     Route::get('/extend-progress-report', [ProjectController::class, 'extendProgressIndex'])->name('extend-progress');
@@ -265,6 +263,31 @@ HTML;
     $type = $request->query('type', '');
     $id   = $request->query('id', '');
 
+    // ─── Authorisation ────────────────────────────────────────────────────
+    // Previously any authenticated user could read any file by guessing the
+    // id. Admins may read everything; an LPI or a reviewer only the files of a
+    // project they own / are assigned to.
+    $user = auth()->user();
+
+    $projectForFile = $id ?: null;
+    if ($submissionId) {
+        $projectForFile = \App\Models\ProjectSubmission::whereKey($submissionId)->value('project_id') ?: $projectForFile;
+    }
+
+    if (!$user->isAdmin()) {
+        $ownsProject = $projectForFile
+            && (int) \App\Models\Project::whereKey($projectForFile)->value('lpi_id') === (int) $user->id;
+
+        $isAssignedReviewer = $projectForFile && \Illuminate\Support\Facades\DB::table('projects_reviewers')
+            ->where('project_id', $projectForFile)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$ownsProject && !$isAssignedReviewer) {
+            abort(403, 'You are not allowed to view this file.');
+        }
+    }
+
     // If a specific submission_id is provided, serve that exact version
     if ($submissionId) {
         $submission = \App\Models\ProjectSubmission::find($submissionId);
@@ -314,24 +337,9 @@ HTML;
     return response()->file($path, ['Content-Type' => 'application/pdf']);
 })->name('serveFile2');
 
-// Serve report templates from storage/app/downloads (uploaded by the user).
-// Maps: progress | progress2 | final | readiness ??? the real DOCX template files.
-Route::get('/download-template/{type}', function ($type) {
-    $templates = [
-        'progress'  => 'Progess Report Template (IG) -En.docx',
-        'progress2' => 'Progess Report Template (IG) -En.docx',
-        'final'     => 'Final Report Template (IG) -En.docx',
-        'readiness' => 'QU_Readiness Mapping Template_ORS-En.docx',
-    ];
-    if (!isset($templates[$type])) {
-        abort(404);
-    }
-    $path = storage_path('app/downloads/' . $templates[$type]);
-    if (!file_exists($path)) {
-        abort(404, 'Template file is missing on the server.');
-    }
-    return response()->download($path, $templates[$type]);
-})->name('download.template');
+// Report templates are no longer served from the application: the upload pages
+// and the reminder emails link the official QU post-award forms page
+// (see CycleProgressReportService::TEMPLATE_URL).
 
 // Convenience aliases
 Route::get('/graded-projects', [GradingController::class, 'gradedProjects'])->name('gradedProjects');
@@ -428,6 +436,8 @@ Route::prefix('reports')->name('reports.')->group(function () {
     Route::get('/budget-utilization', [\App\Http\Controllers\ReportController::class, 'budgetUtilizationReport'])->name('budget-utilization');
     Route::get('/report-cards', [\App\Http\Controllers\ReportController::class, 'reportCards'])->name('report-cards');
     Route::get('/student-grant-summary', [\App\Http\Controllers\ReportController::class, 'studentGrantSummary'])->name('student-grant-summary');
+    Route::get('/project-details', [\App\Http\Controllers\ReportController::class, 'projectDetailsReport'])->name('project-details');
+    Route::get('/project-details/export', [\App\Http\Controllers\ReportController::class, 'projectDetailsExport'])->name('project-details-export');
 });
 
 // ????????? Reviewer Grading (Admin) ??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????

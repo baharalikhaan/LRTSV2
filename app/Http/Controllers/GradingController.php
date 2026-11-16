@@ -53,7 +53,7 @@ class GradingController extends Controller
 
     /**
      * Show the grading form for a specific project.
-     * Deprecated alias Ã¢â‚¬â€ the unified grading page is at /projects/{id}/grading.
+     * Deprecated alias — the unified grading page is at /projects/{id}/grading.
      */
     public function gradeProject($id)
     {
@@ -86,7 +86,7 @@ class GradingController extends Controller
             abort(403, 'You are not assigned to review this project.');
         }
 
-        // Gate: a reviewer must claim for HIMSELF first Ã¢â‚¬â€ the menu enforces
+        // Gate: a reviewer must claim for HIMSELF first — the menu enforces
         // this, and direct URL visits must not bypass the claim step.
         if (!$user->isAdmin() && !$this->hasOwnClaim($project, $user)) {
             abort(403, 'Accept the proposal (claim the project) before grading.');
@@ -132,7 +132,7 @@ class GradingController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // LPI submission gates Ã¢â‚¬â€ check file existence instead of status
+        // LPI submission gates — check file existence instead of status
         // (buttons removed, files uploaded directly)
         $proposalExists = $this->proposalFileExists($project);
         $progressSubmitted = $submissions->where('type', 'progress')->count() > 0;
@@ -169,7 +169,7 @@ class GradingController extends Controller
             'undergrad'      => 'Undergraduate Student',
         ];
 
-        // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Auto-grade calculations (scores from database) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        // ——— Auto-grade calculations (scores from database) ———
         $scoreMap = \App\Models\Score::getMap();
 
         $achievementTypes = [
@@ -179,7 +179,7 @@ class GradingController extends Controller
 
         $studentTypes = ['masters', 'UG', 'PhD'];
 
-        // Ã¢â€â‚¬Ã¢â€â‚¬ Section A: Achievements against objectives Ã¢â€â‚¬Ã¢â€â‚¬
+        // —— Section A: Achievements against objectives ——
         $expectedSumA = 0;
         if ($commitments) {
             $expectedSumA = ($commitments->ip ?? 0) * ($scoreMap['ip_disclosure'] ?? 0)
@@ -192,7 +192,7 @@ class GradingController extends Controller
         }, 0);
         $autoGradeA = $expectedSumA > 0 ? min(round(($actualSumA / $expectedSumA) * 5, 2), 5) : 0;
 
-        // Ã¢â€â‚¬Ã¢â€â‚¬ Section B: Publications & IP Ã¢â€â‚¬Ã¢â€â‚¬
+        // —— Section B: Publications & IP ——
         $pubTypes = ['journal_q1','journal_q2','journal_q3','journal_q4','conference','book','edited_book','book_chapter'];
         $expectedSumB = 0;
         if ($commitments) {
@@ -210,7 +210,7 @@ class GradingController extends Controller
         }, 0);
         $autoGradeB = $expectedSumB > 0 ? min(round(($actualSumB / $expectedSumB) * 5, 2), 5) : 0;
 
-        // Ã¢â€â‚¬Ã¢â€â‚¬ Section C: Student & Researcher Involvement Ã¢â€â‚¬Ã¢â€â‚¬
+        // —— Section C: Student & Researcher Involvement ——
         $expectedSumC = 0;
         if ($commitments) {
             $expectedSumC = ($commitments->master ?? 0) * ($scoreMap['masters'] ?? 0)
@@ -232,7 +232,7 @@ class GradingController extends Controller
         $autoGradeVisibility = AiSetting::get('auto_grade_visibility', '1');
         $isAdmin = $user->isAdmin();
 
-        // Deadline info Ã¢â‚¬â€ show/hide grading forms based on deadlines
+        // Deadline info — show/hide grading forms based on deadlines
         $program = $project->program;
         $progressDeadline = $program ? ($program->prog_rpt_deadline ?? null) : null;
         $progress2Deadline = $program ? $program->prog_rpt2_deadline : null;
@@ -401,7 +401,7 @@ class GradingController extends Controller
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
         }
 
-        // Gate: a reviewer must claim for himself first Ã¢â‚¬â€ direct POSTs cannot
+        // Gate: a reviewer must claim for himself first — direct POSTs cannot
         // skip the claim step.
         if (!$user->isAdmin() && !$this->hasOwnClaim($project, $user)) {
             return response()->json(['success' => false, 'error' => 'Accept the proposal (claim the project) before grading.'], 403);
@@ -454,7 +454,7 @@ class GradingController extends Controller
         $userSelection = $request->publish;
         $isAcceptedValue = $userSelection === 'accepted' ? 1 : ($userSelection === 'rejected' ? 0 : 0);
 
-        // Use updateOrCreate with report_type to handle progress/progress2 separately Ã¢â‚¬â€
+        // Use updateOrCreate with report_type to handle progress/progress2 separately —
         // grading write + workflow status recorded inside one transaction so a
         // mid-flight failure cannot desynchronize publish vs. status history.
         $grading = DB::transaction(function () use ($project, $user, $request, $reportType, $isProgress2, $publishValue, $isAcceptedValue, $userSelection, $saveAction, &$stageCompleted) {
@@ -567,7 +567,7 @@ class GradingController extends Controller
             return response()->json(['success' => false, 'error' => 'You are not assigned to review this project.'], 403);
         }
 
-        // Gate: a reviewer must claim for himself first Ã¢â‚¬â€ direct POSTs cannot
+        // Gate: a reviewer must claim for himself first — direct POSTs cannot
         // skip the claim step.
         if (!$user->isAdmin() && !$this->hasOwnClaim($project, $user)) {
             return response()->json(['success' => false, 'error' => 'Accept the proposal (claim the project) before grading.'], 403);
@@ -734,7 +734,7 @@ class GradingController extends Controller
 
     /**
      * True when this user has claimed (accepted the proposal for) the project.
-     * A reviewer must claim for HIMSELF before the grading form unlocks Ã¢â‚¬â€
+     * A reviewer must claim for HIMSELF before the grading form unlocks —
      * direct URL/POST visits cannot skip the claim step.
      */
     protected function hasOwnClaim(Project $project, User $user): bool
@@ -755,7 +755,7 @@ class GradingController extends Controller
      * flips exactly once: any rejected set wins over accepted ones.
      *
      * A stage that already completed (reviewed/rejected status on record) is
-     * FROZEN: later sets Ã¢â‚¬â€ e.g. from a reviewer added afterwards Ã¢â‚¬â€ are stored
+     * FROZEN: later sets — e.g. from a reviewer added afterwards — are stored
      * but never re-open or flip the workflow. The LPI notification fires here,
      * exactly once, on a no-rejection completion. Also invoked when an
      * assignment is removed, so dropping the blocking reviewer completes the
@@ -840,7 +840,7 @@ class GradingController extends Controller
 
     /**
      * User ids that have submitted (publish != pending) their own set for
-     * the given stage Ã¢â‚¬â€ used to decide whether the consensus is complete.
+     * the given stage — used to decide whether the consensus is complete.
      *
      * @return \Illuminate\Support\Collection
      */
@@ -867,7 +867,7 @@ class GradingController extends Controller
     }
 
     /**
-     * The most recent rejected set for the stage, if any Ã¢â‚¬â€ carries the
+     * The most recent rejected set for the stage, if any — carries the
      * rejection reason/type for the *_REJECTED status metadata.
      */
     private function latestRejectedRow(Project $project, string $stage)

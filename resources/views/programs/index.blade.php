@@ -174,8 +174,8 @@
                                 <a class="dropdown-item" href="{{ route('projects.available') }}?program_id={{ $program->id }}" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                     <i class="fas fa-folder-open" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> View Projects
                                 </a>
-                                <a class="dropdown-item" href="{{ route('programs.booklet', $program->id) }}" target="_blank" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
-                                    <i class="fas fa-book-open" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Report Booklet
+                                <a class="dropdown-item" href="{{ route('programs.printable', $program->id) }}" target="_blank" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
+                                    <i class="fas fa-print" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Printable Version
                                 </a>
                                 <a class="dropdown-item" href="#" onclick="closeAllMenus();openBulkUploadModalForProgram({{ $program->id }})" style="padding:6px 12px;font-size:12px;display:flex;align-items:center;gap:8px;text-decoration:none;color:#333;">
                                     <i class="fas fa-file-archive" style="width:16px;text-align:center;font-size:11px;color:#6c757d;"></i> Upload Proposals ZIP

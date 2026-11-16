@@ -193,7 +193,7 @@ class ReviewerGradingController extends Controller
             ]
         );
 
-        return redirect()->back()->with('successrating', '<span style="color: var(--color-success);"><i class="fas fa-check-circle"></i> Ratings saved successfully!</span>');
+        return redirect()->back()->with('successrating', 'Ratings saved successfully!');
     }
 
     /**

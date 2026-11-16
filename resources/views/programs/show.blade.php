@@ -3,40 +3,10 @@
 @section('title', $program->program_title . ' - RTS')
 
 @php
+    // $orderedStatuses and $statusTotal come from the controller so the page
+    // and its printable version always render the same figures.
     $totalProjects = $program->projects->count();
     $isActive = $program->isActive();
-
-    // Status display config: key => [label, pill class, icon]
-    $statusConfig = [
-        'registered'             => ['Registered',             'ink',       'fa-circle'],
-        'Assigned'               => ['Assigned',               'review',    'fa-user-check'],
-        'Claimed'                => ['Claimed',                'accepted',  'fa-handshake'],
-        'proposal_rejected'      => ['Proposal Rejected',      'danger',    'fa-times-circle'],
-        'progress_added'         => ['Progress Added',         'info',      'fa-file-upload'],
-        'progress_reviewed'      => ['Progress Reviewed',      'accepted',  'fa-check-circle'],
-        'progress_rejected'      => ['Progress Rejected',      'danger',    'fa-times-circle'],
-        'final_added'            => ['Final Added',            'info',      'fa-file-upload'],
-        'Graded'                 => ['Graded',                 'accepted',  'fa-award'],
-        'final_rejected'         => ['Final Rejected',         'danger',    'fa-times-circle'],
-        'reviewer_unassigned'    => ['Reviewer Unassigned',    'warning',   'fa-user-slash'],
-        'progress2_added'        => ['Progress 2 Added',       'info',      'fa-file-upload'],
-        'progress2_reviewed'     => ['Progress 2 Reviewed',    'accepted',  'fa-check-circle'],
-        'progress2_rejected'     => ['Progress 2 Rejected',    'danger',    'fa-times-circle'],
-    ];
-    // Build ordered list from config, only include statuses that have counts
-    $orderedStatuses = [];
-    foreach ($statusConfig as $key => $cfg) {
-        if (isset($statusCounts[$key]) && $statusCounts[$key] > 0) {
-            $orderedStatuses[$key] = $cfg + ['count' => $statusCounts[$key]];
-        }
-    }
-    // Add any statuses not in config
-    foreach ($statusCounts as $key => $count) {
-        if (!isset($orderedStatuses[$key]) && $count > 0) {
-            $orderedStatuses[$key] = [ucfirst(str_replace('_', ' ', $key)), 'ink', 'fa-circle', 'count' => $count];
-        }
-    }
-    $statusTotal = array_sum($statusCounts);
 @endphp
 
 @section('content')
@@ -46,7 +16,12 @@
         <p>Research call overview, deadlines, and project submissions.</p>
     </div>
     <div class="page-actions">
-        <a href="{{ route('programs.index') }}" class="btn-secondary">
+        {{-- Primary action first (maroon), then the secondary ones — same
+             order and classes as the project detail page. --}}
+        <a href="{{ route('programs.printable', $program->id) }}" target="_blank" class="btn-primary btn-sm">
+            <i class="fas fa-print"></i> Printable Version
+        </a>
+        <a href="{{ route('programs.index') }}" class="btn-secondary btn-sm">
             <i class="fas fa-arrow-left"></i> Back
         </a>
     </div>

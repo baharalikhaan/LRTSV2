@@ -131,7 +131,10 @@
                         <span class="rg-rating-msg" id="ratingStatus"></span>
                         <span class="rg-rating-msg rg-ok" id="ratingAvgDisplay"></span>
                         <span class="rg-rating-msg" id="flashMsg">
-                            @if(session('successrating')){!! session('successrating') !!}@php session()->forget('successrating') @endphp@endif
+                            @if(session('successrating'))
+                                <span style="color: var(--color-success);"><i class="fas fa-check-circle"></i> {{ session('successrating') }}</span>
+                                @php session()->forget('successrating') @endphp
+                            @endif
                         </span>
                         <button type="submit" class="rg-btn-save" id="saveRatingBtn" disabled><i class="fas fa-save"></i> Save Ratings</button>
                     </form>

@@ -71,10 +71,19 @@ class FileExplorerController extends Controller
         $total    = $query->count();
         $start    = (int) $request->input('start', 0);
         $length   = (int) $request->input('length', 10);
+
         $projects = $query
             ->orderBy(\App\Models\Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
-            ->orderBy('projects.id')
-            ->skip($start)->take($length)->get();
+            ->orderBy('projects.id');
+
+        // DataTables sends length = -1 for the "All" page-length option. An
+        // OFFSET without a LIMIT is a syntax error in MySQL/MariaDB, so the
+        // offset has to be dropped together with the limit.
+        if ($length > 0) {
+            $projects = $projects->skip($start)->take($length);
+        }
+
+        $projects = $projects->get();
 
         $data = $projects->map(function ($p) {
             $oldId     = $p->old_project_id ?? $p->id;
