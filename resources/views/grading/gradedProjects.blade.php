@@ -10,6 +10,8 @@
     </div>
 </div>
 
+@include('projects.partials.research-call-context', ['contextKey' => 'graded-projects', 'listedCount' => $gradedProjects->total()])
+
 <div class="panel">
     <div class="panel-head">
         <h2><i class="fas fa-list"></i> Graded Projects</h2>

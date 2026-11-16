@@ -10,6 +10,8 @@
     </div>
 </div>
 
+@include('projects.partials.research-call-context', ['contextKey' => 'reviewer-assignment', 'listedCount' => $confProjects->count()])
+
 @if(session('success'))
 <div class="alert alert-success py-2" style="border-radius:8px;font-size:13px;">
     <i class="fas fa-check-circle"></i> {{ session('success') }}
@@ -92,6 +94,7 @@
                 <strong>Bulk Assign</strong>. Projects with no reviewer selected will be skipped; every newly assigned reviewer receives
                 an assignment email.
                 <span style="display:inline-flex;gap:6px;margin-left:10px;vertical-align:middle;">
+                    <span class="pill warning" style="font-size:11px;">{{ $actionCount }} need action</span>
                     <span class="pill review" style="font-size:11px;">{{ $assignedCount }} Assigned</span>
                     <span class="pill warning" style="font-size:11px;">{{ $unassignedCount }} Unassigned</span>
                 </span>
@@ -111,14 +114,14 @@
             @else
                 <table class="fluent-table w-100" id="projectsTable">
                     <colgroup>
-                        <col style="width:130px;">
-                        <col style="width:170px;">
+                        <col style="width:150px;">
+                        <col style="width:140px;">
                         <col>
-                        <col style="width:90px;">
-                        <col style="width:100px;">
-                        <col style="width:120px;">
-                        <col style="width:180px;">
-                        <col style="width:210px;">
+                        <col style="width:75px;">
+                        <col style="width:85px;">
+                        <col style="width:105px;">
+                        <col style="width:230px;">
+                        <col style="width:190px;">
                     </colgroup>
                     <thead>
                         <tr>
@@ -157,9 +160,10 @@
                             }
                             $assignedReviewers = $cp->reviewers;
                             $hasReviewer = $assignedReviewers->isNotEmpty();
+                            $needsAction = (bool) ($needsReviewerAction[$cp->id] ?? false);
                         @endphp
-                        <tr>
-                            <td style="white-space:nowrap;"><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
+                        <tr class="{{ $needsAction ? 'needs-action' : '' }}">
+                            <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
                             <td>
                                 @if($cp->lpi)
                                     <div style="font-weight:500;">{{ $cp->lpi->name }}</div>
@@ -173,13 +177,29 @@
                             </td>
                             <td><span class="pill info" style="font-size:11px;white-space:nowrap;">{{ $cp->program->grant->grant_code ?? 'N/A' }}</span></td>
                             <td><span class="pill info" style="font-size:11px;white-space:nowrap;">{{ ucfirst($cp->program->grant->category ?? 'N/A') }}</span></td>
-                            <td><span class="pill {{ $statusPillClass }}">{{ $statusLabel }}</span></td>
+                            <td>
+                                <span class="pill {{ $statusPillClass }}">{{ $statusLabel }}</span>
+                                @if($needsAction)
+                                    <span class="pill warning" style="font-size:10px;margin-left:4px;white-space:nowrap;" title="This project still needs reviewer attention">
+                                        Needs action
+                                    </span>
+                                @endif
+                            </td>
                             <td>
                                 @if($hasReviewer)
-                                    <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start;">
+                                    <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
                                         @foreach($assignedReviewers as $reviewer)
-                                            <span class="pill review" style="font-size:11px;">
-                                                {{ $reviewer->name }}@if($reviewer->pivot->claimed_at) <i class="fas fa-check" title="Claimed" style="font-size:9px;"></i> @endif
+                                            <span class="pill review" style="font-size:11px;display:inline-flex;align-items:center;gap:6px;max-width:100%;">
+                                                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                                    {{ $reviewer->name }}@if($reviewer->pivot->claimed_at) <i class="fas fa-check" title="Claimed" style="font-size:9px;"></i> @endif
+                                                </span>
+                                                {{-- Un-assign this reviewer straight from his name --}}
+                                                <a href="#"
+                                                   onclick="event.preventDefault(); event.stopPropagation(); confirmUnassignReviewer({{ $cp->id }}, {{ $reviewer->id }});"
+                                                   title="Un-assign {{ $reviewer->name }}"
+                                                   style="font-size:10px;font-weight:600;color:#a93434;text-decoration:underline;white-space:nowrap;">
+                                                    Un-assign
+                                                </a>
                                             </span>
                                         @endforeach
                                     </div>
@@ -189,15 +209,6 @@
                             </td>
                             <td>
                                 <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;">
-                                    @if($hasReviewer)
-                                        <div style="display:flex;flex-wrap:wrap;gap:4px;">
-                                            @foreach($assignedReviewers as $reviewer)
-                                                <button type="button" class="btn-danger btn-sm" title="Un-assign {{ $reviewer->name }}" onclick="confirmUnassignReviewer({{ $cp->id }}, {{ $reviewer->id }})">
-                                                    <i class="fas fa-user-minus"></i> {{ $assignedReviewers->count() > 1 ? $reviewer->name : 'Un-assign' }}
-                                                </button>
-                                            @endforeach
-                                        </div>
-                                    @endif
                                     <select name="assignments[{{ $index }}][reviewers][]" class="reviewer-select">
                                         <option value="">{{ $hasReviewer ? '— Add reviewer —' : '— Select Reviewer —' }}</option>
                                         @foreach($reviewerGroups as $pillarName => $pillarReviewers)
@@ -234,6 +245,15 @@
     #projectsTable th,
     #projectsTable td {
         overflow-wrap: anywhere;
+    }
+
+    /* Rows of a research call that still need reviewer attention (the page
+       lists the whole call when a research call is selected). */
+    #projectsTable tbody tr.needs-action > td:first-child {
+        box-shadow: inset 3px 0 0 var(--brand-500, #8d1b3d);
+    }
+    #projectsTable tbody tr.needs-action {
+        background: rgba(141, 27, 61, .03);
     }
 
     .reviewer-select {
@@ -287,14 +307,14 @@
             autoWidth: false,
             pageLength: 25,
             columns: [
-                { width: '9%' },   // Project ID
-                { width: '14%' },  // LPI
-                { width: '20%' },  // Project title
-                { width: '9%' },   // Grant
-                { width: '9%' },   // Category
-                { width: '11%' },  // Status
-                { width: '13%' },  // Assigned reviewer
-                { width: '15%' }   // Action
+                { width: '150px' }, // Project ID
+                { width: '140px' }, // LPI
+                { width: 'auto' },  // Project title — takes the remaining space
+                { width: '75px' },  // Grant
+                { width: '85px' },  // Category
+                { width: '105px' }, // Status
+                { width: '230px' }, // Assigned reviewer (+ un-assign link)
+                { width: '190px' }  // Action (reviewer dropdown)
             ],
             columnDefs: [
                 { orderable: false, searchable: false, targets: [6, 7] }

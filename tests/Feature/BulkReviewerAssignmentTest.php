@@ -161,6 +161,59 @@ class BulkReviewerAssignmentTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_the_un_assign_link_sits_beside_each_assigned_reviewer()
+    {
+        $admin = $this->admin();
+        if (!$admin) {
+            $this->markTestSkipped('Needs an admin.');
+        }
+
+        // The unfiltered page is an action queue, so pick a project that the
+        // page actually lists (assigned + a status that needs attention).
+        $project = Project::has('reviewers')
+            ->orderBy('id')
+            ->get()
+            ->first(function (Project $p) {
+                return in_array(
+                    $p->currentWorkflowStatus(),
+                    ['Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected'],
+                    true
+                );
+            });
+
+        if (!$project) {
+            $this->markTestSkipped('No assigned project that needs reviewer attention.');
+        }
+
+        $reviewer = $project->reviewers->first();
+
+        $response = $this->actingAs($admin)->get(route('projects.reviewer-assignment'));
+        $response->assertOk();
+
+        $html = $response->getContent();
+
+        // Each assigned reviewer carries his own un-assign link, in the
+        // "Assigned reviewer" column (before the reviewer dropdown).
+        $this->assertMatchesRegularExpression(
+            '/' . preg_quote(e($reviewer->name), '/') . '.{0,400}?confirmUnassignReviewer\(' . $project->id . ', ' . $reviewer->id . '\)/s',
+            $html,
+            'The un-assign link should sit next to the reviewer name.'
+        );
+
+        // The old un-assign buttons in the action column are gone.
+        $this->assertStringNotContainsString('btn-danger btn-sm', $html, 'The action column should only hold the reviewer dropdown.');
+
+        // One dropdown per listed project (each row also posts its project id,
+        // which is the second "assignments[...]" occurrence).
+        $selects = substr_count($html, 'class="reviewer-select"');
+        $this->assertGreaterThan(0, $selects);
+        $this->assertSame(
+            substr_count($html, '][project_id]') ?: substr_count($html, '[project_id]'),
+            $selects,
+            'Every row should still have its reviewer dropdown.'
+        );
+    }
+
     public function test_reviewer_assignment_page_renders_a_well_formed_table()
     {
         $admin = $this->admin();

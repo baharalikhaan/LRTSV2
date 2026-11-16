@@ -10,6 +10,8 @@
     </div>
 </div>
 
+@include('projects.partials.research-call-context', ['contextKey' => 'upload-reports'])
+
 @if(session('success'))
 <div class="fluent-alert fluent-alert--success" style="margin-bottom:16px;">
     <i class="fas fa-check-circle"></i> {{ session('success') }}
@@ -114,6 +116,7 @@ $(document).ready(function() {
                 d.missing = $('.chip.active[data-missing]').map(function() { return $(this).data('missing'); }).get();
                 d.rejected_progress = $('.chip.active[data-rejected="progress"]').length ? 1 : 0;
                 d.cycle_id = $('#cycleFilter').val();
+                d.program_id = '{{ $programId ?? '' }}';
             }
         },
         dom: 'Brt<"bottom"lip>',

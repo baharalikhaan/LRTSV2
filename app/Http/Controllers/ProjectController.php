@@ -17,9 +17,120 @@ use Illuminate\Support\Facades\Storage;
 
 class ProjectController extends Controller
 {
+    /**
+     * Intermediate "choose a research call" pages. Every Projects sub-menu entry
+     * (except All Projects) opens one of these first, so the project list that
+     * follows is scoped to a single research call.
+     *
+     * context key => [label, description, target route name, icon, admin only?]
+     */
+    public const RESEARCH_CALL_CONTEXTS = [
+        'my-assignments' => [
+            'title'       => 'My Assignments',
+            'description' => 'Choose a research call to see the projects assigned to you for review.',
+            'route'       => 'projects.my-assignments',
+            'icon'        => 'fa-solid fa-check-double',
+            'admin'       => false,
+        ],
+        'graded-projects' => [
+            'title'       => 'Graded Projects',
+            'description' => 'Choose a research call to see the projects you have graded.',
+            'route'       => 'gradedProjects',
+            'icon'        => 'fa-solid fa-star',
+            'admin'       => false,
+        ],
+        'reviewer-assignment' => [
+            'title'       => 'Reviewer Assignment',
+            'description' => 'Choose a research call to assign reviewers to its projects.',
+            'route'       => 'projects.reviewer-assignment',
+            'icon'        => 'fa-solid fa-user-check',
+            'admin'       => true,
+        ],
+        'extend-progress' => [
+            'title'       => 'Extend Progress Report',
+            'description' => 'Choose a research call to manage extended progress (Progress Report 2).',
+            'route'       => 'projects.extend-progress',
+            'icon'        => 'fa-solid fa-calendar-plus',
+            'admin'       => true,
+        ],
+        'upload-reports' => [
+            'title'       => 'Upload Reports',
+            'description' => 'Choose a research call to upload or replace its project reports.',
+            'route'       => 'admin-upload.index',
+            'icon'        => 'fa-solid fa-cloud-arrow-up',
+            'admin'       => true,
+        ],
+        'pending-reviews' => [
+            'title'       => 'Evaluate Projects',
+            'description' => 'Choose a research call to evaluate its pending projects.',
+            'route'       => 'projects.pending-reviews',
+            'icon'        => 'fa-solid fa-clock-rotate-left',
+            'admin'       => true,
+        ],
+        'report-cards' => [
+            'title'       => 'Report Cards',
+            'description' => 'Choose a research call to open the report cards of its graded projects.',
+            'route'       => 'reports.report-cards',
+            'icon'        => 'fa-solid fa-file-lines',
+            'admin'       => true,
+        ],
+    ];
+
     public function __construct()
     {
         $this->middleware('auth');
+    }
+
+    /**
+     * Research-call chooser shown before a Projects sub-menu list.
+     */
+    public function researchCallPicker(Request $request, string $context)
+    {
+        $meta = self::RESEARCH_CALL_CONTEXTS[$context] ?? null;
+        abort_if($meta === null, 404);
+
+        $user = auth()->user();
+        if (!empty($meta['admin']) && !$user->isAdmin()) {
+            abort(403, 'Access denied.');
+        }
+
+        $cycleId = $request->input('cycle_id');
+
+        // Sortable columns. Default: newest cycle first, then research call title.
+        $sort = $request->input('sort');
+        $direction = $request->input('dir') === 'desc' ? 'desc' : 'asc';
+
+        $cycleYear = '(SELECT cc.year FROM cycle_configs cc WHERE cc.id = programs.cycle_id)';
+        $grantCode = \App\Models\Grant::select('grant_code')
+            ->whereColumn('grants.id', 'programs.grant_id')
+            ->limit(1);
+
+        $researchCalls = Program::with(['grant', 'cycle'])
+            ->withCount(['projects', 'projects as assigned_projects_count' => function ($q) {
+                $q->whereHas('reviewers');
+            }])
+            ->when($cycleId, function ($q) use ($cycleId) {
+                $q->where('cycle_id', $cycleId);
+            })
+            ->when($sort === 'title', fn ($q) => $q->orderBy('program_title', $direction))
+            ->when($sort === 'grant', fn ($q) => $q->orderBy($grantCode, $direction)->orderBy('program_title'))
+            ->when($sort === 'cycle', fn ($q) => $q->orderByRaw("{$cycleYear} {$direction}")->orderBy('program_title'))
+            ->when($sort === 'projects', fn ($q) => $q->orderBy('projects_count', $direction)->orderBy('program_title'))
+            ->when($sort === 'assigned', fn ($q) => $q->orderBy('assigned_projects_count', $direction)->orderBy('program_title'))
+            ->unless($sort, fn ($q) => $q->orderByRaw("{$cycleYear} DESC")->orderBy('program_title'))
+            ->get();
+
+        $cycleConfigs = CycleConfig::orderBy('year', 'desc')->get();
+
+        return view('projects.research-call-picker', [
+            'contextKey'    => $context,
+            'meta'          => $meta,
+            'researchCalls' => $researchCalls,
+            'cycleConfigs'  => $cycleConfigs,
+            'cycleId'       => $cycleId,
+            'sort'          => $sort,
+            'direction'     => $direction,
+        ]);
     }
 
     // ─── Show project details ──────────────────────────────────────────────────
@@ -240,6 +351,9 @@ class ProjectController extends Controller
         }
 
         $confProjects = $query
+            // Default order: newest research-call cycle first, then the research
+            // call title, then the project id (same order as the chooser page).
+            ->orderByRaw('(SELECT cc.year FROM cycle_configs cc WHERE cc.id = (SELECT p2.cycle_id FROM programs p2 WHERE p2.id = projects.program_id)) DESC')
             ->orderBy(Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
             ->orderBy('projects.id')
             ->get();
@@ -518,13 +632,15 @@ class ProjectController extends Controller
         $programId = $request->input('program_id');
         $assignment = $request->input('assignment');
 
-        // Show projects that need reviewer attention:
-        // 1. Not assigned yet (no reviewer)
-        // 2. Assigned (reviewer assigned, awaiting claim)
-        // 3. Proposal rejected (reviewer rejected, needs reassignment)
-        // 4. Progress rejected (report rejected, may need reassignment)
-        $query = Project::with('program.grant', 'lpi', 'reviewers', 'latestStatus')
-            ->where(function ($q) {
+        // Without a research-call filter this page is an action queue: only the
+        // projects that need reviewer attention (no reviewer, awaiting claim,
+        // proposal rejected, progress rejected). With a research-call filter it
+        // lists every project of that call and flags the ones that need action,
+        // so the page matches the count shown on the chooser.
+        $query = Project::with('program.grant', 'lpi', 'reviewers', 'latestStatus');
+
+        if (!$programId) {
+            $query->where(function ($q) {
                 // Not assigned yet
                 $q->whereDoesntHave('reviewers')
                   // Latest status is one of the states that need reviewer
@@ -535,6 +651,7 @@ class ProjectController extends Controller
                       $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status IN ('Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected') AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
                   });
             });
+        }
 
         if ($cycleId) {
             $query->whereHas('program', function ($q) use ($cycleId) {
@@ -572,6 +689,18 @@ class ProjectController extends Controller
             ->orderBy('projects.id')
             ->get();
 
+        // Which of the listed projects still need reviewer attention? Used to
+        // flag rows when the whole research call is listed.
+        $needsReviewerAction = $confProjects->mapWithKeys(function (Project $project) {
+            $latest = $project->currentWorkflowStatus();
+            $needs = $project->reviewers->isEmpty()
+                || in_array($latest, ['Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected'], true);
+
+            return [$project->id => $needs];
+        });
+
+        $actionCount = $needsReviewerAction->filter()->count();
+
         // Research calls are narrowed to the selected cycle (cascading filter).
         $programsQuery = Program::with('grant')->orderBy('program_title');
         if ($cycleId) {
@@ -601,7 +730,8 @@ class ProjectController extends Controller
         ksort($reviewerGroups);
 
         return view('projects.reviewer-assignment', compact(
-            'confProjects', 'programs', 'programId', 'cycleConfigs', 'cycleId', 'reviewerGroups', 'assignment', 'status'
+            'confProjects', 'programs', 'programId', 'cycleConfigs', 'cycleId', 'reviewerGroups', 'assignment', 'status',
+            'needsReviewerAction', 'actionCount'
         ));
     }
 
@@ -689,9 +819,11 @@ class ProjectController extends Controller
 
     // ─── REVIEWER: View assignments & accept/reject ─────────────────────────
 
-    public function myAssignments()
+    public function myAssignments(Request $request)
     {
         $user = auth()->user();
+
+        $programId = $request->input('program_id');
 
         $assignments = DB::table('projects_reviewers')
             ->join('projects', 'projects.id', '=', 'projects_reviewers.project_id')
@@ -699,6 +831,9 @@ class ProjectController extends Controller
             ->join('users as lpi', 'lpi.id', '=', 'projects.lpi_id')
             ->where('projects_reviewers.user_id', $user->id)
             ->where('programs.is_visible', true)
+            ->when($programId, function ($q) use ($programId) {
+                $q->where('projects.program_id', $programId);
+            })
             ->select(
                 'projects_reviewers.id as r_id',
                 'projects.id as project_id',
@@ -735,7 +870,8 @@ class ProjectController extends Controller
             'totalAssigned',
             'pending',
             'claimed',
-            'gradedCount'
+            'gradedCount',
+            'programId'
         ));
     }
 

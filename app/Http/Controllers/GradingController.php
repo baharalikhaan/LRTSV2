@@ -28,12 +28,13 @@ class GradingController extends Controller
     /**
      * Show all projects that have been graded or need grading.
      */
-    public function gradedProjects()
+    public function gradedProjects(Request $request)
     {
         $user = Auth::user();
 
         $cycles = \App\Models\CycleConfig::orderBy('title')->get();
-        $cycleId = request('cycle_id');
+        $cycleId = $request->input('cycle_id');
+        $programId = $request->input('program_id');
 
         $query = $user->reviewedProjects()->visibleProgram()->with('lpi', 'program', 'program.grant');
 
@@ -43,12 +44,16 @@ class GradingController extends Controller
             });
         }
 
+        if ($programId) {
+            $query->where('projects.program_id', $programId);
+        }
+
         $gradedProjects = $query
             ->orderBy(\App\Models\Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
             ->orderBy('projects.id')
             ->paginate(15);
 
-        return view('grading.gradedProjects', compact('gradedProjects', 'cycles', 'cycleId'));
+        return view('grading.gradedProjects', compact('gradedProjects', 'cycles', 'cycleId', 'programId'));
     }
 
     /**

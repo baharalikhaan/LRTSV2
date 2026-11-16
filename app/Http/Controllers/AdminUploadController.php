@@ -24,10 +24,12 @@ class AdminUploadController extends Controller
     /**
      * Show the admin upload page.
      */
-    public function index()
+    public function index(Request $request)
     {
         $cycleConfigs = \App\Models\CycleConfig::orderBy('year', 'desc')->get();
-        return view('admin.upload-reports.index', compact('cycleConfigs'));
+        $programId = $request->input('program_id');
+
+        return view('admin.upload-reports.index', compact('cycleConfigs', 'programId'));
     }
 
     /**
@@ -56,6 +58,12 @@ class AdminUploadController extends Controller
         $cycleId = $request->input('cycle_id');
         if ($cycleId) {
             $query->where('programs.cycle_id', $cycleId);
+        }
+
+        // Research call filter (set by the research-call chooser page)
+        $programId = $request->input('program_id');
+        if ($programId) {
+            $query->where('projects.program_id', $programId);
         }
 
         $recordsTotal = Project::count();

@@ -10,6 +10,8 @@
     </div>
 </div>
 
+@include('projects.partials.research-call-context', ['contextKey' => 'extend-progress', 'listedCount' => $confProjects->count()])
+
 @if(session('error'))
 <div class="alert alert-danger py-2" style="border-radius:8px;font-size:13px;">
     <i class="fas fa-exclamation-circle"></i> {{ session('error') }}

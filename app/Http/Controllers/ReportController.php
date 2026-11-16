@@ -631,6 +631,11 @@ class ReportController extends Controller
             });
         }
 
+        $programId = $request->input('program_id');
+        if ($programId) {
+            $query->where('projects.program_id', $programId);
+        }
+
         $projects = $query
             ->orderBy(\App\Models\Program::select('program_title')->whereColumn('programs.id', 'projects.program_id')->limit(1))
             ->orderBy('projects.id')
@@ -651,7 +656,7 @@ class ReportController extends Controller
             )->pluck('grant_id')
         )->orderBy('grant_code')->get();
 
-        return view('reports.report-cards', compact('projects', 'cycleConfigs', 'grants', 'cycleId', 'grantId'));
+        return view('reports.report-cards', compact('projects', 'cycleConfigs', 'grants', 'cycleId', 'grantId', 'programId'));
     }
 
     /**

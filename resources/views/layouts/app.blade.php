@@ -164,13 +164,13 @@
         ],
         'Projects' => [
             'projects-list' => ['route' => 'projects.available', 'icon' => 'fa-solid fa-diagram-project', 'label' => 'All Projects', 'can' => true],
-            'my-assignments' => ['route' => 'projects.my-assignments', 'icon' => 'fa-solid fa-check-double', 'label' => 'My Assignments', 'can' => false],
-            'graded-projects' => ['route' => 'gradedProjects', 'icon' => 'fa-solid fa-star', 'label' => 'Graded Projects', 'can' => false],
-            'reviewer-assignment' => ['route' => 'projects.reviewer-assignment', 'icon' => 'fa-solid fa-user-check', 'label' => 'Reviewer Assignment', 'can' => $isAdmin],
-            'extend-progress' => ['route' => 'projects.extend-progress', 'icon' => 'fa-solid fa-calendar-plus', 'label' => 'Extend Progress Report', 'can' => $isAdmin],
-            'admin-upload' => ['route' => 'admin-upload.index', 'icon' => 'fa-solid fa-cloud-arrow-up', 'label' => 'Upload Reports', 'can' => $isAdmin],
-            'pending-reviews' => ['route' => 'projects.pending-reviews', 'icon' => 'fa-solid fa-clock-rotate-left', 'label' => 'Evaluate Projects', 'can' => $isAdmin],
-            'report-cards' => ['route' => 'reports.report-cards', 'icon' => 'fa-solid fa-file-lines', 'label' => 'Report Cards', 'can' => $isAdmin],
+            'my-assignments' => ['route' => 'projects.research-calls', 'params' => ['context' => 'my-assignments'], 'active' => ['projects.my-assignments'], 'icon' => 'fa-solid fa-check-double', 'label' => 'My Assignments', 'can' => false],
+            'graded-projects' => ['route' => 'projects.research-calls', 'params' => ['context' => 'graded-projects'], 'active' => ['gradedProjects'], 'icon' => 'fa-solid fa-star', 'label' => 'Graded Projects', 'can' => false],
+            'reviewer-assignment' => ['route' => 'projects.research-calls', 'params' => ['context' => 'reviewer-assignment'], 'active' => ['projects.reviewer-assignment'], 'icon' => 'fa-solid fa-user-check', 'label' => 'Reviewer Assignment', 'can' => $isAdmin],
+            'extend-progress' => ['route' => 'projects.research-calls', 'params' => ['context' => 'extend-progress'], 'active' => ['projects.extend-progress'], 'icon' => 'fa-solid fa-calendar-plus', 'label' => 'Extend Progress Report', 'can' => $isAdmin],
+            'admin-upload' => ['route' => 'projects.research-calls', 'params' => ['context' => 'upload-reports'], 'active' => ['admin-upload.index'], 'icon' => 'fa-solid fa-cloud-arrow-up', 'label' => 'Upload Reports', 'can' => $isAdmin],
+            'pending-reviews' => ['route' => 'projects.research-calls', 'params' => ['context' => 'pending-reviews'], 'active' => ['projects.pending-reviews'], 'icon' => 'fa-solid fa-clock-rotate-left', 'label' => 'Evaluate Projects', 'can' => $isAdmin],
+            'report-cards' => ['route' => 'projects.research-calls', 'params' => ['context' => 'report-cards'], 'active' => ['reports.report-cards'], 'icon' => 'fa-solid fa-file-lines', 'label' => 'Report Cards', 'can' => $isAdmin],
         ],
         'Reports' => [
             'report-project-details' => ['route' => 'reports.project-details', 'icon' => 'fa-solid fa-table-list', 'label' => 'Project Details', 'can' => $isAdmin],
@@ -406,6 +406,36 @@
         </div>
 
         {{-- Navigation --}}
+        @php
+            // A menu item is active when its route matches. Items that share
+            // one route (the research-call chooser, one per context) are told
+            // apart by their parameters so only the clicked one highlights.
+            $navItemActive = function (array $item, string $key): bool {
+                $params = $item['params'] ?? [];
+
+                if (request()->routeIs($item['route'] . '*')) {
+                    foreach ($params as $param => $value) {
+                        if ((string) request()->route($param) !== (string) $value) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
+                if (request()->routeIs($key . '*')) {
+                    return true;
+                }
+
+                foreach ($item['active'] ?? [] as $target) {
+                    if (request()->routeIs($target . '*')) {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+        @endphp
         @foreach($routeGroups as $sectionLabel => $items)
             @php
                 $visibleItems = array_filter($items, function($i) { return $i['can'] ?? true; });
@@ -414,7 +444,7 @@
                 @php
                     $hasActive = false;
                     foreach ($visibleItems as $key => $item) {
-                        if (request()->routeIs($item['route'] . '*') || request()->routeIs($key.'*')) {
+                        if ($navItemActive($item, (string) $key)) {
                             $hasActive = true; break;
                         }
                     }
@@ -429,10 +459,10 @@
                     <div class="sidebar-section-items {{ ($hasActive || $sectionLabel === '') ? '' : 'collapsed' }}">
                         @foreach($visibleItems as $key => $item)
                             @php
-                                $isActive = request()->routeIs($item['route'] . '*') || request()->routeIs($key.'*');
+                                $isActive = $navItemActive($item, (string) $key);
                             @endphp
                             <a class="sidebar-nav-item {{ $isActive ? 'active' : '' }}"
-                               href="{{ route($item['route']) }}">
+                               href="{{ route($item['route'], $item['params'] ?? []) }}">
                                 <i class="{{ $item['icon'] }}"></i>
                                 <span>{{ $item['label'] }}</span>
                             </a>
@@ -1464,6 +1494,11 @@ $(document).on('click', '.open-grade-modal', function() {
                         'date'      => 'November 2026',
                         'tagline'   => 'Project Details Report & Excel Export',
                         'changes'   => [
+                            'Reviewer Assignment table layout - each reviewer in the "Assigned reviewer" column now carries his own "Un-assign" link right next to the name (the confirmation prompt is unchanged), and the Action column keeps only the reviewer dropdown used for adding a reviewer; the column widths were rebalanced so the reviewer names, the link and the project ID stay readable',
+                            'The research-call banner on every filtered project list shows how many projects are listed out of the research call total, and Reviewer Assignment now lists the whole research call when one is selected (it stays an action queue on the unfiltered "Show all" view) - projects that still need a reviewer are flagged with a maroon edge and a "Needs action" badge, the header counts them ("N need action") and the banner reads "Showing 8 of 8 projects", so the page and the chooser figure always agree; pages that load their table by Ajax show the total only',
+                            'Sorting added to the projects pages - the research-call chooser and the All Projects list now default to the newest research-call cycle first and then the research call title (A-Z), with the project id as the final tie-breaker; the chooser headers (Research Call, Grant, Cycle, Projects, Assigned) are clickable to sort by that column and toggle the direction, and the chosen sort is kept while the cycle filter stays applied',
+                            'Projects sub-menu entries now open a research-call chooser first - Reviewer Assignment, Extend Progress Report, Upload Reports, Evaluate Projects, Report Cards (and the reviewer pages My Assignments / Graded Projects) list every research call with its grant, cycle, project count and assigned count on one compact line each, and clicking a row (or its name) opens that page filtered to the single research call; a "Show all projects" action keeps the old unfiltered list reachable, the filtered page shows a "Research call" banner with "Change research call" and "Show all", and the cycle filter on the chooser narrows the list before picking',
+                            'The research-call filter is now honoured by every project list behind the chooser - My Assignments, Graded Projects, Report Cards and Upload Reports gained a programme filter (the latter in its server-side DataTable query), joining Reviewer Assignment, Extend Progress Report and Evaluate Projects which already supported it',
                             'Security: file downloads are no longer open to every logged-in user - the document viewer now lets an administrator read any file but restricts an LPI or a reviewer to the projects they own or are assigned to (previously any account could read any proposal or report by changing the id in the link); the raw "file" parameter is admin-only and the unused public template-download route was removed',
                             'Security: dependency updates - guzzle 7.13.1 to 7.15.2 (with promises/psr7), league/commonmark 2.8.2 to 2.10.7 and phpseclib 3.0.55 to 3.0.58, cutting the reported advisories from 51 to 31; the remainder sit in Laravel 8 (end-of-life since January 2023) and the Symfony 5.4 packages it pins, so clearing them needs a planned framework upgrade',
                             'Security: the reviewer-grading confirmation message is now escaped (it was printed as raw HTML from the session) and .env backups are git-ignored so a credentials file cannot be committed by accident',

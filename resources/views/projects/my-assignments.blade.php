@@ -7,6 +7,8 @@
     <h1 class="h2"><i class="fas fa-tasks"></i> My Reviewer Assignments</h1>
 </div>
 
+@include('projects.partials.research-call-context', ['contextKey' => 'my-assignments', 'listedCount' => $assignments->count()])
+
 {{-- Stats Cards --}}
 <div class="row mb-4">
     <div class="col-md-3">

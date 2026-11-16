@@ -104,6 +104,8 @@ Route::prefix('projects')->name('projects.')->group(function () {
     })->name('my');
     Route::post('/bulk-assign', [ProjectController::class, 'bulkAssign'])->name('bulk-assign');
     Route::get('/reviewer-assignment', [ProjectController::class, 'reviewerAssignment'])->name('reviewer-assignment');
+    // Intermediate research-call chooser used by the Projects sub-menu entries.
+    Route::get('/research-calls/{context}', [ProjectController::class, 'researchCallPicker'])->name('research-calls');
     Route::get('/extend-progress-report', [ProjectController::class, 'extendProgressIndex'])->name('extend-progress');
     Route::post('/toggle-extended-progress', [ProjectController::class, 'toggleExtendedProgress'])->name('toggle-extended-progress');
     Route::get('/my-assignments', [ProjectController::class, 'myAssignments'])->name('my-assignments');

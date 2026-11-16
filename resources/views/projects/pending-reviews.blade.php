@@ -10,6 +10,8 @@
     </div>
 </div>
 
+@include('projects.partials.research-call-context', ['contextKey' => 'pending-reviews', 'listedCount' => $pendingReviews->count()])
+
 <div class="panel">
     <div class="panel-head">
         <div class="panel-actions">
