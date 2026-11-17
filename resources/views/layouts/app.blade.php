@@ -1336,28 +1336,27 @@ function confirmUnassignReviewer(projectId, reviewerId) {
     $('.modal-backdrop').remove();
     $('body').removeClass('modal-open');
 
-    var modal = $('<div class="modal fade" id="workflowModal" tabindex="-1" role="dialog" data-backdrop="static">'
+    var modal = $('<div class="modal fade" id="workflowModal" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">'
         + '<div class="modal-dialog modal-dialog-centered" role="document" style="max-width:480px;">'
-        + '<div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 20px 60px rgba(0,0,0,.15);">'
-        + '<div style="padding:28px 28px 20px;text-align:center;">'
-        + '<div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#fee2e2,#fecaca);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">'
-        + '<i class="fas fa-user-minus" style="color:#dc2626;font-size:22px;"></i>'
+        + '<div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 20px 60px rgba(0,0,0,.18);">'
+        + '<div class="modal-header" style="border-bottom:1px solid var(--ink-100,#eceef2);padding:16px 20px;">'
+        + '<h5 class="modal-title" style="margin:0;font-size:15px;font-weight:700;color:var(--ink-800,#2f2b35);">'
+        + '<i class="fas fa-user-minus" style="color:var(--brand-500,#8d1b3d);margin-right:7px;"></i>'
+        + 'Un-assign reviewer?</h5>'
         + '</div>'
-        + '<h5 style="margin:0 0 8px;font-weight:700;font-size:17px;color:#1e1b4b;">Un-assign Reviewer?</h5>'
-        + '<p style="margin:0 0 20px;font-size:13px;color:#64748b;line-height:1.5;">'
-        + 'This will remove the selected reviewer from this project. '
+        + '<div class="modal-body" style="padding:16px 20px;">'
+        + '<p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:var(--ink-600,#4b4654);">'
+        + 'This removes the selected reviewer from this project. '
         + 'Other assigned reviewers (if any) stay on the project.</p>'
-        + '<div style="margin-bottom:20px;text-align:left;">'
-        + '<label style="font-size:11px;font-weight:600;display:block;margin-bottom:6px;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Reason (optional)</label>'
-        + '<textarea id="unassignReason" rows="2" maxlength="2000" style="width:100%;font-size:13px;border:2px solid #e2e8f0;border-radius:8px;padding:10px 12px;color:#1e1b4b;resize:none;font-family:inherit;" placeholder="Optional reason for un-assigning..."></textarea>'
+        + '<label for="unassignReason" style="display:block;margin-bottom:6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-500,#5d6677);">Reason (optional)</label>'
+        + '<textarea id="unassignReason" rows="2" maxlength="2000" placeholder="Optional reason for un-assigning…" style="width:100%;font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--ink-100,#eceef2);border-radius:6px;background:#fff;color:var(--ink-800,#2f2b35);resize:none;"></textarea>'
+        + '<div id="unassignError" style="display:none;margin-top:12px;padding:9px 12px;border-radius:6px;background:#fdf0f3;border:1px solid #e8c9d2;font-size:12.5px;color:var(--brand-600,#7a1636);"></div>'
         + '</div>'
-        + '<div style="display:flex;gap:10px;justify-content:center;">'
-        + '<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal" style="padding:10px 20px;border-radius:8px;font-weight:600;font-size:13px;">Cancel</button>'
-        + '<button type="button" class="btn btn-sm" id="confirmUnassignBtn" style="padding:10px 24px;border-radius:8px;font-weight:600;font-size:13px;background:linear-gradient(135deg,#ef4444,#dc2626);border:none;color:#fff;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(239,68,68,.3);" onclick="executeUnassignReviewer(' + projectId + ', ' + (reviewerId || 'null') + ')">'
+        + '<div class="modal-footer" style="border-top:1px solid var(--ink-100,#eceef2);padding:12px 20px;display:flex;justify-content:flex-end;gap:8px;">'
+        + '<button type="button" class="btn-secondary btn-sm" data-dismiss="modal">Cancel</button>'
+        + '<button type="button" class="btn-primary btn-sm" id="confirmUnassignBtn" onclick="executeUnassignReviewer(' + projectId + ', ' + (reviewerId || 'null') + ')">'
         + '<i class="fas fa-user-minus"></i> Un-assign'
         + '</button>'
-        + '</div>'
-        + '<div id="unassignError" style="display:none;margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;color:#991b1b;text-align:left;"></div>'
         + '</div>'
         + '</div></div></div>');
 
@@ -1494,8 +1493,13 @@ $(document).on('click', '.open-grade-modal', function() {
                         'date'      => 'November 2026',
                         'tagline'   => 'Project Details Report & Excel Export',
                         'changes'   => [
+                            'The "Un-assign reviewer" confirmation now matches the application theme - maroon accent and icon, themed header, body and footer, the standard outlined Cancel and maroon Un-assign buttons - instead of the previous indigo/red custom styling; the reviewer table also keeps its column widths on smaller screens (it scrolls horizontally rather than squeezing the title column)',
+                            'Bulk reviewer assignment now runs inside a progress modal - the form posts one project at a time and the dialog shows "3 / 5", a maroon progress bar and a live list of what happened (✓ project ID — reviewer, ⚠ skipped, ✗ failed); the backdrop is static so a stray click cannot dismiss it, a Cancel button stops the remaining assignments, and the page reloads when the run finishes (or is cancelled) so the table shows the new assignments, with a summary toast on the reloaded page',
+                            'Reviewer Assignment confirmations now appear as the standard bottom-right toast (green "success", red "error") instead of an inline alert box at the top of the page, so the bulk-assign result no longer pushes the table down',
+                            'The research-call chooser now uses the same DataTable treatment as the other project tables - export toolbar (Copy / CSV / Excel / PDF / Print), the table search box, paging info and pagination - while the column headers stay clickable for the server-side sort (cycle year, research call, grant and the three deadlines); the research-call name in the first column is styled like the project-table links (maroon, regular weight, underlined) instead of a bold blue link',
+                            'The research-call chooser now shows what each call\'s deadlines are instead of the grant / cycle / project-count badges - three columns (Progress 1, Progress 2 and Final report deadline) display the date plus a short "N days left" or "passed" note, coloured red when overdue and amber when due within two weeks; the number of projects is kept as a plain, sortable column (no badge), all deadline columns are sortable, and the default order stays newest cycle first then research call title',
                             'Reviewer Assignment table layout - each reviewer in the "Assigned reviewer" column now carries his own "Un-assign" link right next to the name (the confirmation prompt is unchanged), and the Action column keeps only the reviewer dropdown used for adding a reviewer; the column widths were rebalanced so the reviewer names, the link and the project ID stay readable',
-                            'The research-call banner on every filtered project list shows how many projects are listed out of the research call total, and Reviewer Assignment now lists the whole research call when one is selected (it stays an action queue on the unfiltered "Show all" view) - projects that still need a reviewer are flagged with a maroon edge and a "Needs action" badge, the header counts them ("N need action") and the banner reads "Showing 8 of 8 projects", so the page and the chooser figure always agree; pages that load their table by Ajax show the total only',
+                            'The research-call banner on every filtered project list shows how many projects are listed out of the research call total, and Reviewer Assignment now lists the whole research call when one is selected (it stays an assignment queue - only projects that need a reviewer - on the unfiltered "Show all" view); a project is flagged only when the reviewer-assignment action is actually pending, i.e. nobody is assigned yet or the reviewer rejected the proposal (report rejections belong to the All Projects page), with a maroon edge, a "Needs reviewer" badge and a "N need reviewer" header count, so the page and the chooser figure always agree; pages that load their table by Ajax show the total only',
                             'Sorting added to the projects pages - the research-call chooser and the All Projects list now default to the newest research-call cycle first and then the research call title (A-Z), with the project id as the final tie-breaker; the chooser headers (Research Call, Grant, Cycle, Projects, Assigned) are clickable to sort by that column and toggle the direction, and the chosen sort is kept while the cycle filter stays applied',
                             'Projects sub-menu entries now open a research-call chooser first - Reviewer Assignment, Extend Progress Report, Upload Reports, Evaluate Projects, Report Cards (and the reviewer pages My Assignments / Graded Projects) list every research call with its grant, cycle, project count and assigned count on one compact line each, and clicking a row (or its name) opens that page filtered to the single research call; a "Show all projects" action keeps the old unfiltered list reachable, the filtered page shows a "Research call" banner with "Change research call" and "Show all", and the cycle filter on the chooser narrows the list before picking',
                             'The research-call filter is now honoured by every project list behind the chooser - My Assignments, Graded Projects, Report Cards and Upload Reports gained a programme filter (the latter in its server-side DataTable query), joining Reviewer Assignment, Extend Progress Report and Evaluate Projects which already supported it',

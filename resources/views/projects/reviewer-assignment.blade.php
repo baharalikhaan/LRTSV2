@@ -12,14 +12,36 @@
 
 @include('projects.partials.research-call-context', ['contextKey' => 'reviewer-assignment', 'listedCount' => $confProjects->count()])
 
-@if(session('success'))
-<div class="alert alert-success py-2" style="border-radius:8px;font-size:13px;">
-    <i class="fas fa-check-circle"></i> {{ session('success') }}
-</div>
-@endif
-@if(session('error'))
-<div class="alert alert-danger py-2" style="border-radius:8px;font-size:13px;">
-    <i class="fas fa-exclamation-circle"></i> {{ session('error') }}
+{{-- Bulk-assignment progress modal: static backdrop (a stray click cannot close
+     it), Cancel stops the remaining assignments, and the page reloads at the
+     end so the list reflects the new assignments. --}}
+@if($confProjects->count() > 0)
+<div class="modal fade" id="bulkProgressModal" tabindex="-1" role="dialog" aria-hidden="true"
+     data-backdrop="static" data-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" role="document" style="max-width:700px;">
+        <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 20px 60px rgba(0,0,0,.18);">
+            <div class="modal-header" style="border-bottom:1px solid var(--ink-100);padding:16px 20px;">
+                <h5 class="modal-title" id="bulkProgressTitle" style="font-size:15px;font-weight:700;color:var(--ink-800,#2f2b35);margin:0;">
+                    Assigning reviewers…
+                </h5>
+            </div>
+            <div class="modal-body" style="padding:16px 20px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--ink-600,#4b4654);">
+                    <span id="bulkProgressStatus">Starting…</span>
+                    <span id="bulkProgressCount">0 / 0</span>
+                </div>
+                <div style="height:10px;margin-top:8px;background:var(--ink-100,#eceef2);border-radius:5px;overflow:hidden;">
+                    <div id="bulkProgressBar" style="height:100%;width:0%;background:var(--brand-500,#8d1b3d);transition:width .25s ease;"></div>
+                </div>
+                <ul id="bulkProgressLog" style="margin:12px 0 0;padding-left:18px;font-size:11.5px;line-height:1.55;color:var(--ink-600,#4b4654);max-height:170px;overflow:auto;"></ul>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--ink-100);padding:12px 20px;">
+                <button type="button" class="btn-secondary btn-sm" id="bulkCancelBtn">
+                    <i class="fas fa-xmark"></i> Cancel
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 @endif
 
@@ -94,7 +116,7 @@
                 <strong>Bulk Assign</strong>. Projects with no reviewer selected will be skipped; every newly assigned reviewer receives
                 an assignment email.
                 <span style="display:inline-flex;gap:6px;margin-left:10px;vertical-align:middle;">
-                    <span class="pill warning" style="font-size:11px;">{{ $actionCount }} need action</span>
+                    <span class="pill warning" style="font-size:11px;"><span id="needReviewerCount">{{ $actionCount }}</span> need reviewer</span>
                     <span class="pill review" style="font-size:11px;">{{ $assignedCount }} Assigned</span>
                     <span class="pill warning" style="font-size:11px;">{{ $unassignedCount }} Unassigned</span>
                 </span>
@@ -114,14 +136,14 @@
             @else
                 <table class="fluent-table w-100" id="projectsTable">
                     <colgroup>
-                        <col style="width:150px;">
-                        <col style="width:140px;">
+                        <col style="width:175px;">
+                        <col style="width:170px;">
                         <col>
-                        <col style="width:75px;">
-                        <col style="width:85px;">
-                        <col style="width:105px;">
-                        <col style="width:230px;">
-                        <col style="width:190px;">
+                        <col style="width:80px;">
+                        <col style="width:110px;">
+                        <col style="width:150px;">
+                        <col style="width:175px;">
+                        <col style="width:180px;">
                     </colgroup>
                     <thead>
                         <tr>
@@ -162,7 +184,7 @@
                             $hasReviewer = $assignedReviewers->isNotEmpty();
                             $needsAction = (bool) ($needsReviewerAction[$cp->id] ?? false);
                         @endphp
-                        <tr class="{{ $needsAction ? 'needs-action' : '' }}">
+                        <tr class="{{ $needsAction ? 'needs-reviewer' : '' }}" data-project-id="{{ $cp->id }}">
                             <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><a href="{{ route('projects.show', $cp->id) }}"><code>{{ $cp->old_project_id }}</code></a></td>
                             <td>
                                 @if($cp->lpi)
@@ -180,32 +202,31 @@
                             <td>
                                 <span class="pill {{ $statusPillClass }}">{{ $statusLabel }}</span>
                                 @if($needsAction)
-                                    <span class="pill warning" style="font-size:10px;margin-left:4px;white-space:nowrap;" title="This project still needs reviewer attention">
-                                        Needs action
+                                    <span class="pill warning needs-reviewer-badge" style="font-size:10px;margin-left:4px;white-space:nowrap;" title="This project still needs a reviewer assigned">
+                                        Needs reviewer
                                     </span>
                                 @endif
                             </td>
                             <td>
-                                @if($hasReviewer)
-                                    <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-                                        @foreach($assignedReviewers as $reviewer)
-                                            <span class="pill review" style="font-size:11px;display:inline-flex;align-items:center;gap:6px;max-width:100%;">
-                                                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                                                    {{ $reviewer->name }}@if($reviewer->pivot->claimed_at) <i class="fas fa-check" title="Claimed" style="font-size:9px;"></i> @endif
-                                                </span>
-                                                {{-- Un-assign this reviewer straight from his name --}}
-                                                <a href="#"
-                                                   onclick="event.preventDefault(); event.stopPropagation(); confirmUnassignReviewer({{ $cp->id }}, {{ $reviewer->id }});"
-                                                   title="Un-assign {{ $reviewer->name }}"
-                                                   style="font-size:10px;font-weight:600;color:#a93434;text-decoration:underline;white-space:nowrap;">
-                                                    Un-assign
-                                                </a>
+                                <div class="assigned-list" style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+                                    @foreach($assignedReviewers as $reviewer)
+                                        <span class="pill review" style="font-size:11px;display:inline-flex;align-items:center;gap:6px;max-width:100%;">
+                                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                                {{ $reviewer->name }}@if($reviewer->pivot->claimed_at) <i class="fas fa-check" title="Claimed" style="font-size:9px;"></i> @endif
                                             </span>
-                                        @endforeach
-                                    </div>
-                                @else
-                                    <span style="font-size:12px;color:var(--ink-400);font-style:italic;">Unassigned</span>
-                                @endif
+                                            {{-- Un-assign this reviewer straight from his name --}}
+                                            <a href="#"
+                                               onclick="event.preventDefault(); event.stopPropagation(); confirmUnassignReviewer({{ $cp->id }}, {{ $reviewer->id }});"
+                                               title="Un-assign {{ $reviewer->name }}"
+                                               style="font-size:10px;font-weight:600;color:#a93434;text-decoration:underline;white-space:nowrap;">
+                                                Un-assign
+                                            </a>
+                                        </span>
+                                    @endforeach
+                                    @unless($hasReviewer)
+                                        <span class="assigned-empty" style="font-size:12px;color:var(--ink-400);font-style:italic;">Unassigned</span>
+                                    @endunless
+                                </div>
                             </td>
                             <td>
                                 <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;">
@@ -241,6 +262,9 @@
        wide LPI / action cells). */
     #projectsTable {
         table-layout: fixed;
+        /* Keep the columns at their declared widths on smaller screens and let
+           the panel scroll instead of squeezing the title column. */
+        min-width: 1180px;
     }
     #projectsTable th,
     #projectsTable td {
@@ -249,10 +273,10 @@
 
     /* Rows of a research call that still need reviewer attention (the page
        lists the whole call when a research call is selected). */
-    #projectsTable tbody tr.needs-action > td:first-child {
+    #projectsTable tbody tr.needs-reviewer > td:first-child {
         box-shadow: inset 3px 0 0 var(--brand-500, #8d1b3d);
     }
-    #projectsTable tbody tr.needs-action {
+    #projectsTable tbody tr.needs-reviewer {
         background: rgba(141, 27, 61, .03);
     }
 
@@ -298,6 +322,22 @@
 @endpush
 
 @push('scripts')
+@if(session('success'))
+<script>
+    // Flash message as a bottom-right toast (same as the rest of the app),
+    // instead of an inline alert in the page.
+    $(document).ready(function () {
+        showToast('success', @json(session('success')));
+    });
+</script>
+@endif
+@if(session('error'))
+<script>
+    $(document).ready(function () {
+        showToast('error', @json(session('error')));
+    });
+</script>
+@endif
 @if($confProjects->count() > 0)
 <script>
     $(document).ready(function() {
@@ -307,14 +347,14 @@
             autoWidth: false,
             pageLength: 25,
             columns: [
-                { width: '150px' }, // Project ID
-                { width: '140px' }, // LPI
+                { width: '175px' }, // Project ID
+                { width: '170px' }, // LPI
                 { width: 'auto' },  // Project title — takes the remaining space
-                { width: '75px' },  // Grant
-                { width: '85px' },  // Category
-                { width: '105px' }, // Status
-                { width: '230px' }, // Assigned reviewer (+ un-assign link)
-                { width: '190px' }  // Action (reviewer dropdown)
+                { width: '80px' },  // Grant
+                { width: '110px' }, // Category
+                { width: '150px' }, // Status
+                { width: '175px' }, // Assigned reviewer (+ un-assign link)
+                { width: '180px' }  // Action (reviewer dropdown)
             ],
             columnDefs: [
                 { orderable: false, searchable: false, targets: [6, 7] }
@@ -323,6 +363,159 @@
 
         $('#tableSearch').on('keyup', function() {
             table.search(this.value).draw();
+        });
+
+        /* ── Bulk assignment inside a progress modal ──────────────────────────
+           One request per project keeps the bar and the log moving; the modal
+           has a static backdrop (a stray click cannot dismiss it) and offers a
+           Cancel button. When the run finishes (or is cancelled) the page is
+           reloaded so the table shows the new assignments. */
+        var $form    = $('#bulkAssignForm');
+        var $btn     = $('#bulkAssignBtn');
+        var $modal   = $('#bulkProgressModal');
+        var $bar     = $('#bulkProgressBar');
+        var $count   = $('#bulkProgressCount');
+        var $title   = $('#bulkProgressTitle');
+        var $status  = $('#bulkProgressStatus');
+        var $log     = $('#bulkProgressLog');
+        var csrf     = $form.find('input[name="_token"]').val();
+        var endpoint = $form.attr('action');
+        var cancelled = false;
+        var running = false;
+
+        function logLine(text, colour) {
+            $log.append($('<li></li>').css('color', colour || '').text(text));
+            $log.scrollTop($log[0].scrollHeight);
+        }
+
+        // Toast after the reload (the summary is passed through sessionStorage).
+        try {
+            var pending = window.sessionStorage.getItem('bulkAssignSummary');
+            if (pending) {
+                window.sessionStorage.removeItem('bulkAssignSummary');
+                var parsed = JSON.parse(pending);
+                showToast(parsed.type || 'success', parsed.message);
+            }
+        } catch (err) { /* sessionStorage unavailable – ignore */ }
+
+        $('#bulkCancelBtn').on('click', function () {
+            cancelled = true;
+            $(this).prop('disabled', true);
+            $title.text('Cancelling…');
+            $status.text('Finishing the current project…');
+        });
+
+        $form.on('submit', function (e) {
+            var rows = [];
+
+            $form.find('.reviewer-select').each(function () {
+                var reviewerId = $(this).val();
+                if (!reviewerId) { return; }
+
+                var $row = $(this).closest('tr');
+                rows.push({
+                    projectId: $row.data('project-id'),
+                    code: $.trim($row.find('td:first code').text()),
+                    reviewerId: reviewerId
+                });
+            });
+
+            if (rows.length === 0) {
+                e.preventDefault();
+                showToast('warning', 'Select at least one reviewer first.');
+                return;
+            }
+
+            if (running) { e.preventDefault(); return; }
+
+            e.preventDefault();
+            running = true;
+            cancelled = false;
+
+            var total = rows.length, done = 0, assigned = 0, skipped = 0, failed = 0;
+
+            $bar.css('width', '0%');
+            $count.text('0 / ' + total);
+            $title.text('Assigning reviewers…');
+            $status.text('Starting…');
+            $log.empty();
+            $btn.prop('disabled', true);
+            $('#bulkCancelBtn').prop('disabled', false).show();
+
+            $modal.modal({ backdrop: 'static', keyboard: false }).modal('show');
+
+            function finish() {
+                var wasCancelled = cancelled;
+                var summary = assigned + ' reviewer' + (assigned === 1 ? '' : 's') + ' assigned';
+                if (skipped > 0) { summary += ', ' + skipped + ' skipped'; }
+                if (failed > 0) { summary += ', ' + failed + ' failed'; }
+                if (wasCancelled) { summary += ' (cancelled after ' + done + ' of ' + total + ')'; }
+
+                $title.text(wasCancelled ? 'Bulk assignment cancelled' : 'Bulk assignment finished');
+                $status.text(summary);
+                $bar.css('width', '100%');
+
+                try {
+                    window.sessionStorage.setItem('bulkAssignSummary', JSON.stringify({
+                        type: failed > 0 ? 'warning' : (assigned > 0 ? 'success' : 'warning'),
+                        message: summary + '.'
+                    }));
+                } catch (err) { /* ignore */ }
+
+                // Give the user a moment to read the final state, then reload so
+                // the table reflects what was written.
+                setTimeout(function () { window.location.reload(); }, wasCancelled ? 700 : 1000);
+            }
+
+            function step(index) {
+                if (cancelled || index >= total) { finish(); return; }
+
+                var row = rows[index];
+                $status.text('Assigning ' + row.code + '…');
+
+                fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrf
+                    },
+                    body: JSON.stringify({
+                        assignments: [{ project_id: row.projectId, reviewers: [row.reviewerId] }]
+                    })
+                })
+                .then(function (response) {
+                    return response.json().then(function (body) { return { ok: response.ok, body: body }; });
+                })
+                .then(function (result) {
+                    if (!result.ok || !result.body.success) {
+                        throw new Error((result.body && (result.body.message || result.body.error)) || 'Request failed');
+                    }
+
+                    var list = (result.body.assigned || {})[row.projectId] || [];
+                    if (list.length === 0) {
+                        skipped++;
+                        logLine('⚠ ' + row.code + ' — no reviewer added (already assigned or previously rejected)', '#8a6d1f');
+                    } else {
+                        list.forEach(function (reviewer) {
+                            logLine('✓ ' + row.code + ' — ' + (reviewer.name || 'reviewer assigned'), '#1f8a5f');
+                        });
+                        assigned += list.length;
+                    }
+                })
+                .catch(function (error) {
+                    failed++;
+                    logLine('✗ ' + row.code + ' — ' + error.message, '#b3261e');
+                })
+                .then(function () {
+                    done++;
+                    $bar.css('width', Math.round((done / total) * 100) + '%');
+                    $count.text(done + ' / ' + total);
+                    step(index + 1);
+                });
+            }
+
+            step(0);
         });
     });
 </script>

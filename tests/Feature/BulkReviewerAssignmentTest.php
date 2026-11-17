@@ -168,22 +168,16 @@ class BulkReviewerAssignmentTest extends TestCase
             $this->markTestSkipped('Needs an admin.');
         }
 
-        // The unfiltered page is an action queue, so pick a project that the
-        // page actually lists (assigned + a status that needs attention).
-        $project = Project::has('reviewers')
-            ->orderBy('id')
-            ->get()
-            ->first(function (Project $p) {
-                return in_array(
-                    $p->currentWorkflowStatus(),
-                    ['Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected'],
-                    true
-                );
-            });
-
+        // The unfiltered page is an assignment queue: put one of the assigned
+        // projects into the "proposal rejected" state so a replacement reviewer
+        // is needed (the transaction rolls this back).
+        $project = Project::has('reviewers')->orderBy('id')->first();
         if (!$project) {
-            $this->markTestSkipped('No assigned project that needs reviewer attention.');
+            $this->markTestSkipped('No project with an assigned reviewer.');
         }
+
+        $project->recordStatus(\App\Models\Project::STATUS_PROPOSAL_REJECTED, ['triggered_by' => 'test'], $admin->id);
+        $project->refresh()->load('reviewers');
 
         $reviewer = $project->reviewers->first();
 
@@ -212,6 +206,102 @@ class BulkReviewerAssignmentTest extends TestCase
             $selects,
             'Every row should still have its reviewer dropdown.'
         );
+    }
+
+    public function test_the_bulk_assign_confirmation_is_shown_as_a_toast()
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $reviewer = $this->reviewer();
+
+        if (!$admin || !$project || !$reviewer) {
+            $this->markTestSkipped('Needs an admin, a project and a reviewer in the test database.');
+        }
+
+        DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->delete();
+
+        $this->seedAssignmentTemplate();
+        config(['mail.enabled' => true]);
+        Mail::fake();
+
+        $this->actingAs($admin)->post(route('projects.bulk-assign'), [
+            'assignments' => [
+                ['project_id' => $project->id, 'reviewers' => [$reviewer->id]],
+            ],
+        ])->assertRedirect();
+
+        // The follow-up page renders the flash as a bottom-right toast…
+        $page = $this->actingAs($admin)->get(route('projects.reviewer-assignment'));
+        $page->assertOk();
+
+        $html = $page->getContent();
+        $this->assertStringContainsString("showToast('success'", $html);
+        $this->assertStringNotContainsString('alert alert-success', $html, 'The confirmation should not be an inline alert.');
+    }
+
+    public function test_bulk_assign_returns_json_for_the_progress_bar()
+    {
+        $admin = $this->admin();
+        $project = $this->project();
+        $reviewer = $this->reviewer();
+
+        if (!$admin || !$project || !$reviewer) {
+            $this->markTestSkipped('Needs an admin, a project and a reviewer in the test database.');
+        }
+
+        DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->delete();
+
+        $this->seedAssignmentTemplate();
+        config(['mail.enabled' => true]);
+        Mail::fake();
+
+        // The page posts one project at a time and expects the assigned names
+        // back so it can update the row without reloading.
+        $response = $this->actingAs($admin)->postJson(route('projects.bulk-assign'), [
+            'assignments' => [
+                ['project_id' => $project->id, 'reviewers' => [$reviewer->id]],
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJson(['success' => true])
+            ->assertJsonPath('assigned.' . $project->id . '.0.id', $reviewer->id)
+            ->assertJsonPath('assigned.' . $project->id . '.0.name', $reviewer->name);
+
+        $this->assertDatabaseHas('projects_reviewers', [
+            'project_id' => $project->id,
+            'user_id'    => $reviewer->id,
+        ]);
+    }
+
+    public function test_the_bulk_progress_is_shown_in_a_cancelable_modal()
+    {
+        $admin = $this->admin();
+        if (!$admin) {
+            $this->markTestSkipped('Needs an admin.');
+        }
+
+        $response = $this->actingAs($admin)->get(route('projects.reviewer-assignment'));
+        $response->assertOk();
+
+        $html = $response->getContent();
+
+        // The progress lives in a modal that cannot be dismissed by clicking away…
+        $this->assertStringContainsString('id="bulkProgressModal"', $html);
+        $this->assertStringContainsString('data-backdrop="static"', $html);
+        $this->assertStringContainsString('data-keyboard="false"', $html);
+
+        // …offers a Cancel button…
+        $this->assertStringContainsString('id="bulkCancelBtn"', $html);
+
+        // …and the old inline progress box is gone.
+        $this->assertStringNotContainsString('id="bulkProgress" style', $html);
     }
 
     public function test_reviewer_assignment_page_renders_a_well_formed_table()

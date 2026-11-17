@@ -269,16 +269,29 @@ class ResearchCallPickerTest extends TestCase
         sort($sorted, SORT_FLAG_CASE | SORT_STRING);
         $this->assertSame($sorted, $names, 'Sorting by research call title should be alphabetical.');
 
-        // Project count, most first
+        // Deadline column, earliest first: the rows must come back in that order.
         $response = $this->actingAs($admin)->get(
-            route('projects.research-calls', ['context' => 'reviewer-assignment', 'sort' => 'projects', 'dir' => 'desc'])
+            route('projects.research-calls', ['context' => 'reviewer-assignment', 'sort' => 'pr1', 'dir' => 'asc'])
         );
         $response->assertOk();
 
-        $first = trim(preg_match('/<tr class="research-call-row".*?<\/tr>/s', $response->getContent(), $m)
-            ? preg_replace('/\s+/', ' ', strip_tags($m[0]))
-            : '');
-        $this->assertMatchesRegularExpression('/\d+ projects/', $first);
+        $dates = [];
+        preg_match_all('/<tr class="research-call-row".*?<\/tr>/s', $response->getContent(), $rows);
+        foreach ($rows[0] as $row) {
+            // Columns: research call, grant, cycle, projects, then Progress 1.
+            $cells = preg_split('/<\/td>/', $row);
+            if (isset($cells[4]) && preg_match('/(\d{2} [A-Z][a-z]{2} \d{4})/', strip_tags($cells[4]), $m)) {
+                $dates[] = \Illuminate\Support\Carbon::createFromFormat('d M Y', $m[1])->timestamp;
+            }
+        }
+
+        if (count($dates) < 2) {
+            $this->markTestSkipped('Not enough research calls with a Progress 1 deadline.');
+        }
+
+        $sorted = $dates;
+        sort($sorted);
+        $this->assertSame($sorted, $dates, 'Sorting by the Progress 1 deadline should be chronological.');
     }
 
     public function test_the_projects_page_is_ordered_by_cycle_year_then_research_call()
@@ -363,8 +376,7 @@ class ResearchCallPickerTest extends TestCase
         $total = $projects->count();
 
         $needsAction = $projects->filter(function (Project $p) {
-            return $p->reviewers->isEmpty()
-                || in_array($p->currentWorkflowStatus(), ['Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected'], true);
+            return $p->reviewers->isEmpty() || $p->currentWorkflowStatus() === 'proposal_rejected';
         })->count();
 
         $response = $this->actingAs($admin)->get(
@@ -387,12 +399,55 @@ class ResearchCallPickerTest extends TestCase
 
         // …and the ones that still need a reviewer carry the badge.
         // (Counted by the badge's title attribute: the version-history modal in
-        // the layout also contains the words "Needs action".)
+        // the layout also contains the words "Needs reviewer".)
         $this->assertSame(
             $needsAction,
-            substr_count($html, 'title="This project still needs reviewer attention"'),
-            'The "Needs action" badge should mark exactly the projects that need reviewer attention.'
+            substr_count($html, 'title="This project still needs a reviewer assigned"'),
+            'The "Needs reviewer" badge should mark exactly the projects that need a reviewer.'
         );
+    }
+
+    public function test_the_chooser_shows_the_report_deadlines_instead_of_badges()
+    {
+        $admin = $this->admin();
+        if (!$admin) {
+            $this->markTestSkipped('Needs an admin.');
+        }
+
+        $response = $this->actingAs($admin)->get(route('projects.research-calls', 'reviewer-assignment'));
+        $response->assertOk();
+
+        $html = $response->getContent();
+
+        // The three deadline columns replaced the grant/cycle/count badges.
+        $this->assertStringContainsString('Progress 1 deadline', $html);
+        $this->assertStringContainsString('Progress 2 deadline', $html);
+        $this->assertStringContainsString('Final report deadline', $html);
+
+        // Table body carries no pills any more.
+        if (preg_match('/<tbody>(.*?)<\/tbody>/s', $html, $m)) {
+            $this->assertStringNotContainsString('class="pill', $m[1], 'The chooser rows should not render badges.');
+        }
+
+        // The project-count column is still there, as plain text.
+        $this->assertStringContainsString('Projects', $html);
+        $withProjects = Program::has('projects')->orderBy('id')->first();
+        if ($withProjects) {
+            $this->assertStringContainsString(
+                '>' . $withProjects->projects()->count() . '</td>',
+                $html,
+                'The project count should be rendered as a plain number.'
+            );
+        }
+
+        // A real deadline date is shown for a research call that has one.
+        $program = Program::whereNotNull('final_rpt_deadline')->orderBy('id')->first();
+        if ($program) {
+            $this->assertStringContainsString(
+                \Illuminate\Support\Carbon::parse($program->final_rpt_deadline)->format('d M Y'),
+                $html
+            );
+        }
     }
 
     public function test_the_chooser_links_to_the_target_page_with_the_research_call_id()

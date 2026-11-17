@@ -105,10 +105,15 @@ class ProjectController extends Controller
             ->whereColumn('grants.id', 'programs.grant_id')
             ->limit(1);
 
+        // Deadline columns that can be sorted on (programs.*).
+        $deadlines = [
+            'pr1'   => 'prog_rpt_deadline',
+            'pr2'   => 'prog_rpt2_deadline',
+            'final' => 'final_rpt_deadline',
+        ];
+
         $researchCalls = Program::with(['grant', 'cycle'])
-            ->withCount(['projects', 'projects as assigned_projects_count' => function ($q) {
-                $q->whereHas('reviewers');
-            }])
+            ->withCount('projects')
             ->when($cycleId, function ($q) use ($cycleId) {
                 $q->where('cycle_id', $cycleId);
             })
@@ -116,7 +121,7 @@ class ProjectController extends Controller
             ->when($sort === 'grant', fn ($q) => $q->orderBy($grantCode, $direction)->orderBy('program_title'))
             ->when($sort === 'cycle', fn ($q) => $q->orderByRaw("{$cycleYear} {$direction}")->orderBy('program_title'))
             ->when($sort === 'projects', fn ($q) => $q->orderBy('projects_count', $direction)->orderBy('program_title'))
-            ->when($sort === 'assigned', fn ($q) => $q->orderBy('assigned_projects_count', $direction)->orderBy('program_title'))
+            ->when(isset($deadlines[$sort]), fn ($q) => $q->orderBy($deadlines[$sort], $direction)->orderBy('program_title'))
             ->unless($sort, fn ($q) => $q->orderByRaw("{$cycleYear} DESC")->orderBy('program_title'))
             ->get();
 
@@ -621,6 +626,34 @@ class ProjectController extends Controller
                 . ' skipped because the reviewer previously rejected that project.';
         }
 
+        // Progress-driven bulk assignment: the page posts one project at a time
+        // (to move its progress bar) and expects the names back so the row can be
+        // updated in place without a page reload.
+        if ($request->expectsJson()) {
+            $assigned = [];
+            foreach ($newlyAssigned as $projectId => $reviewerIds) {
+                $assigned[$projectId] = collect($reviewerIds)
+                    ->map(function ($reviewerId) {
+                        $reviewer = User::find($reviewerId);
+
+                        return [
+                            'id'   => $reviewerId,
+                            'name' => $reviewer ? $reviewer->name : null,
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            }
+
+            return response()->json([
+                'success'          => true,
+                'assigned'         => $assigned,
+                'notified'         => $notified,
+                'skipped_rejected' => $skippedRejected,
+                'message'          => $message,
+            ]);
+        }
+
         return redirect()->back()->with('success', $message);
     }
 
@@ -632,25 +665,25 @@ class ProjectController extends Controller
         $programId = $request->input('program_id');
         $assignment = $request->input('assignment');
 
-        // Without a research-call filter this page is an action queue: only the
-        // projects that need reviewer attention (no reviewer, awaiting claim,
-        // proposal rejected, progress rejected). With a research-call filter it
-        // lists every project of that call and flags the ones that need action,
-        // so the page matches the count shown on the chooser.
+        // A project needs a reviewer when nobody is assigned yet, or when the
+        // assigned reviewer rejected the proposal and a replacement is needed.
+        // Report rejections are handled on the All Projects page by the LPI, so
+        // they are not flagged here.
+        $needsReviewer = function ($q) {
+            $q->whereDoesntHave('reviewers')
+              ->orWhere(function ($q2) {
+                  $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status = 'proposal_rejected' AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
+              });
+        };
+
+        // Without a research-call filter this page is an action queue holding
+        // only those projects; with a research-call filter it lists every
+        // project of that call and flags the ones that need an assignment, so
+        // the page matches the count shown on the chooser.
         $query = Project::with('program.grant', 'lpi', 'reviewers', 'latestStatus');
 
         if (!$programId) {
-            $query->where(function ($q) {
-                // Not assigned yet
-                $q->whereDoesntHave('reviewers')
-                  // Latest status is one of the states that need reviewer
-                  // attention (awaiting claim, claimed — another reviewer may
-                  // be added alongside —, proposal rejected, or a rejected
-                  // progress report).
-                  ->orWhere(function ($q2) {
-                      $q2->whereRaw("EXISTS (SELECT 1 FROM status_histories sh WHERE sh.project_id = projects.id AND sh.status IN ('Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected') AND sh.id = (SELECT MAX(sh2.id) FROM status_histories sh2 WHERE sh2.project_id = projects.id))");
-                  });
-            });
+            $query->where($needsReviewer);
         }
 
         if ($cycleId) {
@@ -689,12 +722,11 @@ class ProjectController extends Controller
             ->orderBy('projects.id')
             ->get();
 
-        // Which of the listed projects still need reviewer attention? Used to
+        // Which of the listed projects still need a reviewer assigned? Used to
         // flag rows when the whole research call is listed.
         $needsReviewerAction = $confProjects->mapWithKeys(function (Project $project) {
-            $latest = $project->currentWorkflowStatus();
             $needs = $project->reviewers->isEmpty()
-                || in_array($latest, ['Assigned', 'Claimed', 'proposal_rejected', 'progress_rejected'], true);
+                || $project->currentWorkflowStatus() === 'proposal_rejected';
 
             return [$project->id => $needs];
         });
