@@ -238,16 +238,19 @@ class ProgramController extends Controller
                             }
                         }
 
-                        // Notify the LPI about the newly imported project (automatic,
-                        // only on first creation so re-imports don't spam).
-                        if ($project->wasRecentlyCreated && $matchedUser) {
-                            app(\App\Services\EventMailService::class)->send(
-                                'project_imported',
-                                $matchedUser,
-                                $project->fresh(),
-                                auth()->user()
-                            );
-                        }
+                        // ─────────────────────────────────────────────────
+                        // DISABLED: no "Project Added to Research Call" email is
+                        // sent to the LPI on import. Re-enable by uncommenting.
+                        //
+                        // if ($project->wasRecentlyCreated && $matchedUser) {
+                        //     app(\App\Services\EventMailService::class)->send(
+                        //         'project_imported',
+                        //         $matchedUser,
+                        //         $project->fresh(),
+                        //         auth()->user()
+                        //     );
+                        // }
+                        // ─────────────────────────────────────────────────
 
                         // Process pillars
                         if (!empty($pillarsRaw)) {

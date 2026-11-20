@@ -23,9 +23,10 @@
             $isProgress2Step = $progress2Submitted && (!$progress2Grading || $progress2Grading->publish === 'pending');
             $isFinalStep     = $finalSubmitted     && (!$finalGrading     || $finalGrading->publish     === 'pending');
 
-    // Deadline-gated: only show progress/final tabs when deadlines have passed
-    $showProgressTab = $progressDeadlinePassed;
-    $showFinalTab = $finalDeadlinePassed;
+    // Deadline-gated tabs: a stage opens once its deadline has passed OR the
+    // LPI has already uploaded that report (early grading is allowed then).
+    $showProgressTab = $progressGradingOpen;
+    $showFinalTab = $finalGradingOpen;
 
     $progressVersions = $submissions->where('type', 'progress')->sortByDesc('version');
     $finalVersions = $submissions->where('type', 'final')->sortByDesc('version');
@@ -33,7 +34,7 @@
 
     // Progress Report 2 (extended progress) state — mirrors progress report 1
     $progress2Versions = ($progress2Versions ?? $submissions->where('type', 'progress2'))->sortByDesc('version');
-    $showProgress2Tab = ($project->extended_progress ?? false) && ($progress2DeadlinePassed ?? false);
+    $showProgress2Tab = ($project->extended_progress ?? false) && ($progress2GradingOpen ?? false);
 
     // Determine default left tab based on project state
     $defaultLeftTab = 'ltab-proposal';
@@ -342,7 +343,7 @@
                 <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
                     The LPI has not officially submitted the progress report for this project.
                     Grading will be unlocked once the report is submitted.
-                    Also, the deadline of the research call has not yet passed — review is possible only after the submission deadline has passed.
+                    Grading opens automatically as soon as that report is uploaded.
                 </p>
             </div>
             @else
@@ -384,7 +385,7 @@
                 <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
                     The LPI has not officially submitted the Progress Report 2 for this project.
                     Grading will be unlocked once the report is submitted.
-                    Also, the deadline of the research call has not yet passed — review is possible only after the submission deadline has passed.
+                    Grading opens automatically as soon as that report is uploaded.
                 </p>
             </div>
             @else
@@ -426,7 +427,7 @@
                 <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
                     The LPI has not officially submitted the final report for this project.
                     Grading will be unlocked once the report is submitted.
-                    Also, the deadline of the research call has not yet passed — review is possible only after the submission deadline has passed.
+                    Grading opens automatically as soon as that report is uploaded.
                 </p>
             </div>
             @else
@@ -468,7 +469,7 @@
                 <p style="font-size:13px;color:var(--ink-500);margin:0;line-height:1.55;">
                     The LPI has not officially submitted the readiness report for this project.
                     Grading will be unlocked once the report is submitted.
-                    Also, the deadline of the research call has not yet passed — review is possible only after the submission deadline has passed.
+                    Grading opens automatically as soon as that report is uploaded.
                 </p>
             </div>
             @else
@@ -1008,9 +1009,12 @@
             $gradedProgress2 = $progress2Grading && $progress2Grading->publish !== 'pending';
             $gradedFinal     = $finalGrading && $finalGrading->publish !== 'pending';
 
-            $hasActiveProgress  = $isProgressStep && $progressDeadlinePassed;
-            $hasActiveProgress2 = $isProgress2Step && $progress2DeadlinePassed;
-            $hasActiveFinal     = $isFinalStep && $finalDeadlinePassed;
+            // A stage's grading form opens when the reviewer is on that step and
+            // the stage is open (deadline passed, or the LPI already uploaded
+            // that report — see GradingController).
+            $hasActiveProgress  = $isProgressStep && $progressGradingOpen;
+            $hasActiveProgress2 = $isProgress2Step && $progress2GradingOpen;
+            $hasActiveFinal     = $isFinalStep && $finalGradingOpen;
 
             // Edit-in-place: ?edit_grading=1&report=X forces the rejected X grading
             // panel into form mode when the rejection type allows editing without

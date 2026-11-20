@@ -479,11 +479,15 @@ class ProjectController extends Controller
             ]);
         });
 
-        // Notify the LPI that their registration is confirmed (automatic).
-        $lpi = $project->fresh()->lpi;
-        if ($lpi) {
-            app(\App\Services\EventMailService::class)->send('project_registered', $lpi, $project, $user);
-        }
+        // ─────────────────────────────────────────────────────────────────────
+        // DISABLED: no "Registration Confirmed" email is sent to the LPI.
+        // Re-enable by uncommenting this block.
+        //
+        // $lpi = $project->fresh()->lpi;
+        // if ($lpi) {
+        //     app(\App\Services\EventMailService::class)->send('project_registered', $lpi, $project, $user);
+        // }
+        // ─────────────────────────────────────────────────────────────────────
 
         return redirect()->route('projects.available')
             ->with('success', 'Project registered successfully.');

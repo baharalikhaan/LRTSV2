@@ -330,11 +330,15 @@ class RegisterWizardController extends Controller
             $project->recordStatus(Project::STATUS_REGISTERED, null, $user->id);
         });
 
-        // Notify the LPI that their registration is confirmed (automatic).
-        $lpi = $project->fresh()->lpi;
-        if ($lpi) {
-            app(\App\Services\EventMailService::class)->send('project_registered', $lpi, $project, $user);
-        }
+        // ─────────────────────────────────────────────────────────────────────
+        // DISABLED: no "Registration Confirmed" email is sent to the LPI.
+        // Re-enable by uncommenting this block.
+        //
+        // $lpi = $project->fresh()->lpi;
+        // if ($lpi) {
+        //     app(\App\Services\EventMailService::class)->send('project_registered', $lpi, $project, $user);
+        // }
+        // ─────────────────────────────────────────────────────────────────────
 
         return response()->json([
             'success' => true,

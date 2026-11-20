@@ -387,10 +387,16 @@ class WorkflowController extends Controller
                     'triggered_by'  => 'claim',
                 ], $user->id);
 
-                $lpi = $project->lpi;
-                if ($lpi) {
-                    app(EventMailService::class)->send('proposal_accepted', $lpi, $project, $user);
-                }
+                // ─────────────────────────────────────────────────────────
+                // DISABLED: no "Proposal Accepted" email is sent to the LPI.
+                // Re-enable by uncommenting this block (the template, the
+                // send log and the mail switch are all still in place).
+                //
+                // $lpi = $project->lpi;
+                // if ($lpi) {
+                //     app(EventMailService::class)->send('proposal_accepted', $lpi, $project, $user);
+                // }
+                // ─────────────────────────────────────────────────────────
             }
 
             return response()->json(['success' => true, 'message' => 'Proposal accepted successfully.']);
@@ -434,17 +440,20 @@ class WorkflowController extends Controller
                 $recorded = true;
             }
 
-            // Notify the LPI once per rejection round — in lock-step with the
-            // status guard above, so a second rejecting reviewer does not mail
-            // the same "proposal rejected" event again.
-            if ($recorded) {
-                $lpi = $project->fresh()->lpi;
-                if ($lpi) {
-                    app(EventMailService::class)->send('proposal_rejected', $lpi, $project, $user, [
-                        '*reason*' => $validated['reject_reason'] ?? '',
-                    ]);
-                }
-            }
+            // ─────────────────────────────────────────────────────────────
+            // DISABLED: no "Proposal Decision" (rejected) email is sent to the
+            // LPI. Re-enable by uncommenting this block — it fires once per
+            // rejection round, in lock-step with the status guard above.
+            //
+            // if ($recorded) {
+            //     $lpi = $project->fresh()->lpi;
+            //     if ($lpi) {
+            //         app(EventMailService::class)->send('proposal_rejected', $lpi, $project, $user, [
+            //             '*reason*' => $validated['reject_reason'] ?? '',
+            //         ]);
+            //     }
+            // }
+            // ─────────────────────────────────────────────────────────────
         });
 
         return response()->json([

@@ -1766,11 +1766,15 @@ class ProgressController extends Controller
     }
 
     /**
-     * Send the "progress updated" confirmation to the project's LPI
-     * (automatic; gated by MAIL_ENABLED inside EventMailService).
+     * Send the "progress updated" confirmation to the project's LPI.
+     *
+     * DISABLED: the "Progress Report Received" emails (progress 1 and 2) are
+     * switched off. Re-enable by restoring the send inside this method.
      */
     private function notifyLpiProgressUpdated(Project $project, $actor): void
     {
+        return; // ← disabled (remove this line to send the LPI the receipt)
+
         $lpi = $project->lpi;
         if (!$lpi) {
             return;

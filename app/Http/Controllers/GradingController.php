@@ -247,6 +247,13 @@ class GradingController extends Controller
         $progress2DeadlinePassed = $project->extended_progress ? ($progress2Deadline ? $now->greaterThan($progress2Deadline) : true) : false;
         $finalDeadlinePassed = $finalDeadline ? $now->greaterThan($finalDeadline) : true;
 
+        // A stage becomes gradable as soon as the LPI has uploaded that report,
+        // even while the nominal deadline is still in the future — otherwise a
+        // report that is already in could never be reviewed early.
+        $progressGradingOpen  = $progressDeadlinePassed || $progressSubmitted;
+        $progress2GradingOpen = $progress2DeadlinePassed || $progress2Submitted;
+        $finalGradingOpen     = $finalDeadlinePassed || $finalSubmitted;
+
         return view('grading.grading-page', compact(
             'project',
             'finalGrading',
@@ -280,6 +287,9 @@ class GradingController extends Controller
             'progressDeadlinePassed',
             'progress2DeadlinePassed',
             'finalDeadlinePassed',
+            'progressGradingOpen',
+            'progress2GradingOpen',
+            'finalGradingOpen',
             'autoGradeVisibility',
             'isAdmin',
         ));
@@ -898,11 +908,15 @@ class GradingController extends Controller
     }
 
     /**
-     * Send the report-graded notification to the project's LPI
-     * (automatic; gated by MAIL_ENABLED inside EventMailService).
+     * Send the report-graded notification to the project's LPI.
+     *
+     * DISABLED: the "Progress/Final Report Evaluated" emails are switched off.
+     * Re-enable by restoring the send inside this method.
      */
     private function notifyLpiReportGraded(Project $project, $actor, string $eventKey): void
     {
+        return; // ← disabled (remove this line to send the LPI the graded notice)
+
         $lpi = $project->lpi;
         if (!$lpi) {
             return;

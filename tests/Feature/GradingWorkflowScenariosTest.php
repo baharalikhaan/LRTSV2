@@ -430,6 +430,10 @@ class GradingWorkflowScenariosTest extends TestCase
     /** D-05 The LPI "graded" e-mail fires exactly once — at completion only. */
     public function test_d05_lpi_email_sent_once_at_completion()
     {
+        // NOTE: the "report graded" LPI email is currently DISABLED
+        // (GradingController::notifyLpiReportGraded returns early), so this
+        // scenario asserts that no mail is written at completion. When the
+        // email is re-enabled, restore the "base + 1" expectation below.
         $admin = $this->activeUser('Admin');
         [$reviewerA, $reviewerB] = $this->twoReviewers();
         if (!$admin || !$reviewerA || !$reviewerB) {
@@ -477,14 +481,17 @@ class GradingWorkflowScenariosTest extends TestCase
             'No graded mail before the consensus completes.'
         );
 
-        // Completion → exactly one mail.
+        // Completion → no mail while the notification is disabled.
         $this->actingAs($reviewerB)
             ->post("/grading/{$project->id}/save-progress-grade", $this->progressPayload('accepted'));
         $this->assertSame(
-            $base + 1,
+            $base,
             EmailSendLog::where('recipient_email', $to)->count(),
-            'Exactly one graded mail at completion (never one per reviewer).'
+            'The graded mail is disabled: no LPI mail should be written at completion.'
         );
+
+        // When re-enabled, assert instead:
+        //   $this->assertSame($base + 1, EmailSendLog::where('recipient_email', $to)->count());
     }
 
     // ─── Group E: the admin's personal queue ─────────────────────────────────
