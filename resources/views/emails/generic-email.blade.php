@@ -143,8 +143,7 @@
                 @endif
             </div>
             <div class="footer">
-                &copy; {{ date('Y') }} Qatar University &mdash; Research Tracking System<br>
-                Sent by {{ $senderName }} via RTS
+                &copy; {{ date('Y') }} Qatar University &mdash; Research Tracking System
             </div>
         </div>
     </div>

@@ -610,7 +610,13 @@ class WorkflowController extends Controller
             ];
         }
 
-        $this->sendNotificationToLpi($project, $user, $subject, $body, $guidance);
+        // The LPI already owns the project, so the mail only needs what is being
+        // asked of them: grant and year rows are dropped, and the VPN
+        // disclaimer closes the message like the other LPI notifications.
+        $this->sendNotificationToLpi($project, $user, $subject, $body, $guidance, [
+            'project_except' => ['grant_name', 'cycle_year'],
+            'disclaimer'     => GenericEmailMail::DISCLAIMER,
+        ]);
 
         return response()->json(['success' => true, 'message' => $message]);
     }
@@ -783,11 +789,11 @@ class WorkflowController extends Controller
     /**
      * Send notification email to the project's LPI.
      */
-    private function sendNotificationToLpi(Project $project, User $sender, string $subject, string $body, array $guidance = []): void
+    private function sendNotificationToLpi(Project $project, User $sender, string $subject, string $body, array $guidance = [], array $options = []): void
     {
         $lpi = $project->lpi;
         if ($lpi) {
-            $this->queueNotification($project, $sender, $lpi, $subject, $body, $guidance);
+            $this->queueNotification($project, $sender, $lpi, $subject, $body, $guidance, $options);
         }
     }
 
