@@ -415,7 +415,7 @@
                     </label>
                     <label style="flex:1;min-width:180px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;border:2px solid var(--ink-200);border-radius:8px;transition:all .15s;background:#fff;"
                            onmouseover="this.style.borderColor='var(--danger)'" onmouseout="this.style.borderColor=this.querySelector('input').checked?'var(--danger)':'var(--ink-200)'">
-                        <input type="radio" name="publish" value="rejected" {{ old('publish', $d->publish ?? '') == 'rejected' ? 'checked' : '' }} style="accent-color:var(--danger);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
+                        <input type="radio" name="publish" value="rejected" {{ (old('publish', $d->publish ?? '') == 'rejected' || (old('publish', $d->publish ?? '') == 'pending' && !empty($d->rejection_type))) ? 'checked' : '' }} style="accent-color:var(--danger);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
                         <div>
                             <div style="font-weight:600;color:var(--ink-800);font-size:13px;">Reject</div>
                             <div style="font-size:12px;color:var(--ink-500);margin-top:2px;">The progress report does not meet expectations for continuation of the project at this stage.</div>
@@ -427,8 +427,12 @@
             {{-- Rejection Type + Reason (required when rejecting) --}}
             <div id="progressRejectionReason" style="margin-bottom:20px;display:none;">
                 @php
-                    $oldRejectionType = old('rejection_type', $editingRejected ? $rejectionType : 'report');
-                    $oldRejectionReason = old('rejection_reason', $editingRejected ? ($latestRejection->metadata['comment'] ?? '') : '');
+                    $oldRejectionType = old('rejection_type', $editingRejected
+                        ? $rejectionType
+                        : (($d && $d->publish === 'pending' && $d->rejection_type) ? $d->rejection_type : 'report'));
+                    $oldRejectionReason = old('rejection_reason', $editingRejected
+                        ? ($latestRejection->metadata['comment'] ?? '')
+                        : (($d && $d->publish === 'pending' && $d->rejection_reason) ? $d->rejection_reason : ''));
                 @endphp
                 <label style="font-size:13px;font-weight:600;color:var(--ink-800);display:block;margin-bottom:6px;">
                     Rejection Type <span style="color:var(--danger);">*</span>
@@ -446,7 +450,7 @@
             </div>
 
             <div class="ws-form-actions" style="display:flex;justify-content:flex-end;gap:8px;padding-top:12px;border-top:1px solid var(--ink-100);">
-                <button type="submit" name="save_action" value="draft" class="ws-btn ws-btn-outline" style="font-size:12px;padding:5px 12px;">
+                <button type="submit" name="save_action" value="draft" class="ws-btn ws-btn-outline" formnovalidate style="font-size:12px;padding:5px 12px;">
                     <i class="fas fa-save"></i> Save Report as Draft
                 </button>
                 <button type="submit" name="save_action" value="submit" class="ws-btn ws-btn-primary" style="font-size:12px;padding:5px 12px;">

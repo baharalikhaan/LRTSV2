@@ -438,6 +438,27 @@ class Project extends Model
     }
 
     /**
+     * Whether the project has already been registered into the workflow.
+     *
+     * A project can reach the later stages without a literal 'registered'
+     * status row (registered on behalf of an LPI by an administrator, or
+     * imported with the LPI already attached). Any status beyond import /
+     * unregistration therefore counts as registered too — otherwise a project
+     * sitting at "progress_rejected" or "Assigned" is offered "Register" again
+     * in the project menus.
+     */
+    public function isRegisteredWorkflow(): bool
+    {
+        if ($this->hasStatus(self::STATUS_REGISTERED)) {
+            return true;
+        }
+
+        return $this->statusHistories()
+            ->whereNotIn('status', [self::STATUS_IMPORTED, 'unregistered'])
+            ->exists();
+    }
+
+    /**
      * Determine available actions for the current user based on project status.
      *
      * Workflow stages (simplified):
@@ -468,7 +489,7 @@ class Project extends Model
         $actions = [];
 
         $hasImported        = $this->hasStatus(self::STATUS_IMPORTED);
-        $hasRegistered      = $this->hasStatus(self::STATUS_REGISTERED);
+        $hasRegistered      = $this->isRegisteredWorkflow();
         $hasAssigned        = $this->hasStatus(self::STATUS_ASSIGNED);
         $hasClaimed         = $this->hasStatus(self::STATUS_CLAIMED);
         // Check file existence instead of status (files uploaded directly)

@@ -24,10 +24,12 @@ class FinalReportGrading extends Model
         'publish',
         'isAdmin', 'isAccepted',
         'rejection_type', 'rejection_reason',
+        'included_items',
     ];
 
     protected $casts = [
         'previous_grading' => 'array',
+        'included_items'   => 'array',
     ];
 
     public function project()

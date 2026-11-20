@@ -21,6 +21,21 @@
     $editingRejected = $canEditRejected
         && $editFlag
         && (!$editReport || $editReport === 'final');
+
+    // Auto-grade "active" items saved with the draft/submission (null = never
+    // stored, so the verification-based default still applies).
+    $storedIncluded = ($fg && is_array($fg->included_items)) ? $fg->included_items : null;
+    $includedAchievements = $storedIncluded !== null ? array_map('intval', (array) ($storedIncluded['achievements'] ?? [])) : null;
+    $includedPublications = $storedIncluded !== null ? array_map('intval', (array) ($storedIncluded['publications'] ?? [])) : null;
+    $includedStudents     = $storedIncluded !== null ? array_map('intval', (array) ($storedIncluded['students'] ?? [])) : null;
+    $includedResearchers  = $storedIncluded !== null ? array_map('intval', (array) ($storedIncluded['researchers'] ?? [])) : null;
+
+    $isItemActive = function ($item, ?array $included) {
+        if ($included === null) {
+            return ($item->verifcation_by_reviewer ?? 'verified') === 'verified';
+        }
+        return in_array((int) $item->id, $included, true);
+    };
 @endphp
 
 <div class="ws-card">
@@ -147,7 +162,7 @@
                 @if($showAutoGrade && $achievementOutcomes->count())
                     <div style="margin-bottom:12px;">
                         @foreach($achievementOutcomes as $o)
-                        @php $isChecked = ($o->verifcation_by_reviewer ?? 'verified') === 'verified'; @endphp
+                        @php $isChecked = $isItemActive($o, $includedAchievements); @endphp
                         <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--ink-100);border-radius:6px;margin-bottom:4px;background:#fff;cursor:pointer;transition:all .15s;" class="ws-check-item" onmouseover="this.style.borderColor='var(--brand-300)'" onmouseout="this.style.borderColor='var(--ink-100)'">
                             <input type="checkbox" name="achievement_outcomes[]" value="{{ $o->id }}" data-type="{{ $o->type }}" data-points="{{ $scoreMap[$o->type] ?? 0 }}" {{ $isChecked ? 'checked' : '' }} style="accent-color:var(--brand-500);width:15px;height:15px;">
                             <div style="flex:1;min-width:0;">
@@ -240,7 +255,7 @@
                 @if($showAutoGrade && $publicationOutcomes->count())
                     <div style="margin-bottom:12px;">
                         @foreach($publicationOutcomes as $o)
-                        @php $isChecked = ($o->verifcation_by_reviewer ?? 'verified') === 'verified'; @endphp
+                        @php $isChecked = $isItemActive($o, $includedPublications); @endphp
                         <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--ink-100);border-radius:6px;margin-bottom:4px;background:#fff;cursor:pointer;transition:all .15s;" class="ws-check-item" onmouseover="this.style.borderColor='var(--brand-300)'" onmouseout="this.style.borderColor='var(--ink-100)'">
                             <input type="checkbox" name="publication_outcomes[]" value="{{ $o->id }}" data-type="{{ $o->type }}" data-points="{{ $scoreMap[$o->type] ?? 0 }}" {{ $isChecked ? 'checked' : '' }} style="accent-color:var(--brand-500);width:15px;height:15px;">
                             <div style="flex:1;min-width:0;">
@@ -363,7 +378,7 @@
                     <div style="margin-bottom:12px;">
                         <div style="font-size:11px;font-weight:600;color:var(--ink-600);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">Students</div>
                         @foreach($students as $s)
-                        @php $isChecked = ($s->verifcation_by_reviewer ?? 'verified') === 'verified'; @endphp
+                        @php $isChecked = $isItemActive($s, $includedStudents); @endphp
                         <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--ink-100);border-radius:6px;margin-bottom:4px;background:#fff;cursor:pointer;transition:all .15s;" class="ws-check-item" onmouseover="this.style.borderColor='var(--brand-300)'" onmouseout="this.style.borderColor='var(--ink-100)'">
                             <input type="checkbox" name="student_items[]" value="{{ $s->id }}" data-type="{{ $s->type }}" data-points="{{ $scoreMap[strtolower($s->type)] ?? 0 }}" {{ $isChecked ? 'checked' : '' }} style="accent-color:var(--brand-500);width:15px;height:15px;">
                             <div style="flex:1;min-width:0;">
@@ -465,7 +480,7 @@
                     <div style="margin-bottom:12px;">
                         <div style="font-size:11px;font-weight:600;color:var(--ink-600);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">Researchers</div>
                         @foreach($researchers as $r)
-                        @php $isChecked = ($r->verifcation_by_reviewer ?? 'verified') === 'verified'; @endphp
+                        @php $isChecked = $isItemActive($r, $includedResearchers); @endphp
                         <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--ink-100);border-radius:6px;margin-bottom:4px;background:#fff;cursor:pointer;transition:all .15s;" class="ws-check-item" onmouseover="this.style.borderColor='var(--brand-300)'" onmouseout="this.style.borderColor='var(--ink-100)'">
                             <input type="checkbox" name="researcher_items[]" value="{{ $r->id }}" data-type="researcher" data-points="{{ $scoreMap['researcher'] ?? 0 }}" {{ $isChecked ? 'checked' : '' }} style="accent-color:var(--brand-500);width:15px;height:15px;">
                             <div style="flex:1;min-width:0;">
@@ -562,11 +577,24 @@
 
             {{-- Section: Recommendation --}}
             <div style="margin-bottom:20px;">
+                @php
+                    // A draft keeps the reviewer's intended decision: publish
+                    // stays 'pending', isAccepted = 1 marks "Accept" and a saved
+                    // rejection_type marks "Reject" — so reopening the draft
+                    // shows the same radio that was chosen.
+                    $publishValue   = old('publish', $fg->publish ?? '');
+                    $draftDecision  = $fg && $fg->publish === 'pending';
+                    $acceptSelected = $publishValue === 'accepted'
+                        || ($draftDecision && $fg->isAccepted == 1)
+                        || ($publishValue === '' && !($draftDecision && !empty($fg->rejection_type)));
+                    $rejectSelected = $publishValue === 'rejected'
+                        || ($draftDecision && !empty($fg->rejection_type));
+                @endphp
                 <label style="font-size:13px;font-weight:600;color:var(--ink-800);display:block;margin-bottom:10px;">Recommendation:</label>
                 <div style="display:flex;gap:12px;flex-wrap:wrap;">
                     <label style="flex:1;min-width:180px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;border:2px solid var(--ink-200);border-radius:8px;transition:all .15s;background:#fff;"
                            onmouseover="this.style.borderColor='var(--success)'" onmouseout="this.style.borderColor=this.querySelector('input').checked?'var(--success)':'var(--ink-200)'">
-                        <input type="radio" name="publish" value="accepted" {{ (old('publish', $fg->publish ?? '') == 'accepted' || old('publish', $fg->publish ?? '') == '') ? 'checked' : '' }} style="accent-color:var(--success);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
+                        <input type="radio" name="publish" value="accepted" {{ $acceptSelected ? 'checked' : '' }} style="accent-color:var(--success);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
                         <div>
                             <div style="font-weight:600;color:var(--ink-800);font-size:13px;">Accept</div>
                             <div style="font-size:12px;color:var(--ink-500);margin-top:2px;">The final report meets expectations and the project is complete.</div>
@@ -574,7 +602,7 @@
                     </label>
                     <label style="flex:1;min-width:180px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;border:2px solid var(--ink-200);border-radius:8px;transition:all .15s;background:#fff;"
                            onmouseover="this.style.borderColor='var(--danger)'" onmouseout="this.style.borderColor=this.querySelector('input').checked?'var(--danger)':'var(--ink-200)'">
-                        <input type="radio" name="publish" value="rejected" {{ old('publish', $fg->publish ?? '') == 'rejected' ? 'checked' : '' }} style="accent-color:var(--danger);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
+                        <input type="radio" name="publish" value="rejected" {{ $rejectSelected ? 'checked' : '' }} style="accent-color:var(--danger);width:18px;height:18px;margin-top:1px;flex-shrink:0;">
                         <div>
                             <div style="font-weight:600;color:var(--ink-800);font-size:13px;">Reject</div>
                             <div style="font-size:12px;color:var(--ink-500);margin-top:2px;">The final report does not meet expectations and requires admin review.</div>
@@ -586,8 +614,12 @@
             {{-- Rejection Type + Reason (required when rejecting) --}}
             <div id="finalRejectionReason" style="margin-bottom:20px;display:none;">
                 @php
-                    $oldRejectionType = old('rejection_type', $editingRejected ? $rejectionType : 'report');
-                    $oldRejectionReason = old('rejection_reason', $editingRejected ? ($latestRejection->metadata['comment'] ?? '') : '');
+                    $oldRejectionType = old('rejection_type', $editingRejected
+                        ? $rejectionType
+                        : (($draftDecision && $fg->rejection_type) ? $fg->rejection_type : 'report'));
+                    $oldRejectionReason = old('rejection_reason', $editingRejected
+                        ? ($latestRejection->metadata['comment'] ?? '')
+                        : (($draftDecision && $fg->rejection_reason) ? $fg->rejection_reason : ''));
                 @endphp
                 <label style="font-size:13px;font-weight:600;color:var(--ink-800);display:block;margin-bottom:6px;">
                     Rejection Type <span style="color:var(--danger);">*</span>
@@ -606,6 +638,7 @@
 
             {{-- Hidden fields for score data --}}
             @if($showAutoGrade)
+            <input type="hidden" name="include_payload" value="1">
             <input type="hidden" name="scoreA" class="ws-score-a" value="0">
             <input type="hidden" name="autoGradeA" class="ws-auto-grade-a" value="{{ $autoGradeA ?? 0 }}">
             <input type="hidden" name="scoreB" class="ws-score-b" value="0">
@@ -622,7 +655,7 @@
             @endif
 
             <div class="ws-form-actions" style="display:flex;justify-content:flex-end;gap:8px;padding-top:10px;border-top:1px solid var(--ink-100);">
-                <button type="submit" name="save_action" value="draft" class="ws-btn ws-btn-outline" style="font-size:12px;padding:5px 12px;">
+                <button type="submit" name="save_action" value="draft" class="ws-btn ws-btn-outline" formnovalidate style="font-size:12px;padding:5px 12px;">
                     <i class="fas fa-save"></i> Save Report as Draft
                 </button>
                 <button type="submit" name="save_action" value="submit" class="ws-btn ws-btn-primary" style="font-size:12px;padding:5px 12px;">

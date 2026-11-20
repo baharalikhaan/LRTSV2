@@ -1427,11 +1427,23 @@
 /* ─── Iframe ─── */
 .ws-iframe {
     width: 100%;
-    height: 70vh;
+    height: 70vh;              /* fallback when aspect-ratio is unsupported */
     min-height: 480px;
     border: 1px solid var(--ink-100);
     border-radius: 8px;
     background: var(--sand-50);
+}
+
+/* A report is graded page by page, so the viewer is sized to hold one whole
+   A4 sheet at fit-to-width instead of a fixed 70vh window: the box follows the
+   pane width with the paper's 210:297 ratio (plus a little slack for the
+   browser's own viewer padding), and never drops below 70vh. */
+@supports (aspect-ratio: 1 / 1) {
+    .ws-iframe {
+        height: auto;
+        aspect-ratio: 210 / 310;
+        min-height: 70vh;
+    }
 }
 
 /* ─── 70/30 split ─── */
@@ -2127,8 +2139,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('form[data-progress-grade]').forEach(function(form) {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
-            var btn = document.activeElement;
-            if (!btn || !btn.matches('button[type="submit"]')) {
+            var btn = e.submitter || document.activeElement;
+            if (!btn || !btn.matches || !btn.matches('button[type="submit"]')) {
                 btn = form.querySelector('button[type="submit"]');
             }
             var original = btn.innerHTML;
@@ -2144,13 +2156,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: { 'X-CSRF-TOKEN': form.querySelector('input[name="_token"]')?.value || '', 'Accept': 'application/json' },
                 body: formData
             })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
+            .then(function(r) {
+                return r.json().then(function(body) { return { status: r.status, body: body || {} }; });
+            })
+            .then(function(res) {
+                var data = res.body;
+                if (res.status >= 200 && res.status < 300 && data.success) {
                     showToast('success', 'Progress grade saved.');
                     setTimeout(function() { location.reload(); }, 1000);
                 } else {
-                    showToast('error', data.error || 'Failed to save.');
+                    var firstError = data.errors ? Object.values(data.errors)[0] : null;
+                    showToast('error', data.error || (Array.isArray(firstError) ? firstError[0] : firstError) || 'Failed to save.');
                     btn.disabled = false; btn.innerHTML = original;
                 }
             })
@@ -2165,8 +2181,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('form[data-final-grade]').forEach(function(form) {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
-            var btn = document.activeElement;
-            if (!btn || !btn.matches('button[type="submit"]')) {
+            var btn = e.submitter || document.activeElement;
+            if (!btn || !btn.matches || !btn.matches('button[type="submit"]')) {
                 btn = form.querySelector('button[type="submit"]');
             }
             var original = btn.innerHTML;
@@ -2182,13 +2198,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: { 'X-CSRF-TOKEN': form.querySelector('input[name="_token"]')?.value || '', 'Accept': 'application/json' },
                 body: formData
             })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
+            .then(function(r) {
+                return r.json().then(function(body) { return { status: r.status, body: body || {} }; });
+            })
+            .then(function(res) {
+                var data = res.body;
+                if (res.status >= 200 && res.status < 300 && data.success) {
                     showToast('success', 'Final grade saved.');
                     setTimeout(function() { location.reload(); }, 1000);
                 } else {
-                    showToast('error', data.error || 'Failed to save.');
+                    var firstError = data.errors ? Object.values(data.errors)[0] : null;
+                    showToast('error', data.error || (Array.isArray(firstError) ? firstError[0] : firstError) || 'Failed to save.');
                     btn.disabled = false; btn.innerHTML = original;
                 }
             })

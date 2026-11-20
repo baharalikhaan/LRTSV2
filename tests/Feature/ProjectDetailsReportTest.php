@@ -30,7 +30,7 @@ class ProjectDetailsReportTest extends TestCase
 
         $res->assertStatus(200);
         $res->assertSee('Project Details Report');
-        $res->assertSee('Export Full Report to Excel');
+        $res->assertSee('Export to Excel');
     }
 
     public function test_report_is_registered_under_the_reports_section()

@@ -369,7 +369,7 @@ class ProjectController extends Controller
         // same value the Status pill displays.
         if ($status === 'unregistered') {
             $confProjects = $confProjects->filter(function ($cp) {
-                return !$cp->hasStatus(Project::STATUS_REGISTERED) || !$cp->lpi_id;
+                return !$cp->isRegisteredWorkflow() || !$cp->lpi_id;
             });
         } elseif ($status) {
             $confProjects = $confProjects->filter(function ($cp) use ($status) {
@@ -394,7 +394,7 @@ class ProjectController extends Controller
     {
         $confProject = Project::with('program.grant')->findOrFail($id);
 
-        if ($confProject->hasStatus(Project::STATUS_REGISTERED)) {
+        if ($confProject->isRegisteredWorkflow()) {
             return redirect()->route('projects.available')
                 ->with('error', 'This project has already been registered.');
         }
@@ -437,7 +437,7 @@ class ProjectController extends Controller
 
         $project = Project::findOrFail($validated['project_id']);
 
-        if ($project->hasStatus(Project::STATUS_REGISTERED)) {
+        if ($project->isRegisteredWorkflow()) {
             return redirect()->route('projects.available')
                 ->with('error', 'This project has already been registered.');
         }
@@ -814,15 +814,15 @@ class ProjectController extends Controller
         // Apply status filter client-side (status is derived from relationships)
         if ($status === 'unregistered') {
             $confProjects = $confProjects->filter(function ($cp) {
-                return !$cp->hasStatus(Project::STATUS_REGISTERED) || !$cp->lpi_id;
+                return !$cp->isRegisteredWorkflow() || !$cp->lpi_id;
             });
         } elseif ($status === 'registered') {
             $confProjects = $confProjects->filter(function ($cp) {
-                return $cp->hasStatus(Project::STATUS_REGISTERED);
+                return $cp->isRegisteredWorkflow();
             });
         } elseif ($status === 'claimed') {
             $confProjects = $confProjects->filter(function ($cp) {
-                return $cp->hasStatus(Project::STATUS_REGISTERED) && $cp->lpi_id;
+                return $cp->isRegisteredWorkflow() && $cp->lpi_id;
             });
         }
 

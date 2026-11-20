@@ -83,7 +83,7 @@
                 <tbody>
                     @foreach($confProjects as $cp)
                     @php
-                        $isRegistered = $cp->hasStatus(\App\Models\Project::STATUS_REGISTERED) && $cp->lpi_id;
+                        $isRegistered = $cp->isRegisteredWorkflow() && $cp->lpi_id;
                         $isOwned = $isRegistered && $cp->lpi_id === $user->id;
                         $flowStatus = $cp->currentWorkflowStatus();
                         $isClaimedByOther = $isRegistered && !$isOwned && $flowStatus === \App\Models\Project::STATUS_CLAIMED;

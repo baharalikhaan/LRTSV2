@@ -398,6 +398,12 @@ class GradingController extends Controller
         // For "draft", publish is optional; for "submit", it's required
         if ($saveAction === 'draft') {
             $rules['publish'] = 'nullable|in:accepted,rejected,reserved,pending';
+            // A draft may be partial: the four ratings are only enforced on submit,
+            // so a reviewer can park a half-finished evaluation and come back to it.
+            $rules['achievementsRating'] = 'nullable|integer|between:1,5';
+            $rules['publicationsRating'] = 'nullable|integer|between:1,5';
+            $rules['studentsRating']     = 'nullable|integer|between:1,5';
+            $rules['budgetRating']       = 'nullable|integer|between:1,5';
             $rules['rejection_reason'] = 'nullable|string|max:2000';
             $rules['rejection_type'] = 'nullable|in:report,ethical,other';
         } else {
@@ -450,17 +456,9 @@ class GradingController extends Controller
             ], 403);
         }
 
-        // Gate: grading opens once the progress deadline passes (null = always open).
-        $program = $project->program;
-        $progressDeadline = $isProgress2
-            ? ($program ? $program->prog_rpt2_deadline : null)
-            : ($program ? ($program->prog_rpt_deadline ?? null) : null);
-        if ($progressDeadline && !now()->greaterThan($progressDeadline)) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'Grading opens after the ' . ($isProgress2 ? 'extended progress report' : 'progress report') . ' deadline.',
-            ], 403);
-        }
+        // Gate removed: a stage opens as soon as its report is in. The deadline
+        // no longer waits — the grading page shows the same rule — so an LPI
+        // who uploads early can be reviewed early.
 
         // Determine publish value based on save_action
         $publishValue = $saveAction === 'draft' ? 'pending' : $request->publish;
@@ -564,6 +562,11 @@ class GradingController extends Controller
 
         if ($saveAction === 'draft') {
             $rules['publish'] = 'nullable|in:accepted,rejected,pending';
+            // A draft may be partial: the section grades are only enforced on
+            // submit, matching the progress report form.
+            foreach (['gradeA', 'gradeB', 'gradeC', 'gradeD'] as $gradeField) {
+                $rules[$gradeField] = 'nullable|numeric|between:1,5';
+            }
             $rules['rejection_reason'] = 'nullable|string|max:2000';
             $rules['rejection_type'] = 'nullable|in:report,ethical,other';
         } else {
@@ -597,15 +600,8 @@ class GradingController extends Controller
             ], 403);
         }
 
-        // Gate: grading opens once the final deadline passes (null = always open).
-        $program = $project->program;
-        $finalDeadline = $program ? ($program->final_rpt_deadline ?? null) : null;
-        if ($finalDeadline && !now()->greaterThan($finalDeadline)) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'Grading opens after the final report deadline.',
-            ], 403);
-        }
+        // Gate removed: the final stage opens as soon as the report is in, the
+        // same rule the grading page uses — no waiting for the deadline.
 
         $publishValue = $saveAction === 'draft' ? 'pending' : $request->publish;
 
@@ -618,12 +614,7 @@ class GradingController extends Controller
                  ($request->scoreC ?? 0);
 
         $final = DB::transaction(function () use ($project, $user, $request, $publishValue, $isAcceptedValue, $total, $userSelection) {
-            $row = FinalReportGrading::updateOrCreate(
-                // Keyed per (project, user): an admin grading on behalf no
-                // longer silently overwrites the assigned reviewer's row
-                // (which previously broke the reviewer's View Grades modal).
-                ['project_id' => $project->id, 'user_id' => $user->id],
-                [
+            $attributes = [
                     'gradeA'      => $request->gradeA,
                     'commentA'    => $request->commentA ?? '',
                     'gradeB'      => $request->gradeB,
@@ -646,7 +637,26 @@ class GradingController extends Controller
                     // consensus completes and records the *_REJECTED status.
                     'rejection_type'   => $userSelection === 'rejected' ? ($request->rejection_type ?: 'report') : null,
                     'rejection_reason' => $userSelection === 'rejected' ? ($request->rejection_reason ?? $request->comments) : null,
-                ]
+                ];
+
+            // Only the auto-grade view posts the checkbox groups, so "all
+            // unchecked" (an empty list) is distinguishable from "the section
+            // was hidden" (the marker is absent, keep whatever was stored).
+            if ($request->boolean('include_payload')) {
+                $attributes['included_items'] = [
+                    'achievements' => array_map('intval', (array) $request->input('achievement_outcomes', [])),
+                    'publications' => array_map('intval', (array) $request->input('publication_outcomes', [])),
+                    'students'     => array_map('intval', (array) $request->input('student_items', [])),
+                    'researchers'  => array_map('intval', (array) $request->input('researcher_items', [])),
+                ];
+            }
+
+            // Keyed per (project, user): an admin grading on behalf no longer
+            // silently overwrites the assigned reviewer's row (which previously
+            // broke the reviewer's View Grades modal).
+            $row = FinalReportGrading::updateOrCreate(
+                ['project_id' => $project->id, 'user_id' => $user->id],
+                $attributes
             );
 
             return $row;

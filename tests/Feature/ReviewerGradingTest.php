@@ -435,7 +435,7 @@ class ReviewerGradingTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_b07_grading_locked_before_deadline()
+    public function test_b07_grading_opens_before_deadline_when_report_is_uploaded()
     {
         $project  = $this->progressProject();
         $reviewer = $this->reviewer();
@@ -447,9 +447,53 @@ class ReviewerGradingTest extends TestCase
         $this->claim($project, $reviewer);
         $this->setProgramDeadline($project, 'prog_rpt_deadline', now()->addDays(2));
 
+        // The deadline is still ahead, but the report is already in, so the
+        // stage is gradable — the same rule the grading page applies.
+        $payload = $this->progressPayload('accepted');
+        $payload['save_action'] = 'draft';
+
         $this->actingAs($reviewer)
-            ->postJson(route('grading.saveProgressGrade', ['id' => $project->id]), $this->progressPayload('accepted'))
-            ->assertStatus(403);
+            ->postJson(route('grading.saveProgressGrade', ['id' => $project->id]), $payload)
+            ->assertOk();
+
+        $row = ProgressReportGrading::where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->where('report_type', 'progress')
+            ->first();
+
+        $this->assertNotNull($row, 'An early grading must be stored before the deadline.');
+        $this->assertSame('pending', $row->publish);
+    }
+
+    public function test_b11_partial_progress_draft_saves_without_ratings()
+    {
+        $project  = $this->progressProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No progress-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        // A draft is allowed to be half-finished: no ratings, publish, or
+        // decision — it must still be stored as a pending row.
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveProgressGrade', ['id' => $project->id]), [
+                'save_action'          => 'draft',
+                'report_type'          => 'progress',
+                'achievementsComments' => 'Half-finished evaluation, returning later.',
+            ])
+            ->assertOk();
+
+        $row = ProgressReportGrading::where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->where('report_type', 'progress')
+            ->first();
+
+        $this->assertNotNull($row, 'A partial draft must be stored.');
+        $this->assertSame('pending', $row->publish);
+        $this->assertNull($row->achievementsRating);
     }
 
     public function test_b08_grading_locked_without_progress_submission()
@@ -584,7 +628,7 @@ class ReviewerGradingTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_c04_final_grading_locked_before_deadline()
+    public function test_c04_final_grading_opens_before_deadline_when_report_is_uploaded()
     {
         $project  = $this->finalProject();
         $reviewer = $this->reviewer();
@@ -596,9 +640,240 @@ class ReviewerGradingTest extends TestCase
         $this->claim($project, $reviewer);
         $this->setProgramDeadline($project, 'final_rpt_deadline', now()->addDays(2));
 
+        // Report already uploaded => gradable even before the deadline.
+        $payload = $this->finalPayload('accepted');
+        $payload['save_action'] = 'draft';
+
         $this->actingAs($reviewer)
-            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), $this->finalPayload('accepted'))
-            ->assertStatus(403);
+            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), $payload)
+            ->assertOk();
+
+        $row = FinalReportGrading::where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->first();
+
+        $this->assertNotNull($row, 'An early final grading must be stored before the deadline.');
+        $this->assertSame('pending', $row->publish);
+    }
+
+    public function test_c07_partial_final_draft_saves_without_grades()
+    {
+        $project  = $this->finalProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No final-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), [
+                'save_action' => 'draft',
+                'commentA'    => 'Half-finished evaluation, returning later.',
+            ])
+            ->assertOk();
+
+        $row = FinalReportGrading::where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->first();
+
+        $this->assertNotNull($row, 'A partial final draft must be stored.');
+        $this->assertSame('pending', $row->publish);
+        $this->assertNull($row->gradeA);
+    }
+
+    public function test_c08_final_draft_restores_the_active_auto_grade_items()
+    {
+        $project  = $this->finalProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No final-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        // The auto-grade checkboxes only render when that view is enabled.
+        DB::table('ai_settings')->updateOrInsert(
+            ['key' => 'auto_grade_visibility'],
+            ['value' => '1', 'created_at' => now(), 'updated_at' => now()]
+        );
+        // auto-grade, one switched off — the pair proves the draft remembers
+        // both the ticks and the un-ticks.
+        $keep = Outcome::create([
+            'project_id'              => $project->id,
+            'type'                    => 'ip_disclosure',
+            'identifier'              => 'Test IP kept active (draft restore)',
+            'verifcation_by_reviewer' => 'verified',
+            'verifcation_by_system'   => 'pending',
+            'score'                   => 0,
+        ]);
+
+        $drop = Outcome::create([
+            'project_id'              => $project->id,
+            'type'                    => 'ip_disclosure',
+            'identifier'              => 'Test IP excluded (draft restore)',
+            'verifcation_by_reviewer' => 'verified',
+            'verifcation_by_system'   => 'pending',
+            'score'                   => 0,
+        ]);
+
+        $included = [(int) $keep->id];
+
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), array_merge($this->finalPayload('accepted'), [
+                'save_action'          => 'draft',
+                'include_payload'      => 1,
+                'achievement_outcomes' => $included,
+                'publication_outcomes' => [],
+                'student_items'        => [],
+                'researcher_items'     => [],
+            ]))
+            ->assertOk();
+
+        $row = FinalReportGrading::where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame(
+            $included,
+            $row->included_items['achievements'] ?? null,
+            'The draft must store which outcomes were kept active.'
+        );
+
+        // Re-opening the page must restore the very same tick boxes.
+        $html = $this->actingAs($reviewer)
+            ->get($this->gradingPath($project))
+            ->assertOk()
+            ->getContent();
+
+        $keptTag = $this->checkboxTag($html, 'achievement_outcomes', (int) $keep->id);
+        $this->assertNotNull($keptTag, 'Missing checkbox for the kept achievement outcome.');
+        $this->assertStringContainsString('checked', $keptTag, 'An included outcome must come back ticked.');
+
+        $droppedTag = $this->checkboxTag($html, 'achievement_outcomes', (int) $drop->id);
+        $this->assertNotNull($droppedTag, 'Missing checkbox for the excluded achievement outcome.');
+        $this->assertStringNotContainsString(
+            'checked',
+            $droppedTag,
+            'An outcome the reviewer excluded from the auto-grade must stay excluded on reload.'
+        );
+    }
+
+    public function test_b12_progress_draft_restores_the_accept_reject_choice()
+    {
+        $project  = $this->progressProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No progress-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        // Reject + type + reason, parked as a draft.
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveProgressGrade', ['id' => $project->id]), array_merge($this->progressPayload('rejected'), [
+                'save_action'      => 'draft',
+                'rejection_type'   => 'ethical',
+                'rejection_reason' => 'IRB certificate is missing for the second phase.',
+            ]))
+            ->assertOk();
+
+        $html = $this->actingAs($reviewer)->get($this->gradingPath($project))->assertOk()->getContent();
+        $form = $this->formHtml($html, 'save-progress-grade');
+
+        $this->assertMatchesRegularExpression(
+            '/<input[^>]*name="publish"[^>]*value="rejected"[^>]*checked/',
+            $form,
+            'A rejected draft must reopen with Reject selected.'
+        );
+        $this->assertMatchesRegularExpression('/<option value="ethical"\s+selected/', $form);
+        $this->assertStringContainsString('IRB certificate is missing for the second phase.', $form);
+
+        // Accepted draft keeps Accept selected.
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveProgressGrade', ['id' => $project->id]), array_merge($this->progressPayload('accepted'), [
+                'save_action' => 'draft',
+            ]))
+            ->assertOk();
+
+        $html = $this->actingAs($reviewer)->get($this->gradingPath($project))->assertOk()->getContent();
+        $form = $this->formHtml($html, 'save-progress-grade');
+
+        $this->assertMatchesRegularExpression(
+            '/<input[^>]*name="publish"[^>]*value="accepted"[^>]*checked/',
+            $form,
+            'An accepted draft must reopen with Accepted selected.'
+        );
+    }
+
+    public function test_c09_final_draft_restores_the_accept_reject_choice()
+    {
+        $project  = $this->finalProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No final-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), array_merge($this->finalPayload('rejected'), [
+                'save_action'      => 'draft',
+                'rejection_type'   => 'ethical',
+                'rejection_reason' => 'IRB certificate is missing for the final phase.',
+            ]))
+            ->assertOk();
+
+        $html = $this->actingAs($reviewer)->get($this->gradingPath($project))->assertOk()->getContent();
+        $form = $this->formHtml($html, 'save-final-grade');
+
+        $this->assertMatchesRegularExpression(
+            '/<input[^>]*name="publish"[^>]*value="rejected"[^>]*checked/',
+            $form,
+            'A rejected final draft must reopen with Reject selected.'
+        );
+        $this->assertMatchesRegularExpression('/<option value="ethical"\s+selected/', $form);
+        $this->assertStringContainsString('IRB certificate is missing for the final phase.', $form);
+
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), array_merge($this->finalPayload('accepted'), [
+                'save_action' => 'draft',
+            ]))
+            ->assertOk();
+
+        $html = $this->actingAs($reviewer)->get($this->gradingPath($project))->assertOk()->getContent();
+        $form = $this->formHtml($html, 'save-final-grade');
+
+        $this->assertMatchesRegularExpression(
+            '/<input[^>]*name="publish"[^>]*value="accepted"[^>]*checked/',
+            $form,
+            'An accepted final draft must reopen with Accept selected.'
+        );
+    }
+
+    private function formHtml(string $html, string $anchor): string
+    {
+        $start = strpos($html, $anchor);
+        if ($start === false) {
+            return '';
+        }
+        $end = strpos($html, '</form>', $start);
+
+        return $end === false ? substr($html, $start) : substr($html, $start, $end - $start);
+    }
+
+    private function checkboxTag(string $html, string $group, int $id): ?string
+    {
+        if (preg_match('/<input[^>]*name="' . preg_quote($group, '/') . '\[\]"[^>]*value="' . $id . '"[^>]*>/i', $html, $m)) {
+            return $m[0];
+        }
+
+        return null;
     }
 
     public function test_c05_reserved_publish_rejected_on_final()

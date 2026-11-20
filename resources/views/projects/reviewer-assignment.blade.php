@@ -161,7 +161,7 @@
                         @foreach($confProjects as $index => $cp)
                         @php
                             $flowStatus = $cp->currentWorkflowStatus();
-                            $isRegistered = $cp->hasStatus(\App\Models\Project::STATUS_REGISTERED) && $cp->lpi_id;
+                            $isRegistered = $cp->isRegisteredWorkflow() && $cp->lpi_id;
                             $statusLabel = (!$isRegistered && $flowStatus === 'imported') ? 'Unregistered' : ucfirst(str_replace('_', ' ', $flowStatus ?? '—'));
                             switch ($flowStatus) {
                                 case 'imported': $statusPillClass = 'warning'; break;

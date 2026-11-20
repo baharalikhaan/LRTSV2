@@ -26,7 +26,7 @@ class RegisterWizardController extends Controller
     {
         $confProject = Project::with('program.grant')->findOrFail($id);
 
-        if ($confProject->hasStatus(Project::STATUS_REGISTERED)) {
+        if ($confProject->isRegisteredWorkflow()) {
             return response()->json(['error' => 'This project has already been registered.'], 422);
         }
 
@@ -64,7 +64,7 @@ class RegisterWizardController extends Controller
     {
         $confProject = Project::with('program.grant', 'lpi')->findOrFail($id);
 
-        if ($confProject->hasStatus(Project::STATUS_REGISTERED)) {
+        if ($confProject->isRegisteredWorkflow()) {
             return redirect()->back()->with('error', 'This project has already been registered.');
         }
 
@@ -150,7 +150,7 @@ class RegisterWizardController extends Controller
 
         // Ownership parity with wizard(): already-registered projects are
         // locked, claimed projects belong to their LPI only.
-        if ($project->hasStatus(Project::STATUS_REGISTERED)) {
+        if ($project->isRegisteredWorkflow()) {
             return response()->json(['error' => 'This project has already been registered.'], 422);
         }
         $user = auth()->user();
@@ -231,7 +231,7 @@ class RegisterWizardController extends Controller
 
         $project = Project::findOrFail($validated['project_id']);
 
-        if ($project->hasStatus(Project::STATUS_REGISTERED)) {
+        if ($project->isRegisteredWorkflow()) {
             return response()->json(['error' => 'This project has already been registered.'], 422);
         }
 
