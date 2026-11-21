@@ -145,8 +145,18 @@ class GradingController extends Controller
         $finalSubmitted    = $submissions->where('type', 'final')->count() > 0;
         $readinessSubmitted = $submissions->where('type', 'readiness')->count() > 0;
 
-        // Ethical approval file exists
-        $ethicalExists = file_exists(storage_path('app/' . $project->getStorageFilename('ethical')));
+        // Ethical approvals: the LPI can attach several documents and each one
+        // is stored as its own submission row (<id>_ethical_<n>.pdf), so
+        // existence is a query — not a fixed filename on disk. Rows whose file
+        // is gone (legacy imports, failed uploads) are left out so the reviewer
+        // never gets a viewer pointing at a missing PDF.
+        $ethicalDocs = $project->submissions()
+            ->where('type', 'ethical')
+            ->orderBy('id')
+            ->get()
+            ->filter(fn ($doc) => is_file(storage_path('app/' . $doc->file_path)))
+            ->values();
+        $ethicalExists = $ethicalDocs->isNotEmpty();
 
         // Whether progress was rejected (show rejection info)
         $progressRejected = $project->hasStatus(Project::STATUS_PROGRESS_REJECTED);
@@ -268,6 +278,7 @@ class GradingController extends Controller
             'typeMappings',
             'proposalExists',
             'ethicalExists',
+            'ethicalDocs',
             'progressSubmitted',
             'progress2Submitted',
             'finalSubmitted',

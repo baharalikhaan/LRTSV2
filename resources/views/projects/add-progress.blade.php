@@ -1026,7 +1026,6 @@
     @if(!$isStudentGrant)
     <div id="tab-progress-report" class="ws-tab-panel" style="display:none;" role="tabpanel">
         @php
-            $progressLatest = $progressSub ?? null;
             $progressDl = $deadlines['progress'] ?? [];
             $progressEffectiveDeadline = $progressDl['original'] ?? null;
             $progressDeadlinePassed = $progressEffectiveDeadline ? now()->greaterThan($progressEffectiveDeadline) : true;
@@ -1048,7 +1047,7 @@
                 </div>
             </div>
 
-<div class="ws-upload-card {{ ($progressDeadlinePassed || $progressLocked) && !$progressResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress" data-versioned="{{ $progressResubmitRequested ? '1' : '0' }}" data-can-delete="{{ $progressResubmitRequested || !$progressDeadlinePassed ? '1' : '0' }}">
+<div class="ws-upload-card {{ ($progressDeadlinePassed || $progressLocked) && !$progressResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress" data-versioned="{{ $progressResubmitRequested ? '1' : '0' }}" data-can-delete="0">
                 <div class="ws-current-file" data-type="progress">
                     @php
                         $progressVersions = $submissions->where('type', 'progress')->sortBy('version');
@@ -1061,11 +1060,6 @@
                             <a href="{{ route('serveFile2', ['type' => 'progress', 'id' => $project->id, 'submission_id' => $pv->id]) }}" target="_blank" class="ws-file-link">{{ $pv->stored_filename }}</a>
                             <span class="ws-file-version" style="font-size:10px;font-weight:600;color:{{ $loop->last ? 'var(--success)' : 'var(--ink-400)' }};background:{{ $loop->last ? '#d1fae5' : 'var(--ink-50)' }};padding:1px 6px;border-radius:4px;">v{{ $pv->version }}</span>
                             <span class="ws-file-date">{{ $pv->created_at?->format('M d, Y H:i') }}</span>
-                            @if(($pv->version == 1 && !$progressDeadlinePassed) || ($pv->version == 2 && $progressResubmitRequested))
-                            <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $pv->id }}" title="Delete">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                            @endif
                         </div>
                         @endforeach
 @else
@@ -1073,11 +1067,19 @@
                     @endif
                 </div>
 
-                @if(!$progressLocked || $progressResubmitRequested)
+                @php
+                    // v1 is tied to its submission window: once the report is in,
+                    // the card no longer offers a replacement. Uploading is only
+                    // possible before the deadline (no file yet) or when the
+                    // research office has opened a resubmission (v2).
+                    $progressCanUpload = $progressResubmitRequested
+                        || ($progressVersions->isEmpty() && !$progressDeadlinePassed && !$progressLocked);
+                @endphp
+                @if($progressCanUpload)
                     <input type="file" class="ws-file-input" accept=".pdf">
                     <button type="button" class="ws-btn ws-btn-outline ws-upload-btn ws-upload-btn--full">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        {{ $progressResubmitRequested ? 'Re-Upload Progress Report (v' . $progressNextVersion . ')' : ($progressLatest ? 'Re-Upload' : 'Upload Progress Report') }}
+                        {{ $progressResubmitRequested ? 'Re-Upload Progress Report (v' . $progressNextVersion . ')' : 'Upload Progress Report' }}
                     </button>
                     <div class="ws-upload-status"></div>
                     <a href="{{ \App\Services\CycleProgressReportService::TEMPLATE_URL }}" target="_blank" rel="noopener" class="ws-template-link" title="Official Qatar University post-award forms">
@@ -1087,7 +1089,15 @@
                 @else
                     <div class="ws-upload-locked">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        @if($progressNoResubmit) No new version required — upload closed @elseif($progressDeadlinePassed) Deadline passed — upload closed @elseif($progressLocked) Already submitted @endif
+                        @if($progressNoResubmit)
+                            No new version required — upload closed
+                        @elseif($progressDeadlinePassed)
+                            Deadline passed — upload closed
+                        @elseif($progressVersions->isNotEmpty())
+                            Report submitted — upload closed (reopens only if a resubmission is requested)
+                        @else
+                            Already submitted
+                        @endif
                     </div>
                 @endif
             </div>
@@ -1095,7 +1105,6 @@
 
         @if($extendedProgress)
         @php
-            $progress2Latest = $progress2Sub ?? null;
             $progress2Dl = $deadlines['progress2'] ?? [];
             $progress2EffectiveDeadline = $progress2Dl['original'] ?? null;
         @endphp
@@ -1115,7 +1124,7 @@
                 </div>
             </div>
 
-<div class="ws-upload-card {{ ($progress2DeadlinePassed || $progress2Locked) && !$progress2ResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress2" data-versioned="{{ $progress2ResubmitRequested ? '1' : '0' }}" data-can-delete="{{ $progress2ResubmitRequested || !$progress2DeadlinePassed ? '1' : '0' }}">
+<div class="ws-upload-card {{ ($progress2DeadlinePassed || $progress2Locked) && !$progress2ResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="progress2" data-versioned="{{ $progress2ResubmitRequested ? '1' : '0' }}" data-can-delete="0">
                 <div class="ws-current-file" data-type="progress2">
                     @php
                         $progress2Versions = $submissions->where('type', 'progress2')->sortBy('version');
@@ -1128,11 +1137,6 @@
                             <a href="{{ route('serveFile2', ['type' => 'progress2', 'id' => $project->id, 'submission_id' => $pv->id]) }}" target="_blank" class="ws-file-link">{{ $pv->stored_filename }}</a>
                             <span class="ws-file-version" style="font-size:10px;font-weight:600;color:{{ $loop->last ? 'var(--success)' : 'var(--ink-400)' }};background:{{ $loop->last ? '#d1fae5' : 'var(--ink-50)' }};padding:1px 6px;border-radius:4px;">v{{ $pv->version }}</span>
                             <span class="ws-file-date">{{ $pv->created_at?->format('M d, Y H:i') }}</span>
-                            @if(($pv->version == 1 && !$progress2DeadlinePassed) || ($pv->version == 2 && $progress2ResubmitRequested))
-                            <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $pv->id }}" title="Delete">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                            @endif
                         </div>
                         @endforeach
 @else
@@ -1140,11 +1144,15 @@
                     @endif
                 </div>
 
-                @if(!$progress2Locked || $progress2ResubmitRequested)
+                @php
+                    $progress2CanUpload = $progress2ResubmitRequested
+                        || ($progress2Versions->isEmpty() && !$progress2DeadlinePassed && !$progress2Locked);
+                @endphp
+                @if($progress2CanUpload)
                     <input type="file" class="ws-file-input" accept=".pdf">
                     <button type="button" class="ws-btn ws-btn-outline ws-upload-btn ws-upload-btn--full">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        {{ $progress2ResubmitRequested ? 'Re-Upload Progress Report 2 (v' . $progress2NextVersion . ')' : ($progress2Latest ? 'Re-Upload' : 'Upload Progress Report 2') }}
+                        {{ $progress2ResubmitRequested ? 'Re-Upload Progress Report 2 (v' . $progress2NextVersion . ')' : 'Upload Progress Report 2' }}
                     </button>
                     <div class="ws-upload-status"></div>
                     <a href="{{ \App\Services\CycleProgressReportService::TEMPLATE_URL }}" target="_blank" rel="noopener" class="ws-template-link" title="Official Qatar University post-award forms">
@@ -1154,7 +1162,15 @@
                 @else
                     <div class="ws-upload-locked">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        @if($progress2NoResubmit) No new version required — upload closed @elseif($progress2DeadlinePassed) Deadline passed — upload closed @elseif($progress2Locked) Already submitted @endif
+                        @if($progress2NoResubmit)
+                            No new version required — upload closed
+                        @elseif($progress2DeadlinePassed)
+                            Deadline passed — upload closed
+                        @elseif($progress2Versions->isNotEmpty())
+                            Report submitted — upload closed (reopens only if a resubmission is requested)
+                        @else
+                            Already submitted
+                        @endif
                     </div>
                 @endif
             </div>
@@ -1167,7 +1183,6 @@
     {{-- ═══════════════════════════════════════════════════════════════════════ --}}
     <div id="tab-final-report" class="ws-tab-panel" style="display:none;" role="tabpanel">
         @php
-            $finalLatest = $submissions->where('type', 'final')->last();
             $readinessLatest = $submissions->where('type', 'readiness')->last();
             $finalDl = $deadlines['final'] ?? [];
             $finalEffectiveDeadline = $finalDl['original'] ?? null;
@@ -1194,7 +1209,7 @@
                 </div>
             </div>
 
-            <div class="ws-upload-card {{ ($finalDeadlinePassed || $finalLocked) && !$finalResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="final" data-versioned="{{ $finalResubmitRequested ? '1' : '0' }}" data-can-delete="{{ $finalResubmitRequested || !$finalDeadlinePassed ? '1' : '0' }}">
+            <div class="ws-upload-card {{ ($finalDeadlinePassed || $finalLocked) && !$finalResubmitRequested ? 'ws-upload-card--deadline-passed' : '' }}" data-type="final" data-versioned="{{ $finalResubmitRequested ? '1' : '0' }}" data-can-delete="0">
                 <div class="ws-current-file" data-type="final">
                     @php
                         $finalVersions = $submissions->where('type', 'final')->sortBy('version');
@@ -1207,22 +1222,21 @@
                             <a href="{{ route('serveFile2', ['type' => 'final', 'id' => $project->id, 'submission_id' => $fv->id]) }}" target="_blank" class="ws-file-link">{{ $fv->stored_filename }}</a>
                             <span class="ws-file-version" style="font-size:10px;font-weight:600;color:{{ $loop->last ? 'var(--success)' : 'var(--ink-400)' }};background:{{ $loop->last ? '#d1fae5' : 'var(--ink-50)' }};padding:1px 6px;border-radius:4px;">v{{ $fv->version }}</span>
                             <span class="ws-file-date">{{ $fv->created_at?->format('M d, Y H:i') }}</span>
-                            @if(($fv->version == 1 && !$finalDeadlinePassed) || ($fv->version == 2 && $finalResubmitRequested))
-                            <button type="button" class="ws-btn-icon ws-btn-icon-danger ws-delete-file" data-id="{{ $fv->id }}" title="Delete">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                            @endif
                         </div>
                         @endforeach
 @else
                         <div class="ws-file-empty">No file uploaded yet.</div>
                     @endif
                 </div>
-                @if(!$finalLocked || $finalResubmitRequested)
+                @php
+                    $finalCanUpload = $finalResubmitRequested
+                        || ($finalVersions->isEmpty() && !$finalDeadlinePassed && !$finalLocked);
+                @endphp
+                @if($finalCanUpload)
                     <input type="file" class="ws-file-input" accept=".pdf">
                     <button type="button" class="ws-btn ws-btn-outline ws-upload-btn ws-upload-btn--full">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        {{ $finalResubmitRequested ? 'Re-Upload Final Report (v' . $finalNextVersion . ')' : ($finalLatest ? 'Re-Upload Final Report' : 'Upload Final Report') }}
+                        {{ $finalResubmitRequested ? 'Re-Upload Final Report (v' . $finalNextVersion . ')' : 'Upload Final Report' }}
                     </button>
                     <div class="ws-upload-status"></div>
                     <a href="{{ \App\Services\CycleProgressReportService::TEMPLATE_URL }}" target="_blank" rel="noopener" class="ws-template-link" title="Official Qatar University post-award forms">
@@ -1232,7 +1246,15 @@
                 @else
                     <div class="ws-upload-locked">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                        @if($finalNoResubmit) No new version required — upload closed @elseif($finalDeadlinePassed) Deadline passed — upload closed @elseif($finalLocked) Already submitted @endif
+                        @if($finalNoResubmit)
+                            No new version required — upload closed
+                        @elseif($finalDeadlinePassed)
+                            Deadline passed — upload closed
+                        @elseif($finalVersions->isNotEmpty())
+                            Report submitted — upload closed (reopens only if a resubmission is requested)
+                        @else
+                            Already submitted
+                        @endif
                     </div>
                 @endif
             </div>

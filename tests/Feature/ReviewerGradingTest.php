@@ -867,6 +867,64 @@ class ReviewerGradingTest extends TestCase
         return $end === false ? substr($html, $start) : substr($html, $start, $end - $start);
     }
 
+    public function test_b13_grading_page_lists_the_ethical_approval_documents()
+    {
+        $project  = $this->progressProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No progress-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        // Ethical approvals are per-document submission rows (the LPI can attach
+        // several), so the reviewer tab must read them from there — not from a
+        // single fixed filename on disk. The viewer only lists documents whose
+        // file is actually on disk, hence the two real (tiny) PDFs here.
+        $paths = [];
+        foreach (['test_ethics_1.pdf', 'test_ethics_2.pdf'] as $name) {
+            $relative = 'uploads/test/ethical_approvals/' . $name;
+            $full = storage_path('app/' . $relative);
+            @mkdir(dirname($full), 0777, true);
+            file_put_contents($full, "%PDF-1.4\n% test\n");
+            $paths[] = $full;
+
+            DB::table('project_submissions')->insert([
+                'project_id'        => $project->id,
+                'user_id'           => $project->lpi_id,
+                'type'              => 'ethical',
+                'version'           => 1,
+                'original_filename' => $name,
+                'stored_filename'   => $name,
+                'file_path'         => $relative,
+                'created_at'        => now(),
+                'updated_at'        => now(),
+            ]);
+        }
+
+        try {
+            $html = $this->actingAs($reviewer)
+                ->get($this->gradingPath($project))
+                ->assertOk()
+                ->getContent();
+        } finally {
+            foreach ($paths as $full) {
+                @unlink($full);
+            }
+        }
+
+        $this->assertStringContainsString('id="ethical-iframe"', $html, 'The ethical tab must show the document viewer.');
+        $this->assertStringContainsString('test_ethics_1.pdf', $html);
+        $this->assertStringContainsString('test_ethics_2.pdf', $html);
+        $this->assertStringContainsString("switchVersion(this, 'ethical-iframe')", $html, 'Several documents must be selectable.');
+        $this->assertStringNotContainsString(
+            'No ethical approval document has been uploaded for this project yet.',
+            $html,
+            'The empty state must not show when documents exist.'
+        );
+    }
+
     private function checkboxTag(string $html, string $group, int $id): ?string
     {
         if (preg_match('/<input[^>]*name="' . preg_quote($group, '/') . '\[\]"[^>]*value="' . $id . '"[^>]*>/i', $html, $m)) {

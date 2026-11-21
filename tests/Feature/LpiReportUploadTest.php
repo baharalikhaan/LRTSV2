@@ -401,6 +401,121 @@ class LpiReportUploadTest extends TestCase
         $this->assertSame(0, $project->submissions()->where('type', 'progress')->count());
     }
 
+    /** Once v1 is uploaded, the page no longer offers to replace it. */
+    public function test_a09_submitted_v1_is_not_reopenable_from_the_page()
+    {
+        $lpi     = $this->activeLpi();
+        $project = $this->cleanProject(['progress'], true);
+        if (!$lpi || !$project) {
+            $this->markTestSkipped('Missing LPI or clean non-student project.');
+        }
+
+        // Window still open, yet the report is already in.
+        $this->setProgramDeadline($project, 'prog_rpt_deadline', now()->addDays(7));
+        $this->upload($lpi, $project, 'progress', 'progress-v1.pdf')->assertOk();
+
+        $html = $this->actingAs($lpi)
+            ->get(route('progress.update', ['id' => $project->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression(
+            '/Upload Progress Report\s*<\/button>/',
+            $html,
+            'v1 must not be reopened for replacement.'
+        );
+        $this->assertStringContainsString('Report submitted', $html, 'The card must say the report is already submitted.');
+
+        $card = substr($html, strpos($html, 'data-type="progress" data-versioned'), 4500);
+        $this->assertStringNotContainsString('ws-delete-file', $card, 'A submitted progress report cannot be deleted.');
+    }
+
+    /** Delete is not offered once the progress deadline has passed. */
+    public function test_a10_delete_is_not_offered_after_the_progress_deadline()
+    {
+        $lpi     = $this->activeLpi();
+        $project = $this->cleanProject(['progress'], true);
+        if (!$lpi || !$project) {
+            $this->markTestSkipped('Missing LPI or clean non-student project.');
+        }
+
+        $this->setProgramDeadline($project, 'prog_rpt_deadline', now()->addDays(7));
+        $this->upload($lpi, $project, 'progress', 'progress-v1.pdf')->assertOk();
+
+        // Now the window closes.
+        $this->setProgramDeadline($project, 'prog_rpt_deadline', now()->subDays(2));
+
+        $html = $this->actingAs($lpi)
+            ->get(route('progress.update', ['id' => $project->id]))
+            ->assertOk()
+            ->getContent();
+
+        $card = substr($html, strpos($html, 'data-type="progress"'), 4000);
+
+        $this->assertStringContainsString('data-can-delete="0"', $card, 'The card must tell the JS that deletion is closed.');
+        $this->assertStringNotContainsString('ws-delete-file', $card, 'No delete control after the deadline.');
+    }
+
+    /** The Final Report card follows the same rules as the Progress Report one. */
+    public function test_a11_final_report_v1_is_locked_and_cannot_be_deleted()
+    {
+        $lpi     = $this->activeLpi();
+        $project = $this->cleanProject(['final'], true);
+        if (!$lpi || !$project) {
+            $this->markTestSkipped('Missing LPI or clean non-student project.');
+        }
+
+        $this->setProgramDeadline($project, 'final_rpt_deadline', now()->addDays(7));
+        $this->upload($lpi, $project, 'final', 'final-v1.pdf')->assertOk();
+
+        $html = $this->actingAs($lpi)
+            ->get(route('progress.update', ['id' => $project->id]))
+            ->assertOk()
+            ->getContent();
+
+        $card = substr($html, strpos($html, 'data-type="final" data-versioned'), 4500);
+
+        $this->assertStringNotContainsString('Upload Final Report', $card, 'v1 must not be reopened.');
+        $this->assertStringNotContainsString('ws-delete-file', $card, 'A submitted final report cannot be deleted.');
+        $this->assertStringContainsString('Report submitted', $card);
+    }
+
+    /** After the admin forwards a final-report rejection, the v2 upload opens. */
+    public function test_a12_final_report_v2_opens_only_after_the_admin_forwards_the_rejection()
+    {
+        $lpi     = $this->activeLpi();
+        $project = $this->cleanProject(['final'], true);
+        if (!$lpi || !$project) {
+            $this->markTestSkipped('Missing LPI or clean non-student project.');
+        }
+
+        $this->setProgramDeadline($project, 'final_rpt_deadline', now()->addDays(7));
+        $this->upload($lpi, $project, 'final', 'final-v1.pdf')->assertOk();
+
+        // The window closes before the reviewer decides.
+        $this->setProgramDeadline($project, 'final_rpt_deadline', now()->subDay());
+
+        $project->recordStatus(Project::STATUS_FINAL_REJECTED, [
+            'rejection_type' => 'report',
+            'comment'        => 'Please revise.',
+        ], null);
+
+        // Still with the research office: no v2 yet.
+        $html = $this->actingAs($lpi)->get(route('progress.update', ['id' => $project->id]))->getContent();
+        $card = substr($html, strpos($html, 'data-type="final" data-versioned'), 4500);
+        $this->assertStringNotContainsString('Re-Upload Final Report (v2)', $card);
+
+        // Admin forwards it.
+        $project->recordStatus(Project::STATUS_FINAL_REJ_REVIEWED, [
+            'action'         => 'send_to_lpi',
+            'rejection_type' => 'report',
+        ], null);
+
+        $html = $this->actingAs($lpi)->get(route('progress.update', ['id' => $project->id]))->getContent();
+        $card = substr($html, strpos($html, 'data-type="final" data-versioned'), 4500);
+        $this->assertStringContainsString('Re-Upload Final Report (v2)', $card);
+    }
+
     public function test_a08_lpi_sees_the_progress_upload_workspace()
     {
         $lpi = $this->activeLpi();

@@ -11,9 +11,11 @@ use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 /**
- * The three emails the admin can send to an LPI when forwarding a rejected
- * report: a plain resubmission request, an ethical-approval request and an
- * "other" clarification request (the third one used to reuse the ethical mail).
+ * What the admin's "Review Rejection" forwards to the LPI, per rejection type:
+ *   report  -> resubmission e-mail (the LPI may upload a v2)
+ *   ethical -> "Ethical Approval Missing" e-mail asking for the certificate to
+ *              be sent to the research office address (no RTS upload)
+ *   other   -> nothing at all (the review is only recorded internally)
  *
  * Verified with Mail::fake() so NO real email is ever sent.
  */
@@ -92,76 +94,39 @@ class RejectionEmailTest extends TestCase
         config(['mail.enabled' => true]);
         Mail::fake();
 
-        $this->forward($project)->assertOk();
+        $this->forward($project)->assertOk()->assertJsonPath('success', true);
 
         Mail::assertQueued(GenericEmailMail::class, function (GenericEmailMail $mail) {
-            return $mail->subjectLine === 'Ethical Approval Documentation Required — '
-                    . ($mail->project['old_project_id'] ?? '') . ' (' . ($mail->project['program_title'] ?? '') . ')'
-                && $mail->heading === 'Ethical Approval Documentation Required'
+            return str_contains($mail->subjectLine, 'Ethical Approval Missing')
+                && str_contains($mail->body, GenericEmailMail::SUPPORT_EMAIL)
                 && str_contains($mail->body, 'Reason (ethical):')
-                && in_array('Upload the current ethical approval document for the project from the project page.', $mail->guidance, true);
+                && !str_contains($mail->body, 'upload')
+                && count($mail->guidance) === 1
+                && str_contains($mail->guidance[0], GenericEmailMail::SUPPORT_EMAIL);
         });
     }
 
-    public function test_other_rejection_sends_a_clarification_email_not_the_ethical_one()
+    public function test_other_rejection_sends_no_email_at_all()
     {
         $project = $this->project();
         if (!$project || !$this->admin()) {
             $this->markTestSkipped('No project/admin in the test database.');
         }
 
-        $this->assertNotNull(
-            \App\Models\EmailTemplate::findByKey('rejection_other'),
-            'The rejection_other email template must exist (see the migration).'
+        $this->rejectProgress($project, 'other');
+
+        config(['mail.enabled' => true]);
+        Mail::fake();
+
+        $this->forward($project)->assertOk()->assertJsonPath('success', true);
+
+        $this->assertCount(0, Mail::queued(GenericEmailMail::class), 'No e-mail may be queued for an "Other" rejection.');
+        $this->assertCount(0, Mail::sent(GenericEmailMail::class), 'No e-mail may be sent for an "Other" rejection.');
+
+        // The review is still recorded, so the admin's bell task clears.
+        $this->assertSame(
+            \App\Models\Project::STATUS_PROGRESS_REJ_REVIEWED,
+            $project->fresh()->currentWorkflowStatus()
         );
-
-        $this->rejectProgress($project, 'other');
-
-        config(['mail.enabled' => true]);
-        Mail::fake();
-
-        $this->forward($project)->assertOk();
-
-        Mail::assertQueued(GenericEmailMail::class, function (GenericEmailMail $mail) {
-            return $mail->heading === 'Progress Report Clarification Required'
-                && str_contains($mail->subjectLine, 'Progress Report Clarification Required')
-                && str_contains($mail->subjectLine, '— ')
-                && str_contains($mail->body, 'Reason (other):')
-                && !str_contains($mail->body, 'ethical approval documentation')
-                && !str_contains($mail->subjectLine, 'Ethical Approval')
-                && in_array('The Progress Report itself does not need to be uploaded again.', $mail->guidance, true);
-        });
-    }
-
-    public function test_other_rejection_email_uses_the_editable_template()
-    {
-        $project = $this->project();
-        if (!$project || !$this->admin()) {
-            $this->markTestSkipped('No project/admin in the test database.');
-        }
-
-        $template = \App\Models\EmailTemplate::findByKey('rejection_other');
-        if (!$template) {
-            $this->markTestSkipped('The rejection_other template is missing.');
-        }
-
-        // Admin rewrites the template from the Email Templates page.
-        $template->update([
-            'subject' => 'Custom Clarification — *old_project_id*',
-            'body'    => "Custom body for *report_label*.\n\nOffice note: *admin_message*",
-        ]);
-
-        $this->rejectProgress($project, 'other');
-
-        config(['mail.enabled' => true]);
-        Mail::fake();
-
-        $this->forward($project, 'Please clarify the budget figures.')->assertOk();
-
-        Mail::assertQueued(GenericEmailMail::class, function (GenericEmailMail $mail) use ($project) {
-            return str_starts_with($mail->subjectLine, 'Custom Clarification — ')
-                && str_contains($mail->body, 'Custom body for Progress Report.')
-                && str_contains($mail->body, 'Please clarify the budget figures.');
-        });
     }
 }

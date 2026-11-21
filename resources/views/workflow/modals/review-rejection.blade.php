@@ -78,33 +78,78 @@
         <i class="fas fa-exclamation-circle" style="margin-right:4px;"></i>
         <span id="reviewRejectionErrorText"></span>
     </div>
+
+    {{-- Sending feedback: the request also delivers the e-mail, which can take a
+         few seconds on a real SMTP host, so the dialog must look alive. --}}
+    <div id="reviewRejectionProgress" style="display:none;margin-top:14px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--color-brand-600);">
+            <i class="fas fa-circle-notch fa-spin"></i>
+            <span id="reviewRejectionProgressText">Sending the review and the e-mail to the LPI…</span>
+        </div>
+        <div style="position:relative;margin-top:8px;height:6px;border-radius:999px;background:var(--color-sand-50);border:1px solid var(--color-ink-100);overflow:hidden;">
+            <div style="position:absolute;top:0;bottom:0;width:35%;border-radius:999px;background:var(--color-brand-500);animation:reviewRejectionBar 1.2s ease-in-out infinite;"></div>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--color-ink-400);line-height:1.5;">
+            This can take a few seconds while the notification e-mail is sent.
+            Please keep this window open — it reloads automatically when the review is saved.
+        </div>
+    </div>
 </div>
 
 <div class="modal-footer" style="border:none;padding:0 24px 20px;display:flex;justify-content:flex-end;gap:8px;">
-    <button type="button" class="btn-secondary btn-sm" data-dismiss="modal">
+    <button type="button" class="btn-secondary btn-sm" id="reviewRejectionCancelBtn" data-dismiss="modal">
         <i class="fas fa-times"></i> Cancel
     </button>
-    <button type="button" class="btn-primary btn-sm" onclick="submitRejectionReview()" style="display:inline-flex;align-items:center;gap:6px;">
+    <button type="button" class="btn-primary btn-sm" id="reviewRejectionSendBtn" onclick="submitRejectionReview()" style="display:inline-flex;align-items:center;gap:6px;">
         <i class="fas fa-paper-plane"></i> Send to LPI
     </button>
 </div>
 
+<style>
+    @keyframes reviewRejectionBar {
+        0%   { left: -35%; }
+        100% { left: 100%; }
+    }
+</style>
+
 <script>
 function submitRejectionReview() {
-    var form = document.getElementById('reviewRejectionForm');
-    var formData = new FormData(form);
+    var form        = document.getElementById('reviewRejectionForm');
+    var btn         = document.getElementById('reviewRejectionSendBtn');
+    var cancelBtn   = document.getElementById('reviewRejectionCancelBtn');
+    var progress    = document.getElementById('reviewRejectionProgress');
+    var progressTxt = document.getElementById('reviewRejectionProgressText');
+    var errorDiv    = document.getElementById('reviewRejectionError');
+    var errorText   = document.getElementById('reviewRejectionErrorText');
 
-    var message = formData.get('message');
+    var formData = new FormData(form);
+    var message  = formData.get('message');
+
+    errorDiv.style.display = 'none';
+
     if (!message || !message.trim()) {
-        var errorDiv = document.getElementById('reviewRejectionError');
-        var errorText = document.getElementById('reviewRejectionErrorText');
         errorText.textContent = 'Please enter a message for the LPI.';
         errorDiv.style.display = 'block';
         return;
     }
 
-    var errorDiv = document.getElementById('reviewRejectionError');
-    errorDiv.style.display = 'none';
+    function resetButton() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send to LPI';
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+        }
+        progress.style.display = 'none';
+    }
+
+    // Lock the dialog and show the progress bar until the request finishes.
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Sending…';
+    if (cancelBtn) {
+        cancelBtn.disabled = true;
+    }
+    progressTxt.textContent = 'Sending the review and the e-mail to the LPI…';
+    progress.style.display = 'block';
 
     fetch(appUrl('/workflow/review-rejection/{{ $project->id }}'), {
         method: 'POST',
@@ -114,17 +159,30 @@ function submitRejectionReview() {
         },
         body: formData,
     })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-        if (data.success) {
-            location.reload();
-        } else {
-            document.getElementById('reviewRejectionErrorText').textContent = data.error || 'Failed to process request.';
-            errorDiv.style.display = 'block';
-        }
+    .then(function(response) {
+        return response.json().then(function(body) {
+            return { status: response.status, body: body || {} };
+        });
     })
-    .catch(function(error) {
-        document.getElementById('reviewRejectionErrorText').textContent = 'An error occurred. Please try again.';
+    .then(function(res) {
+        var data = res.body;
+
+        if (res.status >= 200 && res.status < 300 && data.success) {
+            progressTxt.textContent = 'Sent — reloading the page…';
+            location.reload();
+            return;
+        }
+
+        var firstError = data.errors ? Object.values(data.errors)[0] : null;
+        resetButton();
+        errorText.textContent = data.error
+            || (Array.isArray(firstError) ? firstError[0] : firstError)
+            || 'Failed to process request.';
+        errorDiv.style.display = 'block';
+    })
+    .catch(function() {
+        resetButton();
+        errorText.textContent = 'An error occurred. Please try again.';
         errorDiv.style.display = 'block';
     });
 }

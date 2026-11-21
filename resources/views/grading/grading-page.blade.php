@@ -923,69 +923,26 @@
 
         {{-- Tab: Ethical Approval --}}
         <div class="ws-left-tab-panel" id="ltab-ethical" style="display:{{ $defaultLeftTab === 'ltab-ethical' ? 'block' : 'none' }};">
-            @php
-                $commitEthical = $commitments->ethical ?? 0;
-                $gradingEthical = $progressGrading->ethical ?? null;
-            @endphp
-            <div class="ws-card">
-                <div class="ws-section-title">
-                    <span><i class="fas fa-shield-alt"></i> Ethical Approval Status</span>
-                </div>
-                <div style="overflow-x:auto;">
-                    <table class="ws-table">
-                        <thead>
-                            <tr>
-                                <th>Item</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td style="font-weight:500;">Committed in Proposal</td>
-                                <td>
-                                    @if($commitEthical)
-                                        <span class="ws-pill ws-pill-success">Yes</span>
-                                    @else
-                                        <span class="ws-pill ws-pill-ink">No</span>
-                                    @endif
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="font-weight:500;">Ethical Approval Document</td>
-                                <td>
-                                    @if($ethicalExists)
-                                        <span class="ws-pill ws-pill-success">Uploaded</span>
-                                    @else
-                                        <span class="ws-pill ws-pill-ink">Not Uploaded</span>
-                                    @endif
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="font-weight:500;">Reviewer Verification</td>
-                                <td>
-                                    @if($gradingEthical === 1)
-                                        <span class="ws-pill ws-pill-success">Approved</span>
-                                    @elseif($gradingEthical === 0)
-                                        <span class="ws-pill ws-pill-danger">Not Approved</span>
-                                    @else
-                                        <span class="ws-pill ws-pill-ink">Pending</span>
-                                    @endif
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
             @if($ethicalExists)
             <div class="ws-card">
                 <div class="ws-section-title">
-                    <span><i class="fas fa-file-pdf"></i> Ethical Approval Document</span>
-                    <a href="{{ route('serveFile2', ['type' => 'ethical', 'id' => $project->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
-                        <i class="fas fa-external-link-alt"></i> Open
-                    </a>
+                    <span><i class="fas fa-file-pdf"></i> Ethical Approval Document{{ $ethicalDocs->count() > 1 ? 's' : '' }}</span>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        @if($ethicalDocs->count() > 1)
+                        <select class="ws-version-select" onchange="switchVersion(this, 'ethical-iframe')" style="font-size:11px;padding:3px 6px;border:1px solid var(--ink-200);border-radius:6px;background:#fff;max-width:260px;">
+                            @foreach($ethicalDocs as $doc)
+                            <option value="{{ $doc->id }}" {{ $loop->first ? 'selected' : '' }}>{{ $doc->stored_filename }}</option>
+                            @endforeach
+                        </select>
+                        @else
+                            <span style="font-size:11px;color:var(--ink-400);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $ethicalDocs->first()->stored_filename }}</span>
+                        @endif
+                        <a href="{{ route('serveFile2', ['submission_id' => $ethicalDocs->first()->id]) }}" target="_blank" class="ws-btn ws-btn-outline" style="font-size:11px;padding:4px 8px;">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </a>
+                    </div>
                 </div>
-                <iframe class="ws-iframe" src="{{ route('serveFile2', ['type' => 'ethical', 'id' => $project->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
+                <iframe id="ethical-iframe" class="ws-iframe" src="{{ route('serveFile2', ['submission_id' => $ethicalDocs->first()->id]) }}#toolbar=0&navpanes=0&view=FitH"></iframe>
             </div>
             @else
             <div class="ws-card" style="max-width:620px;margin:16px auto;text-align:center;padding:36px 28px;">

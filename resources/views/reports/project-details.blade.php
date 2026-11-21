@@ -15,9 +15,6 @@
         <a href="{{ route('reports.project-details-export', $filters) }}" class="btn-primary btn-sm" style="text-decoration:none;">
             <i class="fas fa-file-excel"></i> Export to Excel
         </a>
-        <button onclick="window.print()" class="btn-primary btn-sm" style="flex-shrink:0;">
-            <i class="fas fa-print"></i> Print / PDF
-        </button>
     </div>
 </div>
 

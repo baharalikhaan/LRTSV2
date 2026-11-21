@@ -610,56 +610,32 @@ class WorkflowController extends Controller
             'triggered_by' => 'review-rejection',
         ], $user->id);
 
+        // "Other" rejections are handled inside the research office: the review is
+        // recorded (so the bell task clears and the reviewer can edit the grading
+        // in place) but nothing is sent to the LPI and no upload window opens.
+        if ($isOther) {
+            return response()->json([
+                'success' => true,
+                'message' => "Rejection reviewed. No e-mail is sent for an \"Other\" rejection.",
+            ]);
+        }
+
         $reportLabel = $validated['report_type'] === 'final' ? 'Final Report'
             : ($validated['report_type'] === 'progress2' ? 'Progress Report 2' : 'Progress Report');
 
-        // The "other" template already carries the project ID and research call;
-        // the other branches get that suffix appended by queueNotification().
-        $subjectIsComplete = false;
-        $heading = null;
-
         if ($isEthical) {
-            $subject = "Ethical Approval Documentation Required";
+            $officeEmail = GenericEmailMail::SUPPORT_EMAIL;
+
+            $subject = 'Ethical Approval Missing';
             $body = "Following the research office's review of the reviewer's decision on your {$reportLabel}, "
-                . "the ethical approval documentation for this project must be re-submitted.\n\n"
-                . "Reason ({$rejectionType}): {$validated['message']}";
-            $message = "Ethical approval re-send request sent to LPI.";
+                . "the ethical approval documentation for this project is missing or invalid.\n\n"
+                . "Kindly send the current ethical approval document to the research office at {$officeEmail}, "
+                . 'quoting the project ID and title.' . "\n\n"
+                . "Reason (ethical): {$validated['message']}";
+            $message = 'Request for the ethical approval document sent to LPI.';
             $guidance = [
-                'Upload the current ethical approval document for the project from the project page.',
-                "The {$reportLabel} itself does not need to be uploaded again.",
-                'The reviewer will re-evaluate the report once the document is in place.',
+                "E-mail the current ethical approval document (PDF) to the research office at {$officeEmail}.",
             ];
-        } elseif ($isOther) {
-            // "Other" is neither an ethics document nor a resubmission: the
-            // research office needs a clarification, and the report upload stays
-            // locked while the point is resolved. The wording comes from the
-            // editable template (Admin -> Email Templates), with these defaults
-            // only used if the row is missing.
-            $subject = "{$reportLabel} Clarification Required";
-            $body = "Following the research office's review of the reviewer's decision on your {$reportLabel}, "
-                . "further clarification is required before the report can be evaluated again.\n\n"
-                . "Reason (other): {$validated['message']}";
-            $message = "{$reportLabel} clarification request sent to LPI.";
-            $guidance = [
-                'Read the research office\'s clarification request above and reply with the missing information or correction.',
-                "The {$reportLabel} itself does not need to be uploaded again.",
-                'The reviewer will re-evaluate the report once the point is resolved.',
-            ];
-
-            $template = \App\Models\EmailTemplate::findByKey('rejection_other');
-            if ($template) {
-                $placeholders = $this->rejectionPlaceholders($project, $reportLabel, $rejectionType, $validated['message']);
-                $subject = $template->renderSubject($placeholders);
-                $body = $template->renderBody($placeholders);
-
-                $signature = trim($template->renderSignature($placeholders));
-                if ($signature !== '') {
-                    $body .= "\n\n" . $signature;
-                }
-
-                $subjectIsComplete = true;
-                $heading = "{$reportLabel} Clarification Required";
-            }
         } else {
             $subject = "{$reportLabel} Resubmission Required";
             $body = "Following the research office's review of the reviewer's decision, "
@@ -677,10 +653,8 @@ class WorkflowController extends Controller
         // asked of them: grant and year rows are dropped, and the VPN
         // disclaimer closes the message like the other LPI notifications.
         $this->sendNotificationToLpi($project, $user, $subject, $body, $guidance, [
-            'project_except'      => ['grant_name', 'cycle_year'],
-            'disclaimer'          => GenericEmailMail::DISCLAIMER,
-            'subject_is_complete' => $subjectIsComplete,
-            'heading'             => $heading,
+            'project_except' => ['grant_name', 'cycle_year'],
+            'disclaimer'     => GenericEmailMail::DISCLAIMER,
         ]);
 
         return response()->json(['success' => true, 'message' => $message]);
@@ -803,9 +777,7 @@ class WorkflowController extends Controller
             return;
         }
 
-        $subject = !empty($options['subject_is_complete'])
-            ? $baseSubject
-            : $this->notificationSubject($project, $baseSubject);
+        $subject = $this->notificationSubject($project, $baseSubject);
 
         try {
             Mail::to($recipient->email)->queue(new GenericEmailMail(
@@ -818,7 +790,7 @@ class WorkflowController extends Controller
                 [
                     // The heading stays the human part of the subject, without
                     // the "— ID (call)" suffix.
-                    'heading'       => $options['heading'] ?? $baseSubject,
+                    'heading'       => $baseSubject,
                     'project'       => GenericEmailMail::projectContext(
                         $project,
                         $options['project_except'] ?? []
@@ -842,39 +814,6 @@ class WorkflowController extends Controller
         } catch (\Exception $e) {
             \Log::error("Failed to send notification to {$recipient->email}: " . $e->getMessage());
         }
-    }
-
-    /**
-     * Placeholder data for the forwarded-rejection template
-     * (EmailTemplate key: rejection_other).
-     */
-    private function rejectionPlaceholders(Project $project, string $reportLabel, string $rejectionType, string $adminMessage): array
-    {
-        $program = $project->program;
-        $lpi     = $project->lpi;
-
-        $grantTitle = '';
-        if ($program) {
-            if ($program->grant && $program->grant->grant_name) {
-                $grantTitle = $program->grant->grant_name;
-            } elseif ($program->program_title) {
-                $grantTitle = $program->program_title;
-            }
-        }
-
-        return [
-            '*name*'           => $lpi->name ?? '',
-            '*email*'          => $lpi->email ?? '',
-            '*old_project_id*' => $project->old_project_id ?: $project->id,
-            '*project_title*'  => $project->title ?? '',
-            '*program_title*'  => $program->program_title ?? '',
-            '*cycle*'          => $program && $program->cycle ? ($program->cycle->year ?? '') : '',
-            '*grant_title*'    => $grantTitle,
-            '*link*'           => route('projects.show', $project->id),
-            '*report_label*'   => $reportLabel,
-            '*rejection_type*' => $rejectionType,
-            '*admin_message*'  => $adminMessage,
-        ];
     }
 
     /**
