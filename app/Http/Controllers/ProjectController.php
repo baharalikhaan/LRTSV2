@@ -170,6 +170,21 @@ class ProjectController extends Controller
             'submissions',
         ])->findOrFail($id);
 
+        // Only the administrator, the project's own lead PI and reviewers
+        // assigned to it may open the project sheet (it carries the grading
+        // remarks and, for the admin, reviewer identities).
+        $user = auth()->user();
+        $isAssignedReviewer = $user && DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$user->isAdmin()
+            && (int) $project->lpi_id !== (int) $user->id
+            && !$isAssignedReviewer) {
+            abort(403, 'You do not have access to this project.');
+        }
+
         // Compute commitments vs outcomes for the view
         $commitment = $project->commitments()->first();
         $hasCommitments = $commitment && (
@@ -216,6 +231,20 @@ class ProjectController extends Controller
             'contributions',
             'submissions',
         ])->findOrFail($id);
+
+        // The report card exposes the full evaluation of a project, so only the
+        // administrator, the project's LPI and its assigned reviewers may open it.
+        $user = auth()->user();
+        $isAssignedReviewer = $user && DB::table('projects_reviewers')
+            ->where('project_id', $project->id)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$user->isAdmin()
+            && (int) $project->lpi_id !== (int) $user->id
+            && !$isAssignedReviewer) {
+            abort(403, 'You do not have access to this report card.');
+        }
 
         $commitment = $project->commitments()->first();
         $finalGradings = \App\Models\FinalReportGrading::with('user')
@@ -665,6 +694,12 @@ class ProjectController extends Controller
 
     public function reviewerAssignment(Request $request)
     {
+        // This page lists reviewers by name (and exposes their e-mail in the
+        // picker), so it is an administrator-only screen.
+        if (!auth()->user()->isAdmin()) {
+            abort(403, 'Access denied. Admin only.');
+        }
+
         $cycleId = $request->input('cycle_id');
         $programId = $request->input('program_id');
         $assignment = $request->input('assignment');

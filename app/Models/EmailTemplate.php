@@ -71,6 +71,14 @@ class EmailTemplate extends Model
             'subject'  => 'Final Report Evaluated — *old_project_id* (*program_title*)',
             'body'     => "Your final report has been evaluated.\n\nYou can view the report card from the project page.",
         ],
+        // Forwarded to the LPI when the admin reviews a rejection whose type is
+        // "Other" — neither a resubmission nor an ethics document is expected.
+        'rejection_other' => [
+            'name'     => 'Report Rejection — Other (LPI)',
+            'category' => 'notification',
+            'subject'  => '*report_label* Clarification Required — *old_project_id* (*program_title*)',
+            'body'     => "Following the research office's review of the reviewer's decision on your *report_label*, further clarification is required before the report can be evaluated again.\n\nReason (*rejection_type*): *admin_message*",
+        ],
     ];
 
     /**
@@ -101,10 +109,14 @@ class EmailTemplate extends Model
             '*email*'          => 'Recipient email',
             '*old_project_id*' => 'Project ID',
             '*project_title*'  => 'Project title',
+            '*program_title*'  => 'Research call title',
             '*cycle*'          => 'Cycle year',
             '*deadline*'       => 'Deadline date',
             '*grant_title*'    => 'Grant title',
             '*link*'           => 'Action link',
+            '*report_label*'   => 'Report name (Progress Report / Progress Report 2 / Final Report)',
+            '*rejection_type*' => 'Rejection type (report / ethical / other)',
+            '*admin_message*'  => 'Message written by the research office',
         ];
     }
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -110,6 +111,16 @@ class ProjectPrintableTest extends TestCase
         if (!$reviewer || !$project) {
             $this->markTestSkipped('Need a reviewer-only account and a project.');
         }
+
+        // The project sheet is scoped to its LPI, its assigned reviewers and
+        // admins — assign the reviewer first.
+        DB::table('projects_reviewers')->insert([
+            'project_id' => $project->id,
+            'user_id'    => $reviewer->id,
+            'role'       => 'Reviewer',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $html = $this->actingAs($reviewer)
             ->get(route('projects.printable', ['id' => $project->id]))

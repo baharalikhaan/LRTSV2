@@ -6,7 +6,7 @@ use App\Models\EmailTemplate;
 use Illuminate\Console\Command;
 
 /**
- * The eight system event templates live in the database (so administrators can
+ * The system event templates live in the database (so administrators can
  * edit them), which means a code deployment does not update their wording.
  * This command brings those rows in line with EmailTemplate::EVENTS.
  *
@@ -19,7 +19,7 @@ class SyncEventEmailTemplates extends Command
                             {--dry-run : Only report what would change}
                             {--force   : Overwrite templates whose text differs}';
 
-    protected $description = 'Create or update the eight system event email templates from EmailTemplate::EVENTS';
+    protected $description = 'Create or update the system event email templates from EmailTemplate::EVENTS';
 
     public function handle(): int
     {

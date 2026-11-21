@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -32,6 +33,16 @@ class WorkflowModalTest extends TestCase
         if (!$reviewer || !$project) {
             $this->markTestSkipped('Missing reviewer or project in test database.');
         }
+
+        // The claim dialog is only for reviewers actually assigned to the
+        // project (the endpoint refuses everyone else).
+        DB::table('projects_reviewers')->insert([
+            'project_id' => $project->id,
+            'user_id'    => $reviewer->id,
+            'role'       => 'Reviewer',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $res = $this->actingAs($reviewer)
             ->get("/workflow/modal/accept-proposal/{$project->id}");

@@ -669,7 +669,7 @@
                 @foreach($progressGradings as $g)
                 <div style="padding:10px 12px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:8px; margin-bottom:8px;">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <span style="font-weight:600; color:var(--ink-800); font-size:12.5px;">{{ $g->user->name ?? 'Reviewer' }}</span>
+                        <span style="font-weight:600; color:var(--ink-800); font-size:12.5px;">{{ auth()->user()->isAdmin() ? ($g->user->name ?? 'Reviewer') : 'Reviewer' }}</span>
                         <span class="pill {{ $g->isAccepted == 1 ? 'success' : 'danger' }}" style="flex-shrink:0;">
                             {{ $g->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
                         </span>
@@ -708,7 +708,7 @@
                 @foreach($progress2Gradings as $g)
                 <div style="padding:10px 12px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:8px; margin-bottom:8px;">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <span style="font-weight:600; color:var(--ink-800); font-size:12.5px;">{{ $g->user->name ?? 'Reviewer' }}</span>
+                        <span style="font-weight:600; color:var(--ink-800); font-size:12.5px;">{{ auth()->user()->isAdmin() ? ($g->user->name ?? 'Reviewer') : 'Reviewer' }}</span>
                         <span class="pill {{ $g->isAccepted == 1 ? 'success' : 'danger' }}" style="flex-shrink:0;">
                             {{ $g->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
                         </span>
@@ -755,7 +755,7 @@
                 @endphp
                 <div style="padding:10px 12px; background:var(--sand-50); border:1px solid var(--ink-100); border-radius:8px; margin-bottom:8px;">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                        <span style="font-weight:600; color:var(--ink-800); font-size:12.5px;">{{ $g->user->name ?? 'Reviewer' }}</span>
+                        <span style="font-weight:600; color:var(--ink-800); font-size:12.5px;">{{ auth()->user()->isAdmin() ? ($g->user->name ?? 'Reviewer') : 'Reviewer' }}</span>
                         <span class="pill {{ $g->isAccepted == 1 ? 'success' : 'danger' }}" style="flex-shrink:0;">
                             {{ $g->isAccepted == 1 ? 'Accepted' : 'Rejected' }}
                         </span>
