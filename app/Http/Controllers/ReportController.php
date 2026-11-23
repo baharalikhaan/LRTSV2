@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Models\ReportReminderSent;
 use App\Services\CycleProgressReportService;
 use App\Services\ProjectDetailsReportService;
+use App\Services\GradingDetailsReportService;
+use App\Services\ReportFilterOptions;
 use App\Mail\ProjectReminderMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -662,7 +664,9 @@ class ReportController extends Controller
     /**
      * Project Details Report — every piece of information about every project,
      * flattened into a single record per project (one row) and exportable
-     * to Excel. The user picks which fields are shown / exported.
+     * to Excel. The user picks which fields are shown / exported, and the
+     * filter bar is the same one the Grading Details report uses: category,
+     * cycle, research call, grant and a project search, cascading downwards.
      */
     public function projectDetailsReport(Request $request)
     {
@@ -674,25 +678,33 @@ class ReportController extends Controller
             session([self::FIELD_SESSION_KEY => $requested]);
 
             return redirect()->route('reports.project-details', array_filter(
-                $request->only(['cycle_id', 'grant_id', 'program_id', 'status']),
+                $request->only(['category', 'cycle_id', 'program_id', 'grant_id', 'q']),
                 fn($v) => $v !== null && $v !== ''
             ));
         }
 
         $filters = $this->projectDetailsFilters($request);
+
+        // Cascading filters: category → cycle → research call → grant.
+        $options = ReportFilterOptions::forProjects($filters);
+
+        if ($this->cascadeChanged($filters, $options['filters'])) {
+            return redirect()->route('reports.project-details', array_filter([
+                'category'   => $filters['category'] === 'all' ? null : $filters['category'],
+                'cycle_id'   => $options['filters']['cycle_id'],
+                'program_id' => $options['filters']['program_id'],
+                'grant_id'   => $options['filters']['grant_id'],
+                'q'          => $filters['q'],
+            ], fn($v) => $v !== null && $v !== ''));
+        }
+
         $selectedFields = session(self::FIELD_SESSION_KEY) ?: ProjectDetailsReportService::DEFAULT_FIELDS;
 
         $data = ProjectDetailsReportService::build($filters, $selectedFields);
 
-        $cycles = CycleConfig::orderBy('year', 'desc')->get();
-        $grants = Grant::orderBy('grant_code')->get();
-        $programs = Program::with('cycleConfig')->orderByDesc('id')->get();
-        $statuses = \App\Models\StatusHistory::select('status')
-            ->distinct()
-            ->orderBy('status')
-            ->pluck('status')
-            ->filter()
-            ->values();
+        $cycles = $options['cycles'];
+        $programs = $options['programs'];
+        $grants = $options['grants'];
 
         $groups = [];
         $sourceMeta = ProjectDetailsReportService::sources();
@@ -707,7 +719,7 @@ class ReportController extends Controller
         $headerGroups = ProjectDetailsReportService::groups($data['columns']);
 
         return view('reports.project-details', compact(
-            'data', 'cycles', 'grants', 'programs', 'statuses', 'filters',
+            'data', 'cycles', 'grants', 'programs', 'filters',
             'selectedFields', 'groups', 'headerGroups'
         ));
     }
@@ -748,14 +760,166 @@ class ReportController extends Controller
 
     /**
      * Normalise the filters accepted by the Project Details Report.
+     *
+     * @return array{category:string, cycle_id:mixed, program_id:mixed, grant_id:mixed, q:?string}
      */
     private function projectDetailsFilters(Request $request): array
     {
-        return array_filter([
-            'cycle_id' => $request->input('cycle_id'),
-            'grant_id' => $request->input('grant_id'),
-            'program_id' => $request->input('program_id'),
-            'status' => $request->input('status'),
-        ], fn($v) => $v !== null && $v !== '');
+        $category = $request->input('category');
+
+        return [
+            'category'   => in_array($category, ['regular', 'student'], true) ? $category : 'all',
+            'cycle_id'   => $request->input('cycle_id') ?: null,
+            'program_id' => $request->input('program_id') ?: null,
+            'grant_id'   => $request->input('grant_id') ?: null,
+            'q'          => trim((string) $request->input('q')) ?: null,
+        ];
+    }
+
+    /**
+     * Grading Details Report — reviewer feedback + outcomes per project, with a
+     * category selector next to the column picker (all projects / regular /
+     * student). Both categories share the same columns (student grants are
+     * graded and report outcomes through the same tables); the category scopes
+     * the rows, the cascading filters and the exported worksheets.
+     */
+    public function gradingDetailsReport(Request $request)
+    {
+        $filters = $this->gradingDetailsFilters($request);
+        $category = $filters['category'];
+        $sessionKey = $this->gradingFieldsSessionKey($category);
+
+        $requested = $this->sanitizeGradingFields($request->input('fields'));
+
+        if ($requested) {
+            // Remember the chosen columns and keep the URL readable.
+            session([$sessionKey => $requested]);
+
+            return redirect()->route('reports.grading-details', array_filter(
+                $request->only(['category', 'cycle_id', 'program_id', 'grant_id', 'q']),
+                fn ($value) => $value !== null && $value !== ''
+            ));
+        }
+
+        // Cascading filters: category → cycle → research call → grant. Anything
+        // selected outside its parent's scope is dropped (and the URL cleaned).
+        $options = ReportFilterOptions::forProjects($filters);
+
+        if ($this->cascadeChanged($filters, $options['filters'])) {
+            return redirect()->route('reports.grading-details', array_filter([
+                'category'   => $category === 'all' ? null : $category,
+                'cycle_id'   => $options['filters']['cycle_id'],
+                'program_id' => $options['filters']['program_id'],
+                'grant_id'   => $options['filters']['grant_id'],
+                'q'          => $filters['q'],
+            ], fn ($value) => $value !== null && $value !== ''));
+        }
+
+        $data = GradingDetailsReportService::build($filters);
+
+        $rows = match ($category) {
+            'regular' => $data['regular'],
+            'student' => $data['student'],
+            default   => $data['all'],
+        };
+
+        $selectedFields = $this->gradingSelectedFields(session($sessionKey));
+
+        return view('reports.grading-details', [
+            'pageTitle'      => 'Grading Details Report',
+            'filters'        => $filters,
+            'rows'           => $rows,
+            'totals'         => $data['totals'],
+            'cycles'         => $options['cycles'],
+            'programs'       => $options['programs'],
+            'grants'         => $options['grants'],
+            'allGroups'      => GradingDetailsReportService::groups(),
+            'visibleGroups'  => GradingDetailsReportService::groupsFor($selectedFields),
+            'selectedFields' => $selectedFields,
+            'selectedCount'  => count($selectedFields),
+            'totalColumns'   => count(GradingDetailsReportService::allFields()),
+            'recommended'    => GradingDetailsReportService::recommendedFields(),
+        ]);
+    }
+
+    /** Did the cascade have to drop/change a child filter? */
+    private function cascadeChanged(array $filters, array $resolved): bool
+    {
+        foreach (['cycle_id', 'program_id', 'grant_id'] as $key) {
+            if ((string) ($filters[$key] ?? '') !== (string) ($resolved[$key] ?? '')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function gradingDetailsExport(Request $request)
+    {
+        $filters = $this->gradingDetailsFilters($request);
+        $category = $filters['category'];
+
+        $selected = $this->sanitizeGradingFields($request->input('fields'))
+            ?: $this->gradingSelectedFields(session($this->gradingFieldsSessionKey($category)));
+
+        $data = GradingDetailsReportService::build($filters);
+
+        if ($category === 'student') {
+            $sheets = [['title' => 'Student Grants', 'rows' => $data['student']]];
+            $prefix = 'student-grading-details';
+        } elseif ($category === 'regular') {
+            $sheets = [['title' => 'Regular Grants', 'rows' => $data['regular']]];
+            $prefix = 'regular-grading-details';
+        } else {
+            $sheets = [
+                ['title' => 'Regular Grants', 'rows' => $data['regular']],
+                ['title' => 'Student Grants', 'rows' => $data['student']],
+            ];
+            $prefix = 'grading-details';
+        }
+
+        return GradingDetailsReportService::exportExcelSheets($sheets, $prefix, $selected);
+    }
+
+    /** Column selection is remembered per category (each can keep its own view). */
+    private function gradingFieldsSessionKey(string $category): string
+    {
+        return 'reports.grading_details.fields.' . ($category === 'student' ? 'student' : 'regular');
+    }
+
+    /** Stored selection, hardened against the report's column list. */
+    private function gradingSelectedFields($stored): array
+    {
+        $selected = is_array($stored)
+            ? array_values(array_intersect($stored, GradingDetailsReportService::allFields()))
+            : [];
+
+        return $selected ?: GradingDetailsReportService::defaultFields();
+    }
+
+    /** Keep only the column keys the grading report knows about. */
+    private function sanitizeGradingFields($fields): array
+    {
+        if (!is_array($fields)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_intersect(
+            $fields,
+            GradingDetailsReportService::allFields()
+        )));
+    }
+
+    private function gradingDetailsFilters(Request $request): array
+    {
+        $category = $request->input('category');
+
+        return [
+            'category'   => in_array($category, ['regular', 'student'], true) ? $category : 'all',
+            'cycle_id'   => $request->input('cycle_id') ?: null,
+            'program_id' => $request->input('program_id') ?: null,
+            'grant_id'   => $request->input('grant_id') ?: null,
+            'q'          => trim((string) $request->input('q')) ?: null,
+        ];
     }
 }

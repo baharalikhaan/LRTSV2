@@ -225,8 +225,8 @@
                     @endif
                 </div>
                 <div style="position:relative;">
-                    <textarea name="commentA" rows="2" class="ws-input" style="font-size:11px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentA', $fg->commentA ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="commentA" rows="6" class="ws-input" style="font-size:11px;padding-right:50px;min-height:130px;resize:vertical;" maxlength="1500" placeholder="comments upto 1500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentA', $fg->commentA ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 
@@ -354,8 +354,8 @@
                     @endif
                 </div>
                 <div style="position:relative;">
-                    <textarea name="commentB" rows="2" class="ws-input" style="font-size:11px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentB', $fg->commentB ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="commentB" rows="6" class="ws-input" style="font-size:11px;padding-right:50px;min-height:130px;resize:vertical;" maxlength="1500" placeholder="comments upto 1500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentB', $fg->commentB ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 
@@ -543,8 +543,8 @@
                     @endif
                 </div>
                 <div style="position:relative;">
-                    <textarea name="commentC" rows="2" class="ws-input" style="font-size:11px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentC', $fg->commentC ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="commentC" rows="6" class="ws-input" style="font-size:11px;padding-right:50px;min-height:130px;resize:vertical;" maxlength="1500" placeholder="comments upto 1500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentC', $fg->commentC ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 
@@ -570,8 +570,8 @@
                     </div>
                 </div>
                 <div style="position:relative;">
-                    <textarea name="commentD" rows="2" class="ws-input" style="font-size:11px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentD', $fg->commentD ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="commentD" rows="6" class="ws-input" style="font-size:11px;padding-right:50px;min-height:130px;resize:vertical;" maxlength="1500" placeholder="comments upto 1500 characters (optional)" oninput="updateCharCount(this)">{{ old('commentD', $fg->commentD ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 

@@ -312,8 +312,8 @@
                 </div>
 
                 <div style="position:relative;">
-                    <textarea name="achievementsComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="progress report 1" oninput="updateCharCount(this)">{{ old('achievementsComments', $d->achievementsComments ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="achievementsComments" rows="6" class="ws-input" style="font-size:12px;padding-right:50px;min-height:140px;resize:vertical;" maxlength="1500" placeholder="progress report 1" oninput="updateCharCount(this)">{{ old('achievementsComments', $d->achievementsComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 
@@ -334,8 +334,8 @@
                 </div>
 
                 <div style="position:relative;">
-                    <textarea name="publicationsComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('publicationsComments', $d->publicationsComments ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="publicationsComments" rows="6" class="ws-input" style="font-size:12px;padding-right:50px;min-height:140px;resize:vertical;" maxlength="1500" placeholder="comments upto 1500 characters (optional)" oninput="updateCharCount(this)">{{ old('publicationsComments', $d->publicationsComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 
@@ -356,8 +356,8 @@
                 </div>
 
                 <div style="position:relative;">
-                    <textarea name="studentsComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('studentsComments', $d->studentsComments ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="studentsComments" rows="6" class="ws-input" style="font-size:12px;padding-right:50px;min-height:140px;resize:vertical;" maxlength="1500" placeholder="comments upto 1500 characters (optional)" oninput="updateCharCount(this)">{{ old('studentsComments', $d->studentsComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 
@@ -396,8 +396,8 @@
                 </div>
 
                 <div style="position:relative;">
-                    <textarea name="budgetComments" rows="2" class="ws-input" style="font-size:12px;padding-right:50px;" maxlength="500" placeholder="comments upto 500 characters (optional)" oninput="updateCharCount(this)">{{ old('budgetComments', $d->budgetComments ?? '') }}</textarea>
-                    <span class="ws-char-count">0/500</span>
+                    <textarea name="budgetComments" rows="6" class="ws-input" style="font-size:12px;padding-right:50px;min-height:140px;resize:vertical;" maxlength="1500" placeholder="comments upto 1500 characters (optional)" oninput="updateCharCount(this)">{{ old('budgetComments', $d->budgetComments ?? '') }}</textarea>
+                    <span class="ws-char-count">0/1500</span>
                 </div>
             </div>
 

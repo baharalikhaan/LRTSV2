@@ -12,7 +12,7 @@
         </p>
     </div>
     <div class="page-actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <a href="{{ route('reports.project-details-export', $filters) }}" class="btn-primary btn-sm" style="text-decoration:none;">
+        <a href="{{ route('reports.project-details-export', array_filter($filters, fn ($v) => !in_array($v, [null, '', 'all'], true))) }}" class="btn-primary btn-sm" style="text-decoration:none;">
             <i class="fas fa-file-excel"></i> Export to Excel
         </a>
     </div>
@@ -34,54 +34,12 @@
     $selectedCount = count($selectedFields);
 @endphp
 
-<div class="panel">
-    <div class="panel-head">
-        <div class="panel-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <form method="GET" class="filter-bar" id="filterForm" style="flex:1;margin-bottom:0;">
-                <div class="filter-row">
-                <div class="filter-group">
-                    <label>Cycle:</label>
-                    <select name="cycle_id" id="cycleFilter">
-                        <option value="">All Cycles</option>
-                        @foreach($cycles as $cycle)
-                            <option value="{{ $cycle->id }}" {{ (($filters['cycle_id'] ?? '') == $cycle->id) ? 'selected' : '' }}>{{ $cycle->year }} &mdash; {{ $cycle->title }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Grant:</label>
-                    <select name="grant_id" id="grantFilter">
-                        <option value="">All Grants</option>
-                        @foreach($grants as $grant)
-                            <option value="{{ $grant->id }}" {{ (($filters['grant_id'] ?? '') == $grant->id) ? 'selected' : '' }}>{{ $grant->grant_code }} &mdash; {{ $grant->grant_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Research Call:</label>
-                    <select name="program_id" id="programFilter">
-                        <option value="">All Research Calls</option>
-                        @foreach($programs as $program)
-                            <option value="{{ $program->id }}" {{ (($filters['program_id'] ?? '') == $program->id) ? 'selected' : '' }}>{{ $program->program_title }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Status:</label>
-                    <select name="status" id="statusFilter">
-                        <option value="">All Statuses</option>
-                        @foreach($statuses as $status)
-                            <option value="{{ $status }}" {{ (($filters['status'] ?? '') === $status) ? 'selected' : '' }}>{{ str_replace('_', ' ', $status) }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Search:</label>
-                    <input type="text" id="tableSearch" placeholder="Search title, ID, LPI..." class="search-input">
-                </div>
-                </div>
-
-                {{-- Field picker: multi-select of the report fields (own row) --}}
+<div class="panel" style="overflow:visible;">
+    <div class="panel-head" style="overflow:visible;">
+        <form method="GET" id="projectFilterForm" action="{{ route('reports.project-details') }}" style="width:100%;">
+            {{-- Field picker + category (own row) --}}
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px;">
+                {{-- Field picker: multi-select of the report fields --}}
                 <div class="field-picker" id="fieldPicker">
                     <button type="button" class="field-picker-toggle" id="fieldPickerToggle" aria-haspopup="true" aria-expanded="false">
                         <i class="fas fa-table-columns"></i>
@@ -131,8 +89,71 @@
                         </div>
                     </div>
                 </div>
-            </form>
-        </div>
+
+                <div style="display:flex;align-items:center;gap:7px;">
+                    <label for="category" style="font-size:10px;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:.05em;">Category</label>
+                    <select name="category" id="category"
+                            style="padding:5px 8px;border:1px solid var(--ink-200);border-radius:6px;font-size:12px;background:#fff;min-width:150px;">
+                        <option value="all" {{ ($filters['category'] ?? 'all') === 'all' ? 'selected' : '' }}>All projects</option>
+                        <option value="regular" {{ ($filters['category'] ?? 'all') === 'regular' ? 'selected' : '' }}>Regular grants</option>
+                        <option value="student" {{ ($filters['category'] ?? 'all') === 'student' ? 'selected' : '' }}>Student grants</option>
+                    </select>
+                </div>
+
+                <span style="font-size:10.5px;color:var(--ink-400);">
+                    Filters cascade (category → cycle → research call → grant); “Export to Excel” writes exactly the selected fields.
+                </span>
+            </div>
+
+            {{-- Filters --}}
+            <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;">
+                <div>
+                    <label for="cycle_id" style="display:block;font-size:10px;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Cycle</label>
+                    <select name="cycle_id" id="cycle_id" style="padding:5px 8px;border:1px solid var(--ink-200);border-radius:6px;font-size:12px;background:#fff;min-width:150px;">
+                        <option value="">All cycles</option>
+                        @foreach($cycles as $cycle)
+                            <option value="{{ $cycle->id }}" {{ (string) ($filters['cycle_id'] ?? '') === (string) $cycle->id ? 'selected' : '' }}>
+                                {{ $cycle->year }} — {{ $cycle->title }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div>
+                    <label for="program_id" style="display:block;font-size:10px;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Research call</label>
+                    <select name="program_id" id="program_id" style="padding:5px 8px;border:1px solid var(--ink-200);border-radius:6px;font-size:12px;background:#fff;min-width:220px;">
+                        <option value="">All research calls</option>
+                        @foreach($programs as $program)
+                            <option value="{{ $program->id }}" {{ (string) ($filters['program_id'] ?? '') === (string) $program->id ? 'selected' : '' }}>
+                                {{ $program->program_title }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div>
+                    <label for="grant_id" style="display:block;font-size:10px;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Grant</label>
+                    <select name="grant_id" id="grant_id" style="padding:5px 8px;border:1px solid var(--ink-200);border-radius:6px;font-size:12px;background:#fff;min-width:200px;">
+                        <option value="">All grants</option>
+                        @foreach($grants as $grant)
+                            <option value="{{ $grant->id }}" {{ (string) ($filters['grant_id'] ?? '') === (string) $grant->id ? 'selected' : '' }}>
+                                {{ $grant->grant_code }}{{ $grant->grant_name ? ' — ' . $grant->grant_name : '' }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div>
+                    <label for="q" style="display:block;font-size:10px;font-weight:700;color:var(--ink-500);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Search</label>
+                    <input type="text" name="q" id="q" value="{{ $filters['q'] ?? '' }}" placeholder="Project ID or title"
+                           style="padding:5px 8px;border:1px solid var(--ink-200);border-radius:6px;font-size:12px;background:#fff;min-width:190px;">
+                </div>
+
+                <button type="submit" class="btn-primary btn-sm" style="height:30px;"><i class="fas fa-filter"></i> Apply</button>
+                <a href="{{ route('reports.project-details') }}"
+                   style="font-size:11px;color:var(--ink-400);text-decoration:none;padding-bottom:7px;">Clear</a>
+            </div>
+        </form>
     </div>
 
     <div class="panel-body">
@@ -189,79 +210,12 @@
 @endsection
 
 @push('styles')
+@include('reports.partials.report-table', ['tableId' => 'projectDetailsTable', 'nowrapCells' => true])
 <style>
 .fluent-alert{padding:10px 14px;border-radius:6px;font-size:12.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
 .fluent-alert--error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;}
-#projectDetailsTable td,#projectDetailsTable th{padding:8px 10px !important;vertical-align:middle;white-space:nowrap;}
-/* The table is much wider than the screen: keep it scrolling inside the panel
-   instead of stretching the grid column (and the sidebar) with it. The pane
-   scrolls vertically too, so both header rows can stay pinned. */
-.report-table-scroll{
-    overflow:auto;
-    contain:inline-size;
-    max-width:100%;
-    max-height:calc(100vh - 250px);
-}
-/* separate borders are needed for the sticky header rows */
-#projectDetailsTable{border-collapse:separate;border-spacing:0;}
-/* grouped second header row */
-#projectDetailsTable thead tr.group-header-row th{
-    background-color:var(--sand-50,#faf7f0);
-    font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
-    color:var(--brand-700,#63102b);text-align:center;
-    padding:6px 10px !important;white-space:nowrap;
-    border-top:1px solid var(--brand-500,#8d1b3d);
-    border-bottom:1px solid var(--brand-500,#8d1b3d);
-    position:sticky;top:0;z-index:3;
-}
-/* hairline between neighbouring groups */
-#projectDetailsTable thead tr.group-header-row th + th{
-    border-left:1px solid rgba(141,27,61,.28);
-}
-/* maroon hairline under the column-name row (the primary header).
-   background-color (not the background shorthand) so DataTables' sorting
-   arrow background image survives. */
-#projectDetailsTable thead tr:not(.group-header-row) th{
-    background-color:var(--sand-100,#f2ead6);
-    border-bottom:1px solid var(--brand-500,#8d1b3d);
-    position:sticky;top:var(--group-header-h,28px);z-index:2;
-}
-/* keep the header rules and their tint when printed */
-#projectDetailsTable thead th{
-    -webkit-print-color-adjust:exact;print-color-adjust:exact;
-}
-
-/* The Project ID column stays pinned on the left while scrolling sideways,
-   so every row can still be identified. */
-#projectDetailsTable thead tr.group-header-row th:first-child{
-    position:sticky;left:0;z-index:4;
-    background-color:var(--sand-50,#faf7f0);
-    border-left:none;
-}
-#projectDetailsTable thead tr:not(.group-header-row) th:first-child{
-    position:sticky;left:0;z-index:3;
-    background-color:var(--sand-100,#f2ead6);
-}
-#projectDetailsTable tbody td:first-child{
-    position:sticky;left:0;z-index:1;
-    background-color:#fff;
-    border-right:1px solid var(--ink-100,#eee);
-}
-/* The pinned cell must be opaque, so the striped and hover tints are
-   applied as solid colours (the app's rgba tints would let the
-   scrolling content bleed through). */
-#projectDetailsTable tbody tr:nth-child(even) td:first-child{
-    background-color:#faf7f0;
-}
-#projectDetailsTable tbody tr:hover td:first-child{
-    background-color:#fbeef1;
-}
 
 /* ---- field picker ---- */
-.filter-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;width:100%;}
-/* The table is much wider than the screen: keep it scrolling inside the panel
-   instead of stretching the grid column (and the sidebar) with it. */
-.report-table-scroll{overflow-x:auto;contain:inline-size;max-width:100%;}
 .field-picker{position:relative;display:inline-block;}
 .field-picker-toggle{
     display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--ink-200,#e3e0e6);
@@ -316,10 +270,6 @@
 @media print{
     .no-print,.fluent-command-bar,.fluent-sidebar,.fluent-footer,.sidebar-overlay,.fluent-dropdown,.app-shell>aside,.btn-primary,.page-actions,.dataTables_wrapper .dt-buttons,.dataTables_filter,.dataTables_paginate,.dataTables_info,.dataTables_length,.icon-btn,.cmd-search,.role-switcher,.notif-dot,#notifDropdown,#userDropdown,.fluent-alert,#workflowModal,.modal,.modal-backdrop,.toastify,.field-picker{display:none!important;}
     .app-shell,.fluent-content,.fluent-content-body{margin:0!important;padding:0!important;max-width:100%!important;width:100%!important;display:block!important;background:#fff!important;border:none!important;box-shadow:none!important;overflow:visible!important;}
-    /* let the table flow over the printed pages again */
-    .report-table-scroll{max-height:none!important;overflow:visible!important;}
-    #projectDetailsTable thead th,#projectDetailsTable tbody td{position:static!important;}
-    #projectDetailsTable thead{display:table-header-group;}
 }
 </style>
 @endpush
@@ -327,10 +277,10 @@
 @push('scripts')
 <script>
 $(document).ready(function() {
-    var table = $('#projectDetailsTable').DataTable({
-        // No 'B' (buttons) and an empty button list: the report has its own
-        // "Export to Excel" action, so the grid's Copy/CSV/Excel/PDF/Print
-        // buttons are not wanted here.
+    // DataTable (same config as the Grading Details report). No 'B' (buttons)
+    // and an empty button list: the report has its own "Export to Excel"
+    // action, so the grid's Copy/CSV/Excel/PDF/Print buttons are not wanted.
+    $('#projectDetailsTable').DataTable({
         dom: 'rt<"bottom"lip>',
         buttons: [],
         order: [],
@@ -362,14 +312,12 @@ $(document).ready(function() {
         new ResizeObserver(syncStickyOffset).observe(thead.get(0));
     }
 
-    $('#tableSearch').on('keyup', function() {
-        table.search(this.value).draw();
-    });
-
-    ['#cycleFilter', '#grantFilter', '#programFilter', '#statusFilter'].forEach(function(sel) {
-        $(sel).on('change', function() {
-            $('#filterForm').submit();
-        });
+    // ---- cascading filters (category → cycle → research call → grant) ----
+    // Each change reloads so the child lists are rebuilt from the parent; the
+    // field picker's unapplied edits are not submitted with the reload.
+    $('#category, #cycle_id, #program_id, #grant_id').on('change', function() {
+        panel.find('input[name="fields[]"]').prop('disabled', true);
+        $('#projectFilterForm').trigger('submit');
     });
 
     // ---------------- field picker ----------------
@@ -458,7 +406,7 @@ $(document).ready(function() {
         }
         // The checkboxes already carry name="fields[]", so submitting the form
         // sends the selection; the controller stores it and cleans the URL.
-        $('#filterForm').submit();
+        $('#projectFilterForm').submit();
     });
 
     $(document).on('click', function(e) {

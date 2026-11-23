@@ -1629,14 +1629,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // ─── Character counter for textareas ───
     window.updateCharCount = function(textarea) {
         var counter = textarea.parentElement.querySelector('.ws-char-count');
-        if (counter) {
-            var len = textarea.value.length;
-            counter.textContent = len + '/500';
-            counter.style.color = len > 450 ? 'var(--danger)' : len > 400 ? '#d97706' : 'var(--ink-400)';
+        if (!counter) { return; }
+        var max = parseInt(textarea.getAttribute('maxlength'), 10) || 0;
+        var len = textarea.value.length;
+        counter.textContent = max ? len + '/' + max : String(len);
+        if (max) {
+            counter.style.color = len > max * 0.9 ? 'var(--danger)' : len > max * 0.8 ? '#d97706' : 'var(--ink-400)';
         }
     };
-    // Initialize counters on page load
-    document.querySelectorAll('textarea[maxlength="500"]').forEach(function(ta) {
+    // Initialize counters on page load (any textarea that has a counter span)
+    document.querySelectorAll('textarea[maxlength]').forEach(function(ta) {
         updateCharCount(ta);
     });
 

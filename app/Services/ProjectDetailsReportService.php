@@ -255,7 +255,7 @@ class ProjectDetailsReportService
     /**
      * Build the report rows.
      *
-     * @param  array       $filters  cycle_id, grant_id, program_id, status
+     * @param  array       $filters  category, cycle_id, grant_id, program_id, q, status
      * @param  array|null  $fields   column keys to include (null = the recommended set)
      * @return array{rows: array<int, array<string, mixed>>, columns: array}
      */
@@ -264,8 +264,23 @@ class ProjectDetailsReportService
         $allColumns = self::columns();
         $selected = self::resolveColumns($allColumns, $fields);
 
+        $category = $filters['category'] ?? 'all';
+
         $projects = Project::query()
             ->with(['program.grant', 'program.cycleConfig', 'lpi'])
+            ->when($category === 'student', function ($q) {
+                // Mirrors Project::isStudentProject().
+                $q->where(function ($w) {
+                    $w->where('projects.grant_type', 'student')
+                        ->orWhereHas('program.grant', fn($g) => $g->where('grants.category', 'student'));
+                });
+            })
+            ->when($category === 'regular', function ($q) {
+                $q->where(function ($w) {
+                    $w->whereNull('projects.grant_type')
+                        ->orWhere('projects.grant_type', '!=', 'student');
+                })->whereDoesntHave('program.grant', fn($g) => $g->where('grants.category', 'student'));
+            })
             ->when($filters['cycle_id'] ?? null, function ($q, $v) {
                 $q->whereHas('program', fn($p) => $p->where('cycle_id', $v));
             })
@@ -274,6 +289,11 @@ class ProjectDetailsReportService
             })
             ->when($filters['program_id'] ?? null, function ($q, $v) {
                 $q->where('program_id', $v);
+            })
+            ->when($filters['q'] ?? null, function ($q, $v) {
+                $term = '%' . $v . '%';
+                $q->where(fn($w) => $w->where('old_project_id', 'like', $term)
+                    ->orWhere('title', 'like', $term));
             })
             ->orderBy('id')
             ->get();

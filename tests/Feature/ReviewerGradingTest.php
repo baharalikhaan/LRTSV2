@@ -561,7 +561,6 @@ class ReviewerGradingTest extends TestCase
     }
 
     // —— Group C: final grading save ————————————————————————————————
-
     public function test_c01_final_total_is_sum_of_scores()
     {
         $project  = $this->finalProject();
@@ -1461,5 +1460,89 @@ class ReviewerGradingTest extends TestCase
             $verified,
             'A verified outcome must count toward the auto-grade.'
         );
+    }
+
+    // —— Group I: comment limits ————————————————————————————————————
+
+    public function test_i01_progress_comments_accept_up_to_1500_characters()
+    {
+        $project  = $this->progressProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No progress-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        $payload = array_merge($this->progressPayload('accepted'), [
+            'achievementsComments' => str_repeat('A', 1500),
+            'publicationsComments' => str_repeat('B', 1500),
+            'studentsComments'     => str_repeat('C', 1500),
+            'budgetComments'       => str_repeat('D', 1500),
+        ]);
+
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveProgressGrade', ['id' => $project->id]), $payload)
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $row = ProgressReportGrading::where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->where('report_type', 'progress')
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame(1500, mb_strlen($row->achievementsComments));
+        $this->assertSame(1500, mb_strlen($row->publicationsComments));
+        $this->assertSame(1500, mb_strlen($row->studentsComments));
+        $this->assertSame(1500, mb_strlen($row->budgetComments));
+
+        // One character over the limit is rejected.
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveProgressGrade', ['id' => $project->id]), array_merge($payload, [
+                'achievementsComments' => str_repeat('A', 1501),
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['achievementsComments']);
+    }
+
+    public function test_i02_final_comments_accept_up_to_1500_characters()
+    {
+        $project  = $this->finalProject();
+        $reviewer = $this->reviewer();
+        if (!$project || !$reviewer) {
+            $this->markTestSkipped('No final-stage project or reviewer.');
+        }
+
+        $this->syncReviewers($project, [$reviewer->id]);
+        $this->claim($project, $reviewer);
+
+        $payload = array_merge($this->finalPayload('accepted'), [
+            'commentA' => str_repeat('A', 1500),
+            'commentB' => str_repeat('B', 1500),
+            'commentC' => str_repeat('C', 1500),
+            'commentD' => str_repeat('D', 1500),
+        ]);
+
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), $payload)
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $row = FinalReportGrading::where('project_id', $project->id)
+            ->where('user_id', $reviewer->id)
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame(1500, mb_strlen($row->commentA));
+        $this->assertSame(1500, mb_strlen($row->commentD));
+
+        $this->actingAs($reviewer)
+            ->postJson(route('grading.saveFinalGrade', ['id' => $project->id]), array_merge($payload, [
+                'commentB' => str_repeat('B', 1501),
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['commentB']);
     }
 }

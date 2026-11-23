@@ -19,6 +19,39 @@ class ProjectDetailsReportTest extends TestCase
         return User::where('type', $type)->where('is_active', 1)->first();
     }
 
+    /** Option values of a <select> (the leading "All …" option is dropped). */
+    private function optionValues(string $html, string $id): array
+    {
+        $start = strpos($html, 'id="' . $id . '"');
+        $this->assertNotFalse($start, 'Select #' . $id . ' not found.');
+
+        $block = substr($html, $start, strpos($html, '</select>', $start) - $start);
+
+        preg_match_all('/<option value="([^"]*)"[^>]*>/', $block, $m);
+
+        $values = array_map('strval', $m[1]);
+        array_shift($values);
+
+        return array_values($values);
+    }
+
+    private function projects(): \Illuminate\Support\Collection
+    {
+        return \App\Models\Project::with(['program.grant', 'program.cycle'])->orderBy('id')->get();
+    }
+
+    private function regularCycleIds(): array
+    {
+        return $this->projects()
+            ->filter(fn ($p) => !$p->isStudentProject())
+            ->map(fn ($p) => (string) ($p->program->cycle_id ?? ''))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
     public function test_admin_can_view_the_project_details_report()
     {
         $admin = $this->user('Admin');
@@ -308,6 +341,172 @@ class ProjectDetailsReportTest extends TestCase
         }
     }
 
+    public function test_cycles_research_calls_and_grants_cascade_from_the_category()
+    {
+        $admin = $this->user('Admin');
+        if (!$admin) {
+            $this->markTestSkipped('No active admin in the test database.');
+        }
+
+        $html = $this->actingAs($admin)
+            ->get('/reports/project-details?category=student')
+            ->assertStatus(200)
+            ->getContent();
+
+        $cycles = $this->optionValues($html, 'cycle_id');
+        $this->assertNotEmpty($cycles);
+
+        $expected = $this->projects()
+            ->filter(fn ($p) => $p->isStudentProject())
+            ->map(fn ($p) => (string) ($p->program->cycle_id ?? ''))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        sort($cycles);
+        $this->assertSame($expected, $cycles, 'Only cycles with student projects may be listed.');
+
+        // A regular-only cycle is not offered in the student view.
+        $regularOnly = array_values(array_diff($this->regularCycleIds(), $cycles));
+        $this->assertNotEmpty($regularOnly, 'Expected a regular-only cycle in the fixtures.');
+        $this->assertNotContains($regularOnly[0], $cycles);
+
+        // Research calls are limited to the selected cycle.
+        $cycleId = $cycles[0];
+        $page = $this->actingAs($admin)
+            ->get('/reports/project-details?category=student&cycle_id=' . $cycleId)
+            ->assertStatus(200)
+            ->getContent();
+
+        $expectedCalls = $this->projects()
+            ->filter(fn ($p) => $p->isStudentProject() && (int) ($p->program->cycle_id ?? 0) === (int) $cycleId)
+            ->map(fn ($p) => (string) $p->program_id)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        $calls = $this->optionValues($page, 'program_id');
+        sort($calls);
+        $this->assertSame($expectedCalls, $calls);
+
+        // Grants follow the research call (one grant per call).
+        $programId = $calls[0];
+        $program = \App\Models\Program::find($programId);
+
+        $page = $this->actingAs($admin)
+            ->get('/reports/project-details?category=student&cycle_id=' . $cycleId . '&program_id=' . $programId)
+            ->assertStatus(200)
+            ->getContent();
+
+        $this->assertSame([(string) $program->grant_id], $this->optionValues($page, 'grant_id'));
+    }
+
+    public function test_search_filter_narrows_by_project_id_or_title()
+    {
+        $data = \App\Services\ProjectDetailsReportService::build([]);
+        $this->assertNotEmpty($data['rows']);
+
+        $projectId = (string) $data['rows'][0]['project_id'];
+        $filtered = \App\Services\ProjectDetailsReportService::build(['q' => $projectId]);
+
+        $this->assertNotEmpty($filtered['rows']);
+
+        foreach ($filtered['rows'] as $row) {
+            $this->assertTrue(
+                str_contains((string) $row['project_id'], $projectId)
+                || str_contains((string) $row['title'], $projectId),
+                'The search filter returned a row that matches neither the project ID nor the title.'
+            );
+        }
+    }
+
+    public function test_category_filter_scopes_the_rows()
+    {
+        $all = \App\Services\ProjectDetailsReportService::build([]);
+        $regular = \App\Services\ProjectDetailsReportService::build(['category' => 'regular']);
+        $student = \App\Services\ProjectDetailsReportService::build(['category' => 'student']);
+
+        $this->assertSame(
+            count($all['rows']),
+            count($regular['rows']) + count($student['rows']),
+            'Regular + student rows must add up to the full report.'
+        );
+
+        $studentIds = array_column($student['rows'], 'project_id');
+        $regularIds = array_column($regular['rows'], 'project_id');
+
+        $this->assertNotEmpty($studentIds);
+        $this->assertNotEmpty($regularIds);
+        $this->assertEmpty(array_intersect($studentIds, $regularIds), 'A project cannot be in both categories.');
+    }
+
+    public function test_the_filter_bar_is_the_grading_details_one()
+    {
+        $admin = $this->user('Admin');
+        if (!$admin) {
+            $this->markTestSkipped('No active admin in the test database.');
+        }
+
+        $html = $this->actingAs($admin)
+            ->get('/reports/project-details')
+            ->assertStatus(200)
+            ->getContent();
+
+        $formStart = strpos($html, 'id="projectFilterForm"');
+        $this->assertNotFalse($formStart, 'The report must use the Grading Details filter form.');
+        $form = substr($html, $formStart, strpos($html, '</form>', $formStart) - $formStart);
+
+        foreach (['name="category"', 'name="cycle_id"', 'name="program_id"', 'name="grant_id"', 'name="q"'] as $needle) {
+            $this->assertStringContainsString($needle, $form);
+        }
+
+        // The status filter belongs to the old bar and must be gone.
+        $this->assertStringNotContainsString('name="status"', $form);
+        $this->assertStringNotContainsString('All Statuses', $html);
+
+        // Category → cycle → research call → grant → search.
+        $category = strpos($form, 'for="category"');
+        $cycle = strpos($form, 'for="cycle_id"');
+        $call = strpos($form, 'for="program_id"');
+        $grant = strpos($form, 'for="grant_id"');
+        $search = strpos($form, 'for="q"');
+
+        $this->assertNotFalse($category + $cycle + $call + $grant + $search);
+        $this->assertTrue($category < $cycle);
+        $this->assertTrue($cycle < $call);
+        $this->assertTrue($call < $grant);
+        $this->assertTrue($grant < $search);
+    }
+
+    public function test_a_child_filter_outside_the_category_is_dropped()
+    {
+        $admin = $this->user('Admin');
+        if (!$admin) {
+            $this->markTestSkipped('No active admin in the test database.');
+        }
+
+        $regularOnly = array_values(array_diff($this->regularCycleIds(), $this->optionValues(
+            $this->actingAs($admin)->get('/reports/project-details?category=student')->getContent(),
+            'cycle_id'
+        )));
+
+        if (!$regularOnly) {
+            $this->markTestSkipped('No regular-only cycle in the fixtures.');
+        }
+
+        $res = $this->actingAs($admin)
+            ->get('/reports/project-details?category=student&cycle_id=' . $regularOnly[0]);
+
+        $res->assertStatus(302);
+        $this->assertStringNotContainsString(
+            'cycle_id=' . $regularOnly[0],
+            (string) $res->headers->get('Location')
+        );
+    }
+
     public function test_the_export_contains_only_the_selected_fields()
     {
         $admin = $this->user('Admin');
@@ -318,8 +517,6 @@ class ProjectDetailsReportTest extends TestCase
         $this->actingAs($admin)
             ->get('/reports/project-details?fields[]=title&fields[]=lpi_name')
             ->assertStatus(302);
-
-        $file = tempnam(sys_get_temp_dir(), 'pd') . '.xlsx';
 
         $res = $this->actingAs($admin)->get('/reports/project-details/export');
         $res->assertStatus(200);
